@@ -1,0 +1,49 @@
+#! /usr/bin/env python2.7
+#! /bin/env python
+import time
+startime = time.time()
+import sys
+import argparse
+import multiprocessing
+import re
+from math import sqrt
+import os
+import signal
+import random
+
+def main():
+#--------------------------MAIN PROGRAM-----------------------------
+
+#	commandline argument parsing
+	argparser = argparse.ArgumentParser(	description='Analysis of Tnt data from the miseq.',
+											formatter_class=argparse.RawTextHelpFormatter,
+										)
+	argparser.add_argument(	'--debug',		dest='debug', 			action='store_true', 			required=False,	default=False,	help='debug (run as regular single process python script).')
+	argparser.add_argument(	'--selftest',		dest='selftest', 		action='store_true', 			required=False,	default=False,	help='Run a selftest to see that reads are correctly classified.')
+	argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='skip the first N read pairs in files (default 0).')
+	argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='stop after N read pairs, set to 0 to disable (default 0).')
+	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='Input "fastq"-file read1.')
+	argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='Input "fastq"-file read2.')
+	argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to start (default 1).')
+	argparser.add_argument(	'--printreadinfo',	dest='pri', 			action='store_true', 			required=False,	default=False,	help='print readinfo to stdout (colors n stuff no guarantees that this part works).')
+	argparser.add_argument(	'--percentage',		dest='percentage', 		action='store_true', 			required=False, default=False,	help='print summary as percentage.')
+	argparser.add_argument(	'--counts',		dest='counts', 			action='store_true', 			required=False, default=False,	help='print summary as counts. (default)')
+	argparser.add_argument(	'-u',			dest='update',	metavar='N',				type=int,	required=False,	default=0,	help='Print updated statistics summar to outfile ever INT read (default off)(more updating => much slower!).')
+	argparser.add_argument(	'-o',			dest='outfile',	metavar='outfile',			type=str,	required=False,	default=False,	help='Print output to outfile (default stdout).')
+	argparser.add_argument(	'-dump',		dest='dump',	metavar='basename',			type=str,	required=False,	default=False,	help='filename "base" to dump sub sequences for making weblogo to (default Disabled).')
+	input = argparser.parse_args(sys.argv[1:])
+	sys.stderr.write('Start.\n')
+
+#--------------------------MAIN PROGRAM END-------------------------
+
+
+#--------------------- Functions // Subroutines --------------------
+
+
+
+#####
+#check if run or imported // call main() or not
+#####
+if __name__ == "__main__":
+    main()
+#END of script
