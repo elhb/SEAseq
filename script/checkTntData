@@ -31,44 +31,53 @@ def main():
 	#argparser.add_argument(	'--counts',		dest='counts', 			action='store_true', 			required=False, default=False,	help='print summary as counts. (default)')
 	#argparser.add_argument(	'-u',			dest='update',	metavar='N',				type=int,	required=False,	default=0,	help='Print updated statistics summar to outfile ever INT read (default off)(more updating => much slower!).')
 	argparser.add_argument(	'-o',			dest='outfile',	metavar='outfile',			type=str,	required=False,	default=False,	help='Print output to outfile (default stdout).')
+	argparser.add_argument(	'-l',			dest='logfile',	metavar='outfile',			type=str,	required=False,	default=False,	help='Print log messages to logfile (default stderr).')
+	argparser.add_argument(	'-sample',		dest='sample',	metavar='str',				type=str,	required=False,	default=False,	help='Sample name to use for out and logfile namin (default Disabled).')
 	#argparser.add_argument(	'-dump',		dest='dump',	metavar='basename',			type=str,	required=False,	default=False,	help='filename "base" to dump sub sequences for making weblogo to (default Disabled).')
 	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
 	argparser.add_argument(	'--keeporder',		dest='keeporder', 		action='store_true', 			required=False, default=False,	help='keep the read ordering.')
 	indata = argparser.parse_args(sys.argv[1:])
-	sys.stderr.write('Start.\n')
-
-	sys.stderr.write('Running script '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'.\n')
-        sys.stderr.write('Master process id='+str(MASTER)+'\n')
-        sys.stderr.write('cmd: '+' '.join(sys.argv)+'\n')
-        if indata.selftest: sys.stderr.write('Running in selftest mode no real data will be analyzed.\n')
 	if indata.outfile: indata.outfile = open(indata.outfile, 'w')
 	else: indata.outfile = sys.stdout
+	if indata.logfile: indata.logfile = open(indata.outfile, 'w')
+	else: indata.logfile = sys.stderr
+	if indata.sample:
+		indata.outfile = open(indata.sample+'.out.txt', 'w')
+		indata.logfile = open(indata.sample+'.log.txt', 'w')
+		os.mkdir(indata.sample+'.threads')
+	indata.logfile.write('Start.\n')
+
+	indata.logfile.write('Running script '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'.\n')
+        indata.logfile.write('Master process id='+str(MASTER)+'\n')
+        indata.logfile.write('cmd: '+' '.join(sys.argv)+'\n')
+        if indata.selftest: indata.logfile.write('Running in selftest mode no real data will be analyzed.\n')
+	
 
 
-        sys.stderr.write('Getting readcount ... ')
+        indata.logfile.write('Getting readcount ... ')
         numreads=bufcount(indata.reads1.name)/4
         indata.reads2process = numreads
         if indata.skip: indata.reads2process -= indata.skip
         if indata.stop: indata.reads2process = indata.stop
         if indata.n:    indata.reads2process = indata.n
-        sys.stderr.write('#read pairs in indata file:\n'+str(numreads)+'\n')
-        sys.stderr.write(str(numreads)+' read pairs in fastq files.\n');
+        indata.logfile.write('#read pairs in indata file:\n'+str(numreads)+'\n')
+        indata.logfile.write(str(numreads)+' read pairs in fastq files.\n');
 	
         #deciding if to run multiprocessing or single process for debbuging
 	if indata.debug:
 	    results=[]
-            sys.stderr.write('Part1: Running in debug mode searching for threads ...\n')
+            indata.logfile.write('Part1: Running in debug mode searching for threads ...\n')
 	    for tmp in getPairs(indata):
 		results.append(magicFunction(tmp))
-            sys.stderr.write('Part1: search finished\n')
+            indata.logfile.write('Part1: search finished\n')
 	else:
 	    #create worker pool
 	    WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=100)
 	    if not indata.keeporder: results = WorkerPool.imap_unordered(magicFunction,getPairs(indata),chunksize=10)
             if indata.keeporder: results = WorkerPool.imap(magicFunction,getPairs(indata),chunksize=10)
 
-        if not indata.debug: sys.stderr.write('Part1: running in multiproccessing mode using '+str(indata.cpus)+' processes  ...\n')
-        else: sys.stderr.write('Part1: running the multiprocessing results handeling\n')
+        if not indata.debug: indata.logfile.write('Part1: running in multiproccessing mode using '+str(indata.cpus)+' processes  ...\n')
+        else: indata.logfile.write('Part1: running the multiprocessing results handeling\n')
 
 	counter = 0
 	last = [0,starttime,counter]
@@ -79,11 +88,15 @@ def main():
 	bothidentifiable=0
 	for pair in results: # do this for each result
 		counter += 1
-		last = progress(counter,indata.reads2process,last)
+		last = progress(counter,indata.reads2process,last,indata)
 		for thread in pair.threads:
 			threads+=1
 			try:		combos[str(thread.extprimer)+'-'+str(thread.tjprimer)]+=1
 			except KeyError:combos[str(thread.extprimer)+'-'+str(thread.tjprimer)]=1
+			if indata.sample:
+				f = open(indata.sample+'.threads/'+str(thread.extprimer)+'-'+str(thread.tjprimer)+'.txt','a')
+				f.write(thread.seq+'\n')
+				f.close
 			if thread.tjprimer or thread.extprimer:
 				identifiable+=1
 				if thread.tjprimer == thread.extprimer:
@@ -94,17 +107,17 @@ def main():
 	
 	for combo,count in combos.iteritems():
 		indata.outfile.write( str(count)+ '\t'+str(round(100*float(count)/(threads),2))+'\t'+ combo+'\n')
-	sys.stderr.write('Part 1 finished in '+str(round(time.time()-starttime,2))+'s, '+str(counter)+' reads processed, '+str(threads)+' ('+str(int(round(100*float(threads)/(counter*2))))+'%) threads, whereof '+str(identifiable)+' ('+str(int(round(100*float(identifiable)/threads)))+'%) were identifiable.\n')	
+	indata.logfile.write('Part 1 finished in '+str(round(time.time()-starttime,2))+'s, '+str(counter)+' reads processed, '+str(threads)+' ('+str(int(round(100*float(threads)/(counter*2))))+'%) threads, whereof '+str(identifiable)+' ('+str(int(round(100*float(identifiable)/threads)))+'%) were identifiable.\n')	
 		
 #--------------------------MAIN PROGRAM END-------------------------
 
 
 #--------------------- Functions, Subroutines and classes --------------------
-def progress(current,total,last):
+def progress(current,total,last,indata):
 	[lpercentage,ltime,lcurrent] = last
 	percentage = int(round(100*float(current)/total))
 	if percentage % 5 == 0 and percentage != lpercentage:
-		sys.stderr.write(
+		indata.logfile.write(
 			'#Progress => '+str(percentage)+'%, '+
 			str( round((current-lcurrent)/(time.time()-ltime),2) )+' reads/second, '+
 			time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n'
@@ -144,13 +157,13 @@ def getPairs(indata):
     if indata.n:
         numreads=bufcount(indata.reads1.name)/4
         if indata.stop: numreads = indata.stop
-        sys.stderr.write('Choosing '+str(indata.n)+' random pairs to analyze ... ')
+        indata.logfile.write('Choosing '+str(indata.n)+' random pairs to analyze ... ')
         readNumbersToPrint = {}
         while len(readNumbersToPrint) < indata.n: readNumbersToPrint[random.randint(indata.skip+1,numreads)] = True
         tempo = readNumbersToPrint.keys()
         tempo.sort()
         readNumbersToPrint = tempo 
-        sys.stderr.write('done.\n')
+        indata.logfile.write('done.\n')
     counter = 0
     tmp=0
     header="NA"
@@ -164,18 +177,18 @@ def getPairs(indata):
 
         if tmp == 1: #header
 	    header=r1line
-	    if r1line.split(" ")[0] != r2line.split(" ")[0]: sys.stderr.write('Error mismatching headers!');os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
+	    if r1line.split(" ")[0] != r2line.split(" ")[0]: indata.logfile.write('Error mismatching headers!');os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
 	elif tmp == 2: #sequence
 	    if counter == 1:
-		sys.stderr.write('Checking data type of read 1 in pair 1 ... ')
+		indata.logfile.write('Checking data type of read 1 in pair 1 ... ')
 		match = re.match("^[AGTCN]+$",r1line.rstrip())
-		if match: sys.stderr.write('this is DNA data.\n')
-		else: sys.stderr.write(' this is not a DNA sequence ('+r1line.rstrip()+') could something be wrong with your indata file?.\n\n');os.kill(MASTER);sys.exit();#REALLYNOTOPTIMAL
+		if match: indata.logfile.write('this is DNA data.\n')
+		else: indata.logfile.write(' this is not a DNA sequence ('+r1line.rstrip()+') could something be wrong with your indata file?.\n\n');os.kill(MASTER);sys.exit();#REALLYNOTOPTIMAL
             r1seq = r1line.rstrip()
             r2seq = r2line.rstrip()
 	elif tmp == 3: #+
             if counter in {1:True,67:True,438:True,9675:True,53678:True,864513:True,1337354:True,317955:True,1226844:True,20389:True,118261:True}:
-                if r1line[0] != r2line[0] or r1line[0] != '+': sys.stderr.write('Error Format not fastq!');os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
+                if r1line[0] != r2line[0] or r1line[0] != '+': indata.logfile.write('Error Format not fastq!');os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
 	elif tmp == 4: #quality
             tmp=0
             counter+=1
