@@ -1,15 +1,16 @@
 #! /usr/bin/env python2.7
 #! /bin/env python
 import time
-startime = time.time()
+starttime = time.time()
 import sys
 import argparse
 import multiprocessing
 import re
 from math import sqrt
 import os
-import signal
 import random
+
+MASTER = os.getppid()
 
 def main():
 #--------------------------MAIN PROGRAM-----------------------------
@@ -22,8 +23,8 @@ def main():
 	argparser.add_argument(	'--selftest',		dest='selftest', 		action='store_true', 			required=False,	default=False,	help='Run a selftest to see that reads are correctly classified.')
 	argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='skip the first N read pairs in files (default 0).')
 	argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='stop after N read pairs, set to 0 to disable (default 0).')
-	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='Input "fastq"-file read1.')
-	argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='Input "fastq"-file read2.')
+	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='indata "fastq"-file read1.')
+	argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='indata "fastq"-file read2.')
 	argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to start (default 1).')
 	argparser.add_argument(	'--printreadinfo',	dest='pri', 			action='store_true', 			required=False,	default=False,	help='print readinfo to stdout (colors n stuff no guarantees that this part works).')
 	argparser.add_argument(	'--percentage',		dest='percentage', 		action='store_true', 			required=False, default=False,	help='print summary as percentage.')
@@ -31,15 +32,558 @@ def main():
 	argparser.add_argument(	'-u',			dest='update',	metavar='N',				type=int,	required=False,	default=0,	help='Print updated statistics summar to outfile ever INT read (default off)(more updating => much slower!).')
 	argparser.add_argument(	'-o',			dest='outfile',	metavar='outfile',			type=str,	required=False,	default=False,	help='Print output to outfile (default stdout).')
 	argparser.add_argument(	'-dump',		dest='dump',	metavar='basename',			type=str,	required=False,	default=False,	help='filename "base" to dump sub sequences for making weblogo to (default Disabled).')
-	input = argparser.parse_args(sys.argv[1:])
+	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
+	argparser.add_argument(	'--keeporder',		dest='keeporder', 		action='store_true', 			required=False, default=False,	help='keep the read ordering.')
+	indata = argparser.parse_args(sys.argv[1:])
 	sys.stderr.write('Start.\n')
 
+	sys.stderr.write('Running script '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'.\n')
+        sys.stderr.write('Master process id='+str(MASTER)+'\n')
+        sys.stderr.write('cmd: '+' '.join(sys.argv)+'\n')
+        if indata.selftest: sys.stderr.write('Running in selftest mode no real data will be analyzed.\n')
+
+        sys.stderr.write('Getting readcount ... ')
+        numreads=bufcount(indata.reads1.name)/4
+        indata.reads2process = numreads
+        if indata.skip: indata.reads2process -= indata.skip
+        if indata.stop: indata.reads2process = indata.stop
+        if indata.n:    indata.reads2process = indata.n
+        sys.stderr.write('#read pairs in indata file:\n'+str(numreads)+'\n')
+        sys.stderr.write(str(numreads)+' read pairs in fastq files.\n');
+	
+        #deciding if to run multiprocessing or single process for debbuging
+	if indata.debug:
+	    results=[]
+            sys.stderr.write('Part1: Running in debug mode searching for threads ...\n')
+	    for tmp in getPairs(indata):
+		results.append(magicFunction(tmp))
+            sys.stderr.write('Part1: search finished\n')
+	else:
+	    #create worker pool
+	    WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=100)
+	    if not indata.keeporder: results = WorkerPool.imap_unordered(magicFunction,getPairs(indata),chunksize=10)
+            if indata.keeporder: results = WorkerPool.imap(magicFunction,getPairs(indata),chunksize=10)
+
+        if not indata.debug: sys.stderr.write('Part1: running in multiproccessing mode using '+str(indata.cpus)+' processes  ...\n')
+        else: sys.stderr.write('Part1: running the multiprocessing results handeling\n')
+
+	counter = 0
+	last = [0,starttime,counter]
+	combos = {}
+	for pair in results: # do this for each result
+		counter += 1
+		last = progress(counter,indata.reads2process,last)
+		for thread in pair.threads:
+			try:		combos[str(thread.extprimer)+'-'+str(thread.tjprimer)]+=1
+			except KeyError:combos[str(thread.extprimer)+'-'+str(thread.tjprimer)]=1
+			if thread.tjprimer or thread.extprimer:
+				if thread.tjprimer == thread.extprimer: pass#print thread.extprimer, thread.seq
+	
+	for combo,count in combos.iteritems():
+		print count, '\t', combo
+		
+		
 #--------------------------MAIN PROGRAM END-------------------------
 
 
-#--------------------- Functions // Subroutines --------------------
+#--------------------- Functions, Subroutines and classes --------------------
+def progress(current,total,last):
+	[lpercentage,ltime,lcurrent] = last
+	percentage = int(round(100*float(current)/total))
+	if percentage % 5 == 0 and percentage != lpercentage:
+		sys.stderr.write(
+			'#Progress => '+str(percentage)+'%, '+
+			str( round((current-lcurrent)/(time.time()-ltime),2) )+' reads/second, '+
+			time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n'
+			)
+		ltime = time.time()
+		lcurrent = current
+	return [percentage,ltime,lcurrent]
 
+def comp(str):
+    return str.replace("A","X").replace("T","A").replace("X","T").replace("G","X").replace("C","G").replace("X","C")
 
+def revcomp(str):
+    return comp(str[::-1])
+
+def bufcount(filename):
+    """ returns the number of lines in a file
+    """
+    f = open(filename)                  
+    lines = 0
+    buf_size = 1024 * 1024
+    read_f = f.read # loop optimization
+
+    buf = read_f(buf_size)
+    while buf:
+        lines += buf.count('\n')
+        buf = read_f(buf_size)
+        f.close
+    return lines
+
+def getPairs(indata):
+    """ yield one readpair at a time from indata
+    """
+    if indata.selftest:
+        cells = {'U251':['C28','C7','C15','C5'],'A431':['F52','C75','C23','C74'],'U2OS':['C24', 'F75', 'C26', 'C25'],}
+        for i1 in range(3):
+            cell = random.choice(cells.keys())
+            bc = ''.join([random.choice("AGTC") for i in range(15)])
+            for ID in IDs:#cells[cell]:
+                fakereads = random.randint(1,10)
+                for var in IDs[ID][4]:
+                    if cell in IDs[ID][4][var]: break
+                for i2 in range(fakereads):
+                    r1 = bc + TJ_HANDLE + IDs[ID][0] + IDs[ID][2].replace(IDs[ID][3],var) + IDs[ID][1] + EXT_HANDLE +'AGATCGGAAGAGC'
+                    r1 = r1.replace('X','C')
+                    r2 =revcomp(r1)
+                    yield [readpair('sample.read.-'+ID+'.'+str(i2)+' '+ID, r1, r2),indata]
+        sys.stderr.write('Created 5 cells.')
+        return
+    [file1,file2]=[indata.reads1,indata.reads2]
+    if indata.n:
+        numreads=bufcount(indata.reads1.name)/4
+        if indata.stop: numreads = indata.stop
+        sys.stderr.write('Choosing '+str(indata.n)+' random pairs to analyze ... ')
+        readNumbersToPrint = {}
+        while len(readNumbersToPrint) < indata.n: readNumbersToPrint[random.randint(indata.skip+1,numreads)] = True
+        tempo = readNumbersToPrint.keys()
+        tempo.sort()
+        readNumbersToPrint = tempo 
+        sys.stderr.write('done.\n')
+    counter = 0
+    tmp=0
+    header="NA"
+    if indata.skip: skip =True
+    for r1line in file1:
+        r2line = file2.readline()
+	tmp+=1
+	if indata.skip and tmp < (4*indata.skip) and skip: continue
+	elif indata.skip and tmp == (4*indata.skip) and skip: skip=False; tmp =0;continue
+	if indata.stop and counter == indata.stop: break
+
+        if tmp == 1: #header
+	    header=r1line
+	    if r1line.split(" ")[0] != r2line.split(" ")[0]: sys.stderr.write('Error mismatching headers!');os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
+	elif tmp == 2: #sequence
+	    if counter == 1:
+		sys.stderr.write('Checking data type of read 1 in pair 1 ... ')
+		match = re.match("^[AGTCN]+$",r1line.rstrip())
+		if match: sys.stderr.write('this is DNA data.\n')
+		else: sys.stderr.write(' this is not a DNA sequence ('+r1line.rstrip()+') could something be wrong with your indata file?.\n\n');os.kill(MASTER);sys.exit();#REALLYNOTOPTIMAL
+            r1seq = r1line.rstrip()
+            r2seq = r2line.rstrip()
+	elif tmp == 3: #+
+            if counter in {1:True,67:True,438:True,9675:True,53678:True,864513:True,1337354:True,317955:True,1226844:True,20389:True,118261:True}:
+                if r1line[0] != r2line[0] or r1line[0] != '+': sys.stderr.write('Error Format not fastq!');os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
+	elif tmp == 4: #quality
+            tmp=0
+            counter+=1
+            r1qual = r1line.rstrip()
+            r2qual = r2line.rstrip()
+            if not indata.n: yield [readpair(header.rstrip(), r1seq, r2seq),indata]
+            else:
+                if counter == readNumbersToPrint[0]:
+                    yield [readpair(header.rstrip(), r1seq, r2seq),indata]
+                    readNumbersToPrint = readNumbersToPrint[1:]
+                    if len(readNumbersToPrint) == 0: break
+
+class readpair():
+    """ object representing an illumina cluster """
+    
+    def __init__(self,header,r1,r2):
+	self.header = header
+	self.r1 = read(r1,1,header) #first read
+	self.r2 = read(r2,2,header) #second read
+	self.threads = []
+
+    def identifythreads(self):
+	# a thread should look like this:
+	# gagctgctgcaccatattcctgaac GACCATCACTTAAATCAGGTCCTCC NNNNNNNNNNN AGAGTCAAGTTATTTAAAAAATCTGGCC gctctgaaggcggtgtatgacatgg
+	# GAGCTGCTGCACCATATTCCTGAAC CAATCTCCCCTATTATTTCTATCCTATGCCACTCCTGCTCATATCTCTAGTG GCTCTGAAGGCGGTGTATGACATGGAGATCGGAAGAGCACACGTCTGAACTCCAGTCACATTCCTTTATCTCGT
+	# gagctgctgcaccatattcctgaac                                                      gctctgaaggcggtgtatgacatgg
+	
+	exthandle_seq = 'gagctgctgcaccatattcctgaac'.upper()
+	tjhandle_seq  = 'gctctgaaggcggtgtatgacatgg'.upper()
+
+	#READ1
+	exthandle = None
+	tjhandle =  None
+	exthandle = re.search('^'+exthandle_seq,self.r1.seq)
+	tjhandle =  re.search(     tjhandle_seq,self.r1.seq)
+	if exthandle and tjhandle:
+		thread = tntthread(self.r1.seq[exthandle.end():tjhandle.start()])
+		self.threads.append(thread)
+	else:
+		pass # do some kind of fuzzy matching to allow for missmatches
+	
+	#READ2
+	exthandle = None
+	tjhandle =  None
+	exthandle = re.search(   revcomp(exthandle_seq),self.r2.seq)
+	tjhandle =  re.search('^'+revcomp(tjhandle_seq),self.r2.seq)
+	if exthandle and tjhandle:
+		thread = tntthread(revcomp(self.r2.seq[tjhandle.end():exthandle.start()]))
+		self.threads.append(thread)
+
+class read():
+    "Represents one of several reads from a DNA fragment"
+    
+    def __init__(self,seq,number,header):
+	self.seq = seq
+	self.number = number
+	self.handlesearch = 'NotStarted'
+        self.header = header
+	return
+
+class tntthread():
+    "Represents the specific part of a tnt thread without the general handles"
+    
+    def __init__(self,seq):
+	self.seq = seq
+	self.extprimer = None
+	self.tjprimer = None
+	return
+
+    def identifyspecific(self):
+	try:
+		for ID in extbyseq[self.seq[:19]]:
+			match = re.search('^'+ext_primers[ID], self.seq)
+			if match:
+				self.extprimer= ID;
+	except KeyError: pass
+	try:
+		for ID in tjbyseq[self.seq[-19:]]:
+			match = re.search(tj_primers[ID]+'$', self.seq)
+			if match:
+				self.tjprimer= ID;
+	except KeyError: pass
+
+def magicFunction(tmp):
+	#unpack input and trim reads
+	[pair, input] = tmp
+	
+	pair.identifythreads()
+
+	for thread in pair.threads:
+		thread.identifyspecific()
+	
+	return pair
+
+ext_primers = {
+	'c1':'GACCATCACTTAAATCAGGTCCTCC',
+	'c2':'CTCTTCAGCTCCCAGAGTCACCA',
+	'c3':'TGGATTTTTACATATGAGCCTTCAATG',
+	'c4':'GGCCAACAAGATCAGTCTGTTCTCT',
+	'c5':'ACCCTAGATTGTATTGTAGGAGGCAT',
+	'c6':'CTTTCATTCTGCTCAAGTCTTCGCC',
+	'c7':'CCGGCCTCTGGCGTTCTACTCA',
+	'c8':'TTGCACAAGGTAAGTTTATTCTAGCTT',
+	'c9':'CCTGAATATCAGGTAGGAATGTTTGT',
+	'c10':'ACAAAGGCAGCCTTTCATACCTTAG',
+	'c11':'CAAACCTTACAGCATCGATAAGTTTC',
+	'c12':'GCGGTGGGCGCGCAGTGCGTTCTC',
+	'c13':'CCAGGGTAAGGGAGAGGGCCACA',
+	'c14':'ATATGTTCCCTTCCTGAATTTGTCTAA',
+	'c15':'AAAAGCCTAAGAACTCTAAGCATTGC',
+	'c16':'GAACACTGCCCTCGCACGGCCCC',
+	'c17':'CAGCTAGAGATAGGGGAAGTGTATA',
+	'c18':'CTTCCACTCTCAAAGGGCTTCTGAT',
+	'c19':'TGGATTCTGAATGTGCTTAATTTAAAAG',
+	'c20':'CTAATTCTGTTTCATTTCTATAGGCGA',
+	'c21':'CTTCCCTCTCCTCAGCGCCTAAGAG',
+	'c22':'GTGAGAATCCCTGAGCCCAGGCGGT',
+	'c23':'GGCACCTTTCCTCTAATCCAGCAAA',
+	'c24':'CATTTCAAGGCAGTTTTTAAAGAAGTC',
+	'c25':'CTAGGACTCCTGCTAAGCTCTCCT',
+	'c26':'GTTTCAAAGCGCCAGTCATTTGCTC',
+	'c27':'GGAGCTGCTGGTGCAGGGGCCACG',
+	'c28':'GTGCCTGGACATTTGCCTTGCTGGA',
+	'c29':'GTGTGAGAGAAAAGAATGGAATAAGC',
+	'c30':'TTCCAATGTCCCCCGGTTGGAGTC',
+	'c31':'GGTGGAGCCACACGAAGCGGTG',
+	'c32':'AGGCAGGGCAGGTCCAGGCCCTGC',
+	'c33':'GAGGTATCAGAGGTAATAAATATTCTAT',
+	'c34':'CTCCCCCACCCCGCTTCACTCTG',
+	'c35':'TCCCCGCCTGGGGAAGGAGAGGCC',
+	'c36':'GAATTCATCGGACATGTTACTGTTTTT',
+	'c37':'TAAAGTTTGGTCCCTTTCGCTCCG',
+	'c38':'GTCAGGATTGCTGGTGTTATATTCTG',
+	'c39':'GTTTGATTCACCTTTGAGCACTCTTA',
+	'c40':'ATTCCTCTGGTATTTTCTAAAACAGAAA',
+	'c41':'CTAGCTGGCCTTATTCTACTGACTT',
+	'c42':'GTACTGGACGTTGATGCCACTGAA',
+	'c43':'AGAAAGTGAGGACAGACAGAAGGC',
+	'c44':'CATCTGCAGTCCCTGGGGGCCA',
+	'c45':'GGATGGCGAGGCAGCAGGGGCA',
+	'c46':'TGCGTCGGCGGCTGCCCTCCC',
+	'c47':'GATTCTCACGACTCTACCATGTCCA',
+	'c48':'GGAGGGCTGGGAGTCCGGAATG',
+	'c49':'CCAGTCCTGTCATGTCAGGGTTG',
+	'c50':'AGCGGATGGTGGATTTCGCTGGC',
+	'c51':'TTCCTGGCTCCATTTTCTCCACCAG',
+	'c52':'CCTGCCCAGGCTGAGTGCGGA',
+	'c53':'GCGAGGATGTCGTCCACCTCTG',
+	'c54':'TGATGCTTTCGAAGTTTCAGTTGAAC',
+	'c55':'TCGGACCGCATGGGTCGGACAGGT',
+	'c56':'GCAAGCGGTGAGTTTTCAGATGGGCA',
+	'c57':'TTGATATTCTTCATTAGCTTGCCTGAT',
+	'c58':'TGTCTGCTCCAAATATAGCAATGAAG',
+	'c59':'CTGGGGGGTGGCTCAGGGGAGGGTG',
+	'c60':'GTTCTGGCAGGCATTTGGCATCAGC',
+	'c61':'GAGGGCTAAAAAGGTCCTGTAAGAAG',
+	'c62':'CCTTCCCGGTCAGCTACTCCTCTTCC',	
+	'c63':'GTCGTTTCCAAGAGAGATCCTTTCTT',
+	'c64':'TGTTTTCACTGTCTTGCTTCTGGTAA',
+	'c65':'GCACAGAAAGACCTGTGTGCTGC',
+	'c66':'CAGGCCATACTCTCCTTTACCATACTA',
+	'c67':'GCTGGACAGGAAGGGAGAATTCTGA',
+	'c68':'GGAGCTGCAGAGGTGTGGGCCCCTG',
+	'c69':'ATATTTCAAGAGCTCCCATGTTCAGT',
+	'c70':'TTTTAATAATCGACTTTTTAAATGTGATCA',
+	'c71':'TAGGTAAAAATTATTAAGTGAAATTATTCAT',
+	'c72':'GGCGGGTCTGGGTGCGGCCTGCCGCA',
+	'c73':'TTTTAGTTTGGTGATAGAACAGCTCTT',
+	'c74':'GGCCAGGACCAGTTGGGCAACAAAAT',
+	'c75':'ACCAGAGAGGCTCTGAGAAACCTC',
+	'f1':'CATGGTCTGGAGTCTCGGAGTCC',
+	'f2':'ACTCATTTTCCTGGTGTTTCAAATATTT',
+	'f3':'TTGAGTCGTGGTTTCCTGGTCATG',
+	'f4':'TGTCTAGGCCTTAGTTAATAATGAATG',
+	'f5':'GCGCCTTCTTGCTGGCACCCAAT',
+	'f6':'TGCATCTGAATGGGCAAGAAGGAG',
+	'f7':'CCATTGGGAGAGAAGGAAGAGTGG',
+	'f8':'AAGGAGAAAGAGAGCCAGGACAAG',
+	'f9':'AGAAAGAGCTGGGACCCTGGGAA',
+	'f10':'CAACTAATCCAATGTGTGCCTTCACT',
+	'f11':'GCGGATGGTGGATTTCGCTGGC',
+	'f12':'ACCCCAGGCCTTTTGCCAAACCA',
+	'f13':'CAACCTCAGCAGCACCTCCCAC',
+	'f14':'CTTTTAGGGATTGGGAAAAGTTTCAAAA',
+	'f15':'GAGGTACCGACCCGGACTTCCA',
+	'f16':'CACCAGCCAAGCTGCAGCCCC',
+	'f17':'CCTGTTTGAGAAGTGGAAGCTCTAC',
+	'f18':'AGACTGGGCCCTGCACCTCCC',
+	'f19':'GCCACCGCCCAGGGCCCGG',
+	'f20':'CTTTTGCTGAGCCCGTTTGTGTTTT',
+	'f21':'CGTTATCTTCTCAAACTCTTTGGCC',
+	'f22':'GAGATGATCCCTTGCTGACTTACC',
+	'f23':'GAGAATAATTAATGGAGATACTATGAAAAA',
+	'f24':'AAGTGCTTCTCTAGCAAAAATTCTCC',
+	'f25':'AATCACATCTGGTGGAGTAATTTTCC',
+	'f26':'CTTATGTGCAGACAACATTGAAGGAA',
+	'f27':'GCCAGAACATCCAAGGCCTCCC',
+	'f28':'CGTTGTGTGACATCCCGACAGAAA',
+	'f29':'AAAGCATGGTACAAAATGAACTATGGT',
+	'f30':'CTGACCAGTCTCTGGACATGAAGA',
+	'f31':'TGCCAGGGATCAGTGAGGTCTCT',
+	'f32':'GCTCCTTTGCCCCCATTAGCCAG',
+	'f33':'GTTGCTTTGTTGTTGTCTCTGTATGA',
+	'f34':'AAAGGTGTCCTGGGAACAATCACC',
+	'f35':'ACACCGCGGTACTGGGCGCTG',
+	'f36':'GGTGTTTTCTCTGTTTATGGACAGAG',
+	'f37':'AAAAGTTATTGACCCCTAGAAAATGAC',
+	'f38':'TGTGGGTGTATTTAACCAATAGCAGT',
+	'f39':'TTAGAAGGCAAAGATTATCATGCTGG',
+	'f40':'AAGATTTAAAATTAAGCATAGAAATATTGAA',
+	'f41':'TACTGTGATTGCTTTCAATCTATAAATC',
+	'f42':'CTTTGTAGGCTAGGGCAAGGAATTT',
+	'f43':'CACTGAGCTTTAACACCAATAAGTGC',
+	'f44':'CTAGAGCAATCCGAATAAAACATAATCA',
+	'f45':'TTGCTCCTCCACATATATTAATTTTATG',
+	'f46':'GCATAAAGTTATATAGAAAAGACCTACA',
+	'f47':'GATAGGATGCGTACAGGAATAAATCT',
+	'f48':'ACATGTTTTTCTCTATACCTTTTGGTG',
+	'f49':'GGTAAATTAAAGAAATGTGAAGAATTTTTA',
+	'f50':'CAATCCTGGATCTATGTAATGGATGT',
+	'f51':'AATTACCTTATGATAATTTATTATGGCAAT',
+	'f52':'AGCACTTTATTCTCTGCAGGAGTATA',
+	'f53':'TAGTTTTGAGTATTGTAGATACCTTATG',
+	'f54':'CATTTACTTGCTTGTCCCCTTCCAG',
+	'f55':'ATACTCTTCCAATTGTTTTCTATCTTTTA',
+	'f56':'GGATGCTTTAAGGAAGCATCTTGCC',
+	'f57':'GAGGCTTGGCAGTCACCTGGGT',
+	'f58':'TTAACTGTGGTCATAGTCACTCTCAA',
+	'f59':'TGCTGTATCAACATTTCAGCAGCTC',
+	'f60':'GTTCCTGACCTCTGAATGAGAGGG',
+	'f61':'CCAGTGGGTGGGAGAGAAAGGAC',
+	'f62':'TTCTTACGGAGTTGTCTTAATAAAGAC',
+	'f63':'CCCACCTTGGGTGGTGTAATACAC',
+	'f64':'GGTCTTCGGGAACCCTAAAATCAC',
+	'f65':'GGTTTTAAATCCCTTACAAACATTAGATT',
+	'f66':'TATTTTTTAAACATCTCAAGTGCTGTCA',
+	'f67':'AATCATATCGTCTGGCTAAAAGTTGTA',
+	'f68':'CATGATCAGAAACTACCAAATCATGAT',
+	'f69':'TTATTGCTTGAGAAATAAATAATATAAATAAA',
+	'f70':'CAATCTCCCCTATTATTTCTATCCTAT',
+	'f71':'AAAAAAATTGCCATCTGGTTTCCAACA',
+	'f72':'CCTCTCATGACCCAGGAAGGCC',
+	'f73':'CCACAATACTGTAATCACACAGATAC',
+	'f74':'CGCAGAGCCTAATCACTACACCC',
+	'f75':'GGGAAGTGATTTACAGGCAGGAGTA'
+}
+tj_primers = {
+	'c1':'AGAGTCAAGTTATTTAAAAAATCTGGCC',
+	'c2':'CCACTTACATACTTGTCCCTCTAAG',
+	'c3':'CCTGGTTACTATTATTAAAGAATTTCTC',
+	'c4':'CTGCTTATCTGACAACCCTCAGATC',
+	'c5':'ATGGATGGCTGCTGGAAACCCCT',
+	'c6':'CCGATCCCTATCTACTTTCTCTCC',
+	'c7':'ACCTCTTTGTCCTGCAGCAGTTTTC',
+	'c8':'ATTTTGTGGTGAAAGTGCCTAAATTTG',
+	'c9':'ATCGCGCTCCCTGAGGATACTCA',
+	'c10':'CCAGCTTCCCAGAAGTTGTGCATA',
+	'c11':'AAAGAAACCAATGTTTGCAAAGTAGATA',
+	'c12':'AGGGCAGCTGTTCCGCCTGCGAT',
+	'c13':'CCTTGGAGTTTGAAAGACAAAGGGA',
+	'c14':'CTGAGTTGGGGGGTGGTTGCTG',
+	'c15':'CGCCAAGTTTGAAGGAACTCGAATT',
+	'c16':'CCCCCACATTTGTGCCGACACTGTT',
+	'c17':'CCCAATGCTTCCAAAGAGGAAAGG',
+	'c18':'ACATTTGAATCTAATGGATCAGTATCAT',
+	'c19':'ATTTTTACAAAGTGATCGAAAGTTTTATC',
+	'c20':'CATGATCAGGAAGGCCGGGTGAT',
+	'c21':'CCCAGTGCGGGTGAGGAGTCGCGA',
+	'c22':'CCAGGAGGTGTCTGGACTGGCTGG',
+	'c23':'CCCTGCACACCAGAGACAAGCAG',
+	'c24':'CAGACGGCGGCACCTTTCCTCT',
+	'c25':'ACGCTTTTGCTAAAAACAGCAGAACT',
+	'c26':'AAATCCAGGAAATGCAGAAGAGGAAT',
+	'c27':'AGCAGCCTCTGGCATTCTGGGAGCT',
+	'c28':'ACTGGGGATGTGGGAGGGAGCAGA',
+	'c29':'CTGCCATGCTCAGAGAATCCTAGA',
+	'c30':'ATCTGCAATGCTCCAGAGGGCAAGA',
+	'c31':'AATTAGTGGTCGGATTTCCAAAGACA',
+	'c32':'CTGAGTGCCGGGGACGTACAGTGGC',
+	'c33':'CAATAAGGTTTCTCAAGGGGCTGG',
+	'c34':'ACTGGAGCCCCACAGCCCCCAC',
+	'c35':'AGCGGCGGCACGGCCGCCTTCG',
+	'c36':'ATGTACCACCAACTTTACGTTTGCAT',
+	'c37':'AAAATGCTCTAACGGCAGGAGGTC',
+	'c38':'CAAAACAAGGAGAGAAGGAGTTGGA',
+	'c39':'CAGAAGAGGCGTAACTGGTTACAAA',
+	'c40':'CATCAACTTTGTGTATCTATTCAGAAAA',
+	'c41':'AAGGCTGCTCCAGCCAGCACTG',
+	'c42':'AGTTTTCCACACAGACTTTCCCGAT',
+	'c43':'CACCATGTCACCCTCAGGCGTG',
+	'c44':'AGCTGAGCAGTGCCTTCCAGAGC',
+	'c45':'AGCTTGGGATGCCCTAGGAAGGG',
+	'c46':'CCTCACACGCCAACCCTGCTCCT',
+	'c47':'CAGAGATCGTTCCTATACATTTCTGT',
+	'c48':'AGTTGTGGGGCCCAGACTCCTAG',
+	'c49':'CTCAGGGGAAAATATGAGGGGCAC',
+	'c50':'CAAGGTGTGCATGCCTGACCCGT',
+	'c51':'AATACATGAGCCAGACCCGCAGCTT',
+	'c52':'AGAGCTCCACCGAGGGGTGGG',
+	'c53':'ACCTTGGACACCGGGACAAAGGT',
+	'c54':'AAAAAGTTTCTTTAAATGTAAGAGCAGG',
+	'c55':'ATCTAAGTGGGACAAGTTGACCCAGG',
+	'c56':'AGAAGTGCATGTCCAGTGCCTGGC',
+	'c57':'CCATAGTAGAAACACATCAGTACTGA',
+	'c58':'ACCCTCAACCTCTGCTGTCAAAGT',
+	'c59':'CAGGCGGTTCAAGCCGTTGGCTGGA',
+	'c60':'ACTCGTCCACATCCTCGGTACAGTA',
+	'c61':'ATAGCACCCGTGGTGCATGGTATG',
+	'c62':'CCCGCCGGCCCTCGCTGGACTCCA',
+	'c63':'ATACACATCTGTACTGGGAGCTTGG',
+	'c64':'ACCAGGTGTGGAATTCGAGTTCCT',
+	'c65':'ACTCACATTCAGTACATTTGGGTTCC',
+	'c66':'ACTGGACTCAGGCTGGAGGCAGA',
+	'c67':'AACATGCAGCGAAGTATCATGTGAG',
+	'c68':'CCCAGAAGTCCAGCCACTGGGCTCC',
+	'c69':'CCTGGAGAAGGAAAGCTCTTTTTGT',
+	'c70':'CTATAATATTGTACAGTTATTATAGGGC',
+	'c71':'CTTTCAGTTTCATCTTTCTCCTGGG',
+	'c72':'CTCGTGGTTCGGAGGCCCACGTGGC',
+	'c73':'CATGAGTACGTATCTTTTCTTTTAAAAG',
+	'c74':'CTGGGCACTTGCTGCCAGTACTGGG',
+	'c75':'AAACTTAGATCATCAGTCACCGAAGGT',
+	'f1':'TGGCCACGATGACCAGCAGGTTG',
+	'f2':'TTTTAGGTAGTAAAGGCTTTTGTCGTT',
+	'f3':'TAATAGCAGTAGAACAGCTCCCAGC',
+	'f4':'TTCATATAGTTTATATCAGTGTAGGAGG',
+	'f5':'CCATGCGCCGGACCACGACGT',
+	'f6':'CCTGACACAATCCACACCATCAGA',
+	'f7':'CAGAAAAGACTTCTTGGGCTGGGT',	
+	'f8':'CTCTCTCCCTCCCTGAGCTGGA',
+	'f9':'TGGCCTCCAGGTAGTCTCAGGAG',
+	'f10':'TTCAATTCATTGAGAAAACCTGCCCA',
+	'f11':'CAAGGTGTGCATGCCTGACCCG',
+	'f12':'TAGAAGGCCACAGAGGAAAGGGG',
+	'f13':'CCCGGAGGTGGACCCGGGCT',
+	'f14':'CTTCTTGCTGAAAGCGAGTTTTTACT',
+	'f15':'CATCCTCTGCCCCTTCTGCTTGA',
+	'f16':'TCTAGCAGGCTGGCTCCGCCC',
+	'f17':'CCAGTGTCACCACAACCTGAGCC',
+	'f18':'TGCTAGCATTTGCAGGCCTACCC',
+	'f19':'TCATCGTTGTCCTCGGACACCGG',
+	'f20':'CATCCACAGGGTCCAGGCTGCT',
+	'f21':'CCATTCTGGAGGAGTTTGTTTTGTTC',
+	'f22':'CCCACCAAAGTTCACCCTGAAGG',
+	'f23':'TGTCACTTTACTTTGGAAGGTATTCC',
+	'f24':'CTTTCTCTAATAGCTCATGGGAGATA',
+	'f25':'CACCTCTAATGTCAGTTCAGCCCA',
+	'f26':'TTTGTTTCAACAGTAAATTCTTTAGTTTTT',
+	'f27':'TGCGATGAGGTGCACATAGCTGG',
+	'f28':'TTGTGAAATCGACAATACTGGCATTTG',
+	'f29':'CAAGAAGGAGAGGTGGCTAGACC',
+	'f30':'TGTTGGAAGTGGGAAGGCTCCCT',
+	'f31':'TTGGGGAGCTTGCCCAAGTGGG',
+	'f32':'TCCTTCTCACCACCACCTCCGC',
+	'f33':'TGTCTAGTGATGGGTGGATCAGTC',
+	'f34':'TGTGGTAAAAACAGAAGGGCGGATG',
+	'f35':'TGTAGCGCGCACTGGCCCCTG',
+	'f36':'TGTGTGTGTAGTATGTGTTTTTTGCAT',
+	'f37':'CACATACTTCAATTAAAATGAGTAGTAC',
+	'f38':'TTTCCAATCAGTTTGTCTTAAAGATTTG',
+	'f39':'CCCAATTATAAACAACCTACAAGAAATC',
+	'f40':'CCCCATAATATTAATGGTTTTGTGTTAA',
+	'f41':'CGGAAAATTGATGTCTCAACAATACTG',
+	'f42':'CTAAGCTCTTAAAAGGTTTCAAGCATG',
+	'f43':'CCGTATTCATCCTCATTCTCATTTCT',
+	'f44':'CCACTCCTGCTCATATCTCTAGTG',
+	'f45':'TCCTTTATTGGTTACATTTGTCATTTCC',
+	'f46':'CGGAAGACAAGTACATCAACACGTA',
+	'f47':'CCTAATTTTACGTGAGATATTTCTCAG',
+	'f48':'TCCTAAAAGCCTAAGTCATAAATGCAT',
+	'f49':'CAGTGGGTGTGAATGTTCTTATTTGT',
+	'f50':'TATTGATTGGATATCACTTTTTCACATC',
+	'f51':'CTTATTTTTCTTTGAAAAATGTTTTCAAG',
+	'f52':'CAGCAAAACCCACCAGGCCTATTC',
+	'f53':'CAAATCTTTTATCAGATAGATAATTGGC',
+	'f54':'CATGTAGAGCAGTACCATAATTGTTAG',
+	'f55':'TGAATGAAAATTACCCACTTCTCATTAG',
+	'f56':'CACAAAGCTAACAAGAGTGGAGCC',
+	'f57':'TACAAGGGCCTGAGCCAAAGTGG',
+	'f58':'CCACCCTCTAATACCTAAGTGGAAA',
+	'f59':'CTTTTAACTCTAAGAAAATGGCAGCTC',
+	'f60':'TGTGTAAGGCCAATGCCTGGGAG',
+	'f61':'CAAGTGGTAAAGGCCCTCACAGAG',
+	'f62':'CTTCAGCGTCCAGGTCTCCCTC',
+	'f63':'CACGGGAGCCCCGGGTAGTAAC',
+	'f64':'TAATCCTATCTCTTGTCTCTGCTTCT',
+	'f65':'CCCTTTTAAAATATACTTTTTTACACATG',
+	'f66':'TGCAGCACTGGAAACCTCTGTAGT',
+	'f67':'TAAAGAAAGCACTCTGAAGGCATGG',
+	'f68':'TTTATGTGTGAATGTGTTAGAAAATTGTG',
+	'f69':'CTTGATTTAGGAAATGAAGTTGTGCTA',
+	'f70':'CATTGGTCATAACCAATGAACCAATAT',
+	'f71':'TATTTTCTCTATCAGTACTTCAAAAATAAT',
+	'f72':'CCCTCTTTGTGTTGTAGTCCATGC',
+	'f73':'CCCAGACAGCACCTACAAGCAGG',
+	'f74':'TCTCTGCTAGGGTTTCATGACTTCG',
+	'f75':'TGTGGAATACAGAATAATTTGACTTTAAT'
+}
+tempo = {}
+for i,seq in ext_primers.iteritems():
+	try: tempo[seq[:19]].append(i)
+	except KeyError: tempo[seq[:19]] = [i]
+extbyseq = tempo
+tempo = {}
+for i,seq in tj_primers.iteritems():
+	try: tempo[seq[-19:]].append(i)
+	except KeyError: tempo[seq[-19:]] = [i]
+tjbyseq = tempo
 
 #####
 #check if run or imported // call main() or not
