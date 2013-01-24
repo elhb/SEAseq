@@ -26,12 +26,12 @@ def main():
 	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='indata "fastq"-file read1.')
 	argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='indata "fastq"-file read2.')
 	argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to start (default 1).')
-	argparser.add_argument(	'--printreadinfo',	dest='pri', 			action='store_true', 			required=False,	default=False,	help='print readinfo to stdout (colors n stuff no guarantees that this part works).')
-	argparser.add_argument(	'--percentage',		dest='percentage', 		action='store_true', 			required=False, default=False,	help='print summary as percentage.')
-	argparser.add_argument(	'--counts',		dest='counts', 			action='store_true', 			required=False, default=False,	help='print summary as counts. (default)')
-	argparser.add_argument(	'-u',			dest='update',	metavar='N',				type=int,	required=False,	default=0,	help='Print updated statistics summar to outfile ever INT read (default off)(more updating => much slower!).')
+	#argparser.add_argument(	'--printreadinfo',	dest='pri', 			action='store_true', 			required=False,	default=False,	help='print readinfo to stdout (colors n stuff no guarantees that this part works).')
+	#argparser.add_argument(	'--percentage',		dest='percentage', 		action='store_true', 			required=False, default=False,	help='print summary as percentage.')
+	#argparser.add_argument(	'--counts',		dest='counts', 			action='store_true', 			required=False, default=False,	help='print summary as counts. (default)')
+	#argparser.add_argument(	'-u',			dest='update',	metavar='N',				type=int,	required=False,	default=0,	help='Print updated statistics summar to outfile ever INT read (default off)(more updating => much slower!).')
 	argparser.add_argument(	'-o',			dest='outfile',	metavar='outfile',			type=str,	required=False,	default=False,	help='Print output to outfile (default stdout).')
-	argparser.add_argument(	'-dump',		dest='dump',	metavar='basename',			type=str,	required=False,	default=False,	help='filename "base" to dump sub sequences for making weblogo to (default Disabled).')
+	#argparser.add_argument(	'-dump',		dest='dump',	metavar='basename',			type=str,	required=False,	default=False,	help='filename "base" to dump sub sequences for making weblogo to (default Disabled).')
 	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
 	argparser.add_argument(	'--keeporder',		dest='keeporder', 		action='store_true', 			required=False, default=False,	help='keep the read ordering.')
 	indata = argparser.parse_args(sys.argv[1:])
@@ -41,6 +41,9 @@ def main():
         sys.stderr.write('Master process id='+str(MASTER)+'\n')
         sys.stderr.write('cmd: '+' '.join(sys.argv)+'\n')
         if indata.selftest: sys.stderr.write('Running in selftest mode no real data will be analyzed.\n')
+	if indata.outfile: indata.outfile = open(indata.outfile, 'w')
+	else: indata.outfile = sys.stdout
+
 
         sys.stderr.write('Getting readcount ... ')
         numreads=bufcount(indata.reads1.name)/4
@@ -70,18 +73,28 @@ def main():
 	counter = 0
 	last = [0,starttime,counter]
 	combos = {}
+	threadsbycombo={}
+	threads=0
+	identifiable=0
+	bothidentifiable=0
 	for pair in results: # do this for each result
 		counter += 1
 		last = progress(counter,indata.reads2process,last)
 		for thread in pair.threads:
+			threads+=1
 			try:		combos[str(thread.extprimer)+'-'+str(thread.tjprimer)]+=1
 			except KeyError:combos[str(thread.extprimer)+'-'+str(thread.tjprimer)]=1
 			if thread.tjprimer or thread.extprimer:
-				if thread.tjprimer == thread.extprimer: pass#print thread.extprimer, thread.seq
+				identifiable+=1
+				if thread.tjprimer == thread.extprimer:
+					bothidentifiable+=1
+					pass#print thread.extprimer, thread.seq
+					try:threadsbycombo[thread.extprimer].append(thread)
+					except KeyError:threadsbycombo[thread.extprimer]=[thread]
 	
 	for combo,count in combos.iteritems():
-		print count, '\t', combo
-		
+		indata.outfile.write( str(count)+ '\t'+str(round(100*float(count)/(threads),2))+'\t'+ combo+'\n')
+	sys.stderr.write('Part 1 finished in '+str(round(time.time()-starttime,2))+'s, '+str(counter)+' reads processed, '+str(threads)+' ('+str(int(round(100*float(threads)/(counter*2))))+'%) threads, whereof '+str(identifiable)+' ('+str(int(round(100*float(identifiable)/threads)))+'%) were identifiable.\n')	
 		
 #--------------------------MAIN PROGRAM END-------------------------
 
@@ -125,20 +138,7 @@ def getPairs(indata):
     """ yield one readpair at a time from indata
     """
     if indata.selftest:
-        cells = {'U251':['C28','C7','C15','C5'],'A431':['F52','C75','C23','C74'],'U2OS':['C24', 'F75', 'C26', 'C25'],}
-        for i1 in range(3):
-            cell = random.choice(cells.keys())
-            bc = ''.join([random.choice("AGTC") for i in range(15)])
-            for ID in IDs:#cells[cell]:
-                fakereads = random.randint(1,10)
-                for var in IDs[ID][4]:
-                    if cell in IDs[ID][4][var]: break
-                for i2 in range(fakereads):
-                    r1 = bc + TJ_HANDLE + IDs[ID][0] + IDs[ID][2].replace(IDs[ID][3],var) + IDs[ID][1] + EXT_HANDLE +'AGATCGGAAGAGC'
-                    r1 = r1.replace('X','C')
-                    r2 =revcomp(r1)
-                    yield [readpair('sample.read.-'+ID+'.'+str(i2)+' '+ID, r1, r2),indata]
-        sys.stderr.write('Created 5 cells.')
+        pass #no selftest excist at this point
         return
     [file1,file2]=[indata.reads1,indata.reads2]
     if indata.n:
@@ -258,6 +258,18 @@ class tntthread():
 			if match:
 				self.tjprimer= ID;
 	except KeyError: pass
+	
+	#print self.extprimer, self.tjprimer
+	
+	#if not self.extprimer:
+	#	mm=3
+	#	vote=[]
+	#	for i in range(19):
+	#		#print i, self.seq[i], extprimerpositions[i][self.seq[i]]
+	#		for ID in extprimerpositions[i][self.seq[i]]:
+	#			vote.append(ID)
+	#	if vote.count(max(vote)) > 19-mm: print 'update ext:',max(vote)
+			
 
 def magicFunction(tmp):
 	#unpack input and trim reads
@@ -584,7 +596,13 @@ for i,seq in tj_primers.iteritems():
 	try: tempo[seq[-19:]].append(i)
 	except KeyError: tempo[seq[-19:]] = [i]
 tjbyseq = tempo
-
+tempo={}
+for i in range(19):
+	tempo[i]={}
+	for ID,seq in ext_primers.iteritems():
+		try:tempo[i][seq[i]].append(ID)
+		except KeyError:tempo[i][seq[i]]=[ID]
+extprimerpositions=tempo
 #####
 #check if run or imported // call main() or not
 #####
