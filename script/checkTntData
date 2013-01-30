@@ -117,10 +117,13 @@ def progress(current,total,last,indata):
 	[lpercentage,ltime,lcurrent] = last
 	percentage = int(round(100*float(current)/total))
 	if percentage % 5 == 0 and percentage != lpercentage:
+		stf=int(round((total-current)/((current-lcurrent)/(time.time()-ltime))))
 		indata.logfile.write(
 			'#Progress => '+str(percentage)+'%, '+
 			str( round((current-lcurrent)/(time.time()-ltime),2) )+' reads/second, '+
-			time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n'
+			time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+
+			', left:'+str(stf/60)+'min '+str(stf%60)+'s'+
+			'\n'
 			)
 		ltime = time.time()
 		lcurrent = current
