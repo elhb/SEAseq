@@ -180,7 +180,7 @@ def getPairs(indata):
 
         if tmp == 1: #header
 	    header=r1line
-	    if r1line.split(" ")[0] != r2line.split(" ")[0]: indata.logfile.write('Error mismatching headers!');os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
+	    if r1line.split(" ")[0] != r2line.split(" ")[0]: indata.logfile.write('Error mismatching headers!');os.kill(MASTER,1);sys.exit(1);#REALLYNOTOPTIMAL
 	elif tmp == 2: #sequence
 	    if counter == 1:
 		indata.logfile.write('Checking data type of read 1 in pair 1 ... ')
