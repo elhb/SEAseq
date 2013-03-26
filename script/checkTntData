@@ -1,5 +1,5 @@
-#! /usr/bin/env python2.7
 #! /bin/env python
+#! /usr/bin/env python2.7
 import time
 starttime = time.time()
 import sys
@@ -9,6 +9,7 @@ import re
 from math import sqrt
 import os
 import random
+from tnt.lib import *
 
 MASTER = os.getppid()
 
@@ -26,59 +27,59 @@ def main():
 	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='indata "fastq"-file read1.')
 	argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='indata "fastq"-file read2.')
 	argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to start (default 1).')
-	#argparser.add_argument(	'--printreadinfo',	dest='pri', 			action='store_true', 			required=False,	default=False,	help='print readinfo to stdout (colors n stuff no guarantees that this part works).')
-	#argparser.add_argument(	'--percentage',		dest='percentage', 		action='store_true', 			required=False, default=False,	help='print summary as percentage.')
-	#argparser.add_argument(	'--counts',		dest='counts', 			action='store_true', 			required=False, default=False,	help='print summary as counts. (default)')
-	#argparser.add_argument(	'-u',			dest='update',	metavar='N',				type=int,	required=False,	default=0,	help='Print updated statistics summar to outfile ever INT read (default off)(more updating => much slower!).')
 	argparser.add_argument(	'-o',			dest='outfile',	metavar='outfile',			type=str,	required=False,	default=False,	help='Print output to outfile (default stdout).')
 	argparser.add_argument(	'-l',			dest='logfile',	metavar='outfile',			type=str,	required=False,	default=False,	help='Print log messages to logfile (default stderr).')
 	argparser.add_argument(	'-sample',		dest='sample',	metavar='str',				type=str,	required=False,	default=False,	help='Sample name to use for out and logfile namin (default Disabled).')
-	#argparser.add_argument(	'-dump',		dest='dump',	metavar='basename',			type=str,	required=False,	default=False,	help='filename "base" to dump sub sequences for making weblogo to (default Disabled).')
 	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
 	argparser.add_argument(	'--keeporder',		dest='keeporder', 		action='store_true', 			required=False, default=False,	help='keep the read ordering.')
+	argparser.add_argument(	'-hm',			dest='handlemm',	metavar='N',				type=int,	required=False,	default=0,	help='Missmatches allowed in handle sequences (default 0).')
+	argparser.add_argument(	'-pe',			dest='primeredit',	metavar='N',				type=int,	required=False,	default=0,	help='Editdistance allowed while identifying specific primer sequences (default 0).')
+	argparser.add_argument(	'--onlydumpthreads',		dest='onlydumpthreads', 		action='store_true', 			required=False, default=False,	help='only dump the threads do not identify specifics.')	
 	indata = argparser.parse_args(sys.argv[1:])
 	if indata.outfile: indata.outfile = open(indata.outfile, 'w')
 	else: indata.outfile = sys.stdout
-	if indata.logfile: indata.logfile = open(indata.outfile, 'w')
+	if indata.logfile: indata.logfile = open(indata.outfile, 'w',1)
 	else: indata.logfile = sys.stderr
 	if indata.sample:
 		indata.outfile = open(indata.sample+'.out.txt', 'w')
 		indata.logfile = open(indata.sample+'.log.txt', 'w')
-		os.mkdir(indata.sample+'.threads')
+		try: os.mkdir(indata.sample+'.threads')
+		except OSError:pass
 	indata.logfile.write('Start.\n')
-
+	
 	indata.logfile.write('Running script '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'.\n')
-        indata.logfile.write('Master process id='+str(MASTER)+'\n')
-        indata.logfile.write('cmd: '+' '.join(sys.argv)+'\n')
-        if indata.selftest: indata.logfile.write('Running in selftest mode no real data will be analyzed.\n')
+	indata.logfile.write('Master process id='+str(MASTER)+'\n')
+	indata.logfile.write('cmd: '+' '.join(sys.argv)+'\n')
+	if indata.selftest: indata.logfile.write('Running in selftest mode no real data will be analyzed.\n')
 	
-
-
-        indata.logfile.write('Getting readcount ... ')
-        numreads=bufcount(indata.reads1.name)/4
-        indata.reads2process = numreads
-        if indata.skip: indata.reads2process -= indata.skip
-        if indata.stop: indata.reads2process = indata.stop
-        if indata.n:    indata.reads2process = indata.n
-        indata.logfile.write('#read pairs in indata file:\n'+str(numreads)+'\n')
-        indata.logfile.write(str(numreads)+' read pairs in fastq files.\n');
+	indata.logfile.write('Getting readcount ... ')
+	numreads=bufcount(indata.reads1.name)/4
+	indata.reads2process = numreads
+	if indata.skip: indata.reads2process -= indata.skip
+	if indata.stop: indata.reads2process = indata.stop
+	if indata.n:    indata.reads2process = indata.n
+	indata.logfile.write('#read pairs in indata file:\n'+str(numreads)+'\n')
+	indata.logfile.write(str(numreads)+' read pairs in fastq files.\n');
 	
-        #deciding if to run multiprocessing or single process for debbuging
+	#deciding if to run multiprocessing or single process for debbuging
 	if indata.debug:
-	    results=[]
-            indata.logfile.write('Part1: Running in debug mode searching for threads ...\n')
-	    for tmp in getPairs(indata):
-		results.append(magicFunction(tmp))
-            indata.logfile.write('Part1: search finished\n')
+		results=[]
+		indata.logfile.write('Part1: Running in debug mode searching for threads ...\n')
+		progress = Progress(indata.reads2process)
+		with progress:
+			for tmp in getPairs(indata):
+				progress.update()
+				results.append(magicFunction(tmp))
+		indata.logfile.write('Part1: search finished\n')
 	else:
-	    #create worker pool
-	    WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=100)
-	    if not indata.keeporder: results = WorkerPool.imap_unordered(magicFunction,getPairs(indata),chunksize=10)
-            if indata.keeporder: results = WorkerPool.imap(magicFunction,getPairs(indata),chunksize=10)
+		#create worker pool
+		WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=100)
+		if not indata.keeporder: results = WorkerPool.imap_unordered(magicFunction,getPairs(indata),chunksize=10)
+		if indata.keeporder:     results = WorkerPool.imap(magicFunction,getPairs(indata),chunksize=10)
 
-        if not indata.debug: indata.logfile.write('Part1: running in multiproccessing mode using '+str(indata.cpus)+' processes  ...\n')
-        else: indata.logfile.write('Part1: running the multiprocessing results handeling\n')
-
+	if not indata.debug: indata.logfile.write('Part1: running in multiproccessing mode using '+str(indata.cpus)+' processes  ...\n')
+	else: indata.logfile.write('Part2: running the multiprocessing results handeling in serial\n')
+	
 	counter = 0
 	last = [0,starttime,counter]
 	combos = {}
@@ -86,161 +87,243 @@ def main():
 	threads=0
 	identifiable=0
 	bothidentifiable=0
-	for pair in results: # do this for each result
-		counter += 1
-		last = progress(counter,indata.reads2process,last,indata)
-		for thread in pair.threads:
-			threads+=1
-			try:		combos[str(thread.extprimer)+'-'+str(thread.tjprimer)]+=1
-			except KeyError:combos[str(thread.extprimer)+'-'+str(thread.tjprimer)]=1
-			if indata.sample:
-				f = open(indata.sample+'.threads/'+str(thread.extprimer)+'-'+str(thread.tjprimer)+'.txt','a')
-				f.write(thread.seq+'\n')
-				f.close
-			if thread.tjprimer or thread.extprimer:
-				identifiable+=1
-				if thread.tjprimer == thread.extprimer:
-					bothidentifiable+=1
-					pass#print thread.extprimer, thread.seq
-					try:threadsbycombo[thread.extprimer].append(thread)
-					except KeyError:threadsbycombo[thread.extprimer]=[thread]
+	same = 0
+	notsame = 0
+	progress1 = Progress(indata.reads2process)
+	with progress1:
+		for pair in results: # do this for each result
+			counter += 1
+			progress1.update()
+			for thread in pair.threads:
+				threads+=1
+				try:		combos[str(thread.extprimer)+'-'+str(thread.tjprimer)]+=1
+				except KeyError:combos[str(thread.extprimer)+'-'+str(thread.tjprimer)]=1
+				if indata.sample:
+					f = open(indata.sample+'.threads/'+str(thread.extprimer)+'-'+str(thread.tjprimer)+'.txt','a')
+					f.write(thread.seq+'\n')
+					f.close
+				if thread.tjprimer or thread.extprimer:
+					identifiable+=1
+					if thread.tjprimer and thread.extprimer:
+						bothidentifiable+=1
+					if thread.tjprimer == thread.extprimer:
+						same+=1
+						pass#print thread.extprimer, thread.seq
+						try:threadsbycombo[thread.extprimer].append(thread)
+						except KeyError:threadsbycombo[thread.extprimer]=[thread]
+					elif thread.tjprimer and thread.extprimer: notsame += 1
 	
 	for combo,count in combos.iteritems():
 		indata.outfile.write( str(count)+ '\t'+str(round(100*float(count)/(threads),2))+'\t'+ combo+'\n')
-	indata.logfile.write('Part 1 finished in '+str(round(time.time()-starttime,2))+'s, '+str(counter)+' reads processed, '+str(threads)+' ('+str(int(round(100*float(threads)/(counter*2))))+'%) threads, whereof '+str(identifiable)+' ('+str(int(round(100*float(identifiable)/threads)))+'%) were identifiable.\n')	
-		
+	indata.logfile.write('Part 1 finished in '+str(round(time.time()-starttime,2))+'s, '+str(counter)+' reads processed,\n '+str(threads)+' ('+str(int(round(100*float(threads)/(counter*2))))+'%) threads,\n whereof '+str(identifiable)+' ('+str(int(round(100*float(identifiable)/threads)))+'%) were identifiable \nwhereof '+str(bothidentifiable)+' ('+str(int(round(100*float(bothidentifiable)/identifiable)))+'%) were both primers identifiable \nwhereof '+str(same)+' ('+str(int(round(100*float(same)/bothidentifiable)))+'%) were both primers are the same (vs '+str(notsame)+' ('+str(int(round(100*float(notsame)/bothidentifiable)))+'%) unspecific products).\n')	
 #--------------------------MAIN PROGRAM END-------------------------
 
 
 #--------------------- Functions, Subroutines and classes --------------------
-def progress(current,total,last,indata):
-	[lpercentage,ltime,lcurrent] = last
-	percentage = int(round(100*float(current)/total))
-	if percentage % 5 == 0 and percentage != lpercentage:
-		stf=int(round((total-current)/((current-lcurrent)/(time.time()-ltime))))
-		indata.logfile.write(
-			'#Progress => '+str(percentage)+'%, '+
-			str( round((current-lcurrent)/(time.time()-ltime),2) )+' reads/second, '+
+class Progress():
+    def __init__(self,total, verb='full'):
+	import time
+	self.total = total
+	self.current = 0
+	self.type = verb
+	self.logfile = sys.stderr
+	self.ltime = time.time()
+	self.lcurrent = self.current
+	self.lpercentage = 0
+    
+    def __enter__(self):
+	if self.type == 'minimal':
+	    self.logfile.write('0%                 50%                 100%\n')
+    
+    def update(self):
+	import time
+	self.current += 1
+	self.percentage = int(round(100*float(self.current)/self.total))
+	if self.percentage % 5 == 0 and self.percentage != self.lpercentage:
+		self.stf=int(round((self.total-self.current)/((self.current-self.lcurrent)/(time.time()-self.ltime))))
+		if self.type == 'full': self.logfile.write(
+			'#Progress => '+str(self.percentage)+'%, '+
+			str( round((self.current-self.lcurrent)/(time.time()-self.ltime),2) )+' reads/second, '+
 			time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+
-			', left:'+str(stf/60)+'min '+str(stf%60)+'s'+
+			', left:'+str(self.stf/60)+'min '+str(self.stf%60)+'s'+
 			'\n'
 			)
-		ltime = time.time()
-		lcurrent = current
-	return [percentage,ltime,lcurrent]
+		if self.type == 'minimal': self.logfile.write('..')
+		self.ltime = time.time()
+		self.lcurrent = self.current
+		self.lpercentage = self.percentage
+
+    def __exit__(self, *args):
+	self.logfile.write('\n')
 
 def comp(str):
-    return str.replace("A","X").replace("T","A").replace("X","T").replace("G","X").replace("C","G").replace("X","C")
+	return str.replace("A","X").replace("T","A").replace("X","T").replace("G","X").replace("C","G").replace("X","C")
 
 def revcomp(str):
-    return comp(str[::-1])
+	return comp(str[::-1])
 
 def bufcount(filename):
-    """ returns the number of lines in a file
-    """
-    f = open(filename)                  
-    lines = 0
-    buf_size = 1024 * 1024
-    read_f = f.read # loop optimization
-
-    buf = read_f(buf_size)
-    while buf:
-        lines += buf.count('\n')
-        buf = read_f(buf_size)
-        f.close
-    return lines
+	""" returns the number of lines in a file
+	"""
+	import gzip
+	if filename.split('.')[-1] in ['gz','gzip']: f = gzip.open(filename)
+	else: f = open(filename)
+	lines = 0
+	buf_size = 1024 * 1024
+	read_f = f.read # loop optimization
+	
+	buf = read_f(buf_size)
+	while buf:
+		lines += buf.count('\n')
+		buf = read_f(buf_size)
+		f.close
+	return lines
 
 def getPairs(indata):
-    """ yield one readpair at a time from indata
-    """
-    if indata.selftest:
-        pass #no selftest excist at this point
-        return
-    [file1,file2]=[indata.reads1,indata.reads2]
-    if indata.n:
-        numreads=bufcount(indata.reads1.name)/4
-        if indata.stop: numreads = indata.stop
-        indata.logfile.write('Choosing '+str(indata.n)+' random pairs to analyze ... ')
-        readNumbersToPrint = {}
-        while len(readNumbersToPrint) < indata.n: readNumbersToPrint[random.randint(indata.skip+1,numreads)] = True
-        tempo = readNumbersToPrint.keys()
-        tempo.sort()
-        readNumbersToPrint = tempo 
-        indata.logfile.write('done.\n')
-    counter = 0
-    tmp=0
-    header="NA"
-    if indata.skip: skip =True
-    for r1line in file1:
-        r2line = file2.readline()
-	tmp+=1
-	if indata.skip and tmp < (4*indata.skip) and skip: continue
-	elif indata.skip and tmp == (4*indata.skip) and skip: skip=False; tmp =0;continue
-	if indata.stop and counter == indata.stop: break
+	""" yield one readpair at a time from indata
+	"""
+	if indata.selftest:
+		pass #no selftest excist at this point
+		return
 
-        if tmp == 1: #header
-	    header=r1line
-	    if r1line.split(" ")[0] != r2line.split(" ")[0]: indata.logfile.write('Error mismatching headers!');os.kill(MASTER,1);sys.exit(1);#REALLYNOTOPTIMAL
-	elif tmp == 2: #sequence
-	    if counter == 1:
-		indata.logfile.write('Checking data type of read 1 in pair 1 ... ')
-		match = re.match("^[AGTCN]+$",r1line.rstrip())
-		if match: indata.logfile.write('this is DNA data.\n')
-		else: indata.logfile.write(' this is not a DNA sequence ('+r1line.rstrip()+') could something be wrong with your indata file?.\n\n');os.kill(MASTER);sys.exit();#REALLYNOTOPTIMAL
-            r1seq = r1line.rstrip()
-            r2seq = r2line.rstrip()
-	elif tmp == 3: #+
-            if counter in {1:True,67:True,438:True,9675:True,53678:True,864513:True,1337354:True,317955:True,1226844:True,20389:True,118261:True}:
-                if r1line[0] != r2line[0] or r1line[0] != '+': indata.logfile.write('Error Format not fastq!');os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
-	elif tmp == 4: #quality
-            tmp=0
-            counter+=1
-            r1qual = r1line.rstrip()
-            r2qual = r2line.rstrip()
-            if not indata.n: yield [readpair(header.rstrip(), r1seq, r2seq),indata]
-            else:
-                if counter == readNumbersToPrint[0]:
-                    yield [readpair(header.rstrip(), r1seq, r2seq),indata]
-                    readNumbersToPrint = readNumbersToPrint[1:]
-                    if len(readNumbersToPrint) == 0: break
+	[file1,file2]=[indata.reads1,indata.reads2]
+	import gzip
+	if file1.name.split('.')[-1] in ['gz','gzip']: file1 = gzip.open(file1.name)
+	if file2.name.split('.')[-1] in ['gz','gzip']: file2 = gzip.open(file2.name)
+
+	if indata.n:
+		numreads=bufcount(indata.reads1.name)/4
+		if indata.stop: numreads = indata.stop
+		indata.logfile.write('Choosing '+str(indata.n)+' random pairs to analyze ... ')
+		readNumbersToPrint = {}
+		while len(readNumbersToPrint) < indata.n: readNumbersToPrint[random.randint(indata.skip+1,numreads)] = True
+		tempo = readNumbersToPrint.keys()
+		tempo.sort()
+		readNumbersToPrint = tempo 
+		indata.logfile.write('done.\n')
+	counter = 0
+	tmp=0
+	header="NA"
+	if indata.skip: skip =True
+
+	for r1line in file1:
+		r2line = file2.readline()
+		tmp+=1
+		if indata.skip and tmp < (4*indata.skip) and skip: continue
+		elif indata.skip and tmp == (4*indata.skip) and skip: skip=False; tmp =0;continue
+		if indata.stop and counter == indata.stop: break
+	
+		if tmp == 1: #header
+			header=r1line
+			if r1line.split(" ")[0] != r2line.split(" ")[0]: indata.logfile.write('Error mismatching headers!');os.kill(MASTER,1);sys.exit(1);#REALLYNOTOPTIMAL
+		elif tmp == 2: #sequence
+			if counter == 1:
+				indata.logfile.write('Checking data type of read 1 in pair 1 ... ')
+				match = re.match("^[AGTCN]+$",r1line.rstrip())
+				if match: indata.logfile.write('this is DNA data.\n')
+				else: indata.logfile.write(' this is not a DNA sequence ('+r1line.rstrip()+') could something be wrong with your indata file?.\n\n');os.kill(MASTER);sys.exit();#REALLYNOTOPTIMAL
+			r1seq = r1line.rstrip()
+			r2seq = r2line.rstrip()
+		elif tmp == 3: #+
+				if counter in {1:True,67:True,438:True,9675:True,53678:True,864513:True,1337354:True,317955:True,1226844:True,20389:True,118261:True}:
+					if r1line[0] != r2line[0] or r1line[0] != '+': indata.logfile.write('Error Format not fastq!');os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
+		elif tmp == 4: #quality
+				tmp=0
+				counter+=1
+				r1qual = r1line.rstrip()
+				r2qual = r2line.rstrip()
+				if not indata.n: yield [readpair(header.rstrip(), r1seq, r2seq),indata]
+				else:
+					if counter == readNumbersToPrint[0]:
+						yield [readpair(header.rstrip(), r1seq, r2seq),indata]
+						readNumbersToPrint = readNumbersToPrint[1:]
+						if len(readNumbersToPrint) == 0: break
 
 class readpair():
     """ object representing an illumina cluster """
     
     def __init__(self,header,r1,r2):
-	self.header = header
-	self.r1 = read(r1,1,header) #first read
-	self.r2 = read(r2,2,header) #second read
-	self.threads = []
+		self.header = header
+		self.r1 = read(r1,1,header) #first read
+		self.r2 = read(r2,2,header) #second read
+		self.threads = []
 
-    def identifythreads(self):
-	# a thread should look like this:
-	# gagctgctgcaccatattcctgaac GACCATCACTTAAATCAGGTCCTCC NNNNNNNNNNN AGAGTCAAGTTATTTAAAAAATCTGGCC gctctgaaggcggtgtatgacatgg
-	# GAGCTGCTGCACCATATTCCTGAAC CAATCTCCCCTATTATTTCTATCCTATGCCACTCCTGCTCATATCTCTAGTG GCTCTGAAGGCGGTGTATGACATGGAGATCGGAAGAGCACACGTCTGAACTCCAGTCACATTCCTTTATCTCGT
-	# gagctgctgcaccatattcctgaac                                                      gctctgaaggcggtgtatgacatgg
+    def identifythreads(self,indata):
+		# a thread should look like this:
+		# gagctgctgcaccatattcctgaac GACCATCACTTAAATCAGGTCCTCC NNNNNNNNNNN AGAGTCAAGTTATTTAAAAAATCTGGCC gctctgaaggcggtgtatgacatgg
+		# GAGCTGCTGCACCATATTCCTGAAC CAATCTCCCCTATTATTTCTATCCTATGCCACTCCTGCTCATATCTCTAGTG GCTCTGAAGGCGGTGTATGACATGGAGATCGGAAGAGCACACGTCTGAACTCCAGTCACATTCCTTTATCTCGT
+		# gagctgctgcaccatattcctgaac                                                      gctctgaaggcggtgtatgacatgg
+		
+		exthandle_seq = 'gagctgctgcaccatattcctgaac'.upper()
+		tjhandle_seq  = 'gctctgaaggcggtgtatgacatgg'.upper()
+		
+		matchfunk = hamming_distance
 	
-	exthandle_seq = 'gagctgctgcaccatattcctgaac'.upper()
-	tjhandle_seq  = 'gctctgaaggcggtgtatgacatgg'.upper()
+		#READ1
+		exthandle = None
+		tjhandle =  None
+		exthandle = re.search('^'+exthandle_seq,self.r1.seq)
+		tjhandle =  re.search(tjhandle_seq,self.r1.seq)
+		if exthandle and tjhandle:
+			thread = tntthread(self.r1.seq[exthandle.end():tjhandle.start()])
+			self.threads.append(thread)
+		elif indata.handlemm: # do some kind of fuzzy matching to allow for missmatches
+			if not exthandle: 
+				mindist = [10000,-1]
+				for i in range(len(self.r1.seq)):
+					if i+len(exthandle_seq) <= len(self.r1.seq): dist = matchfunk(exthandle_seq,self.r1.seq[i:i+len(exthandle_seq)])
+					else: dist = 1000
+					if dist < mindist[0]: mindist =[dist,i]
+				if mindist[0] < indata.handlemm: exthandle_end = i+len(exthandle_seq)
+				else: exthandle_end = None
+			else: exthandle_end = exthandle.end()
+			if not tjhandle: 
+				mindist = [10000,-1]
+				for i in range(len(self.r1.seq)):
+					if i+len(tjhandle_seq) <= len(self.r1.seq): dist = matchfunk(tjhandle_seq,self.r1.seq[i:i+len(tjhandle_seq)])
+					else: dist = 1000
+					if dist < mindist[0]: mindist =[dist,i]
+				if mindist[0] < indata.handlemm: tjhandle_start = i
+				else: tjhandle_start = None
+			else: tjhandle_start = tjhandle.start()
+			if tjhandle_start and exthandle_end:
+				thread = tntthread(self.r1.seq[exthandle_end:tjhandle_start])
+				self.threads.append(thread)
+		
+		#READ2
+		exthandle = None
+		tjhandle =  None
+		exthandle = re.search(   revcomp(exthandle_seq),self.r2.seq)
+		tjhandle =  re.search('^'+revcomp(tjhandle_seq),self.r2.seq)
+		if exthandle and tjhandle:
+			thread = tntthread(revcomp(self.r2.seq[tjhandle.end():exthandle.start()]))
+			self.threads.append(thread)
+		elif indata.handlemm: #### do some kind of fuzzy matching to allow for missmatches
+			if not exthandle: 
+				mindist = [10000,-1]
+				for i in range(len(self.r2.seq)):
+					if i+len(exthandle_seq) <= len(self.r2.seq): dist = matchfunk(exthandle_seq,revcomp(self.r2.seq)[i:i+len(exthandle_seq)])
+					else: dist = 1000
+					if dist < mindist[0]: mindist =[dist,i]
+				if mindist[0] < indata.handlemm: exthandle_end = i+len(exthandle_seq)
+				else: exthandle_end = None
+			else: exthandle_end = exthandle.end()
+			if not tjhandle: 
+				mindist = [10000,-1]
+				for i in range(len(self.r2.seq)):
+					if i+len(tjhandle_seq) <= len(self.r2.seq): dist = matchfunk(tjhandle_seq,revcomp(self.r2.seq)[i:i+len(tjhandle_seq)])
+					else: dist = 1000
+					if dist < mindist[0]: mindist =[dist,i]
+				if mindist[0] < indata.handlemm: tjhandle_start = i
+				else: tjhandle_start = None
+			else: tjhandle_start = tjhandle.start()
+			if tjhandle_start and exthandle_end:
+				thread = tntthread(revcomp(self.r2.seq)[exthandle_end:tjhandle_start])
+				self.threads.append(thread)
 
-	#READ1
-	exthandle = None
-	tjhandle =  None
-	exthandle = re.search('^'+exthandle_seq,self.r1.seq)
-	tjhandle =  re.search(     tjhandle_seq,self.r1.seq)
-	if exthandle and tjhandle:
-		thread = tntthread(self.r1.seq[exthandle.end():tjhandle.start()])
-		self.threads.append(thread)
-	else:
-		pass # do some kind of fuzzy matching to allow for missmatches
-	
-	#READ2
-	exthandle = None
-	tjhandle =  None
-	exthandle = re.search(   revcomp(exthandle_seq),self.r2.seq)
-	tjhandle =  re.search('^'+revcomp(tjhandle_seq),self.r2.seq)
-	if exthandle and tjhandle:
-		thread = tntthread(revcomp(self.r2.seq[tjhandle.end():exthandle.start()]))
-		self.threads.append(thread)
+def hamming_distance(s1, s2):
+    assert len(s1) == len(s2), 'Error: '+str(len(s1)) + ' != ' + str(len(s2))
+    return sum(ch1 != ch2 for ch1, ch2 in zip(s1, s2))
 
 class read():
     "Represents one of several reads from a DNA fragment"
@@ -261,7 +344,7 @@ class tntthread():
 	self.tjprimer = None
 	return
 
-    def identifyspecific(self):
+    def identifyspecific(self,indata):
 	try:
 		for ID in extbyseq[self.seq[:19]]:
 			match = re.search('^'+ext_primers[ID], self.seq)
@@ -275,7 +358,22 @@ class tntthread():
 				self.tjprimer= ID;
 	except KeyError: pass
 	
-	#print self.extprimer, self.tjprimer
+	matchfunk = levenshtein
+	
+	if not self.tjprimer and indata.primeredit:
+		minedit = [300, 'NA']
+		for primer_id, seq in tj_primers.iteritems():
+			dist = matchfunk(seq,self.seq[-len(seq)::])
+			if dist < minedit[0]: minedit = [dist, primer_id]
+			if minedit[0] <= indata.primeredit: break
+		if minedit[0] <= indata.primeredit: self.tjprimer = primer_id
+	if not self.extprimer and indata.primeredit:
+		minedit = [300, 'NA']
+		for primer_id, seq in ext_primers.iteritems():
+			dist = matchfunk(seq,self.seq[:len(seq)])
+			if dist < minedit[0]: minedit = [dist, primer_id]
+			if minedit[0] <= indata.primeredit: break
+		if minedit[0] <= indata.primeredit: self.extprimer = primer_id
 	
 	#if not self.extprimer:
 	#	mm=3
@@ -289,14 +387,36 @@ class tntthread():
 
 def magicFunction(tmp):
 	#unpack input and trim reads
-	[pair, input] = tmp
+	[pair, indata] = tmp
 	
-	pair.identifythreads()
+	pair.identifythreads(indata)
 
 	for thread in pair.threads:
-		thread.identifyspecific()
+		thread.identifyspecific(indata)
 	
 	return pair
+
+def levenshtein(s1, s2):
+    """
+    calculates the levenshtein distance between two sequences, modified to not count N as missmatch
+    """
+    if len(s1) < len(s2):
+        return levenshtein(s2, s1)
+    if not s1:
+        return len(s2)
+ 
+    previous_row = xrange(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1 # j+1 instead of j since previous_row and current_row are one character longer
+            deletions = current_row[j] + 1       # than s2
+            substitutions = previous_row[j] + (c1 != c2)
+	    if c1 == 'N' or c2 == 'N': substitutions -= 1 #if N then no mismatch
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+ 
+    return previous_row[-1]
 
 ext_primers = {
 	'c1':'GACCATCACTTAAATCAGGTCCTCC',
