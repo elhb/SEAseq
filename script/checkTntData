@@ -121,12 +121,13 @@ def main():
 
 #--------------------- Functions, Subroutines and classes --------------------
 class Progress():
-    def __init__(self,total, verb='full'):
+    def __init__(self,total, verb='full', logfile=sys.stderr):
 	import time
+	import sys
 	self.total = total
 	self.current = 0
 	self.type = verb
-	self.logfile = sys.stderr
+	self.logfile = logfile
 	self.ltime = time.time()
 	self.lcurrent = self.current
 	self.lpercentage = 0
