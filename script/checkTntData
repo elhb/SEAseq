@@ -130,25 +130,25 @@ def main():
 		results=[] # create holder for processed reads
 		indata.logfile.write('Part1: Running in debug mode ie serial ...\n')
 		
-		progress = Progress(total_vars, logfile=indata.logfile) # creates a progress "bar" thingy
+		progress = Progress(total_vars, unit='SNP',logfile=indata.logfile) # creates a progress "bar" thingy
 		
 		#itarate through reads and do the "magicFunction"
 		with progress:
 			for variation in yielder(TNTdata):
 				results.append(magicFunction2(variation))
 				progress.update()
-
 	else: # multiple processes in parallel
 		#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
 		WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10)
 		if not indata.keeporder: results = WorkerPool.imap_unordered(magicFunction2,yielder(TNTdata),chunksize=2)
 		if indata.keeporder:     results = WorkerPool.imap(          magicFunction2,yielder(TNTdata),chunksize=2)
 
-	progress = Progress(total_vars,unit='SNP')
+	progress = Progress(total_vars,unit='SNP', logfile=indata.logfile)
 	with progress:
 		for variation in results:
-			sys.stdout.write(variation.output)
+			indata.outfile.write(variation.output)
 			progress.update()
+	indata.logfile.write('Part2: finished. \n')
 #--------------------------MAIN PROGRAM END-------------------------
 
 #--------------------- Functions, Subroutines and classes --------------------	
