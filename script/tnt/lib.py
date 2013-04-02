@@ -4,7 +4,7 @@ def lib_main(): pass
 
 class Progress():
 
-	def __init__(self,total, verb='full', logfile=sys.stderr, unit = 'read'):
+	def __init__(self,total, verb='full', logfile=sys.stderr, unit='read'):
 		import time
 		self.total = total
 		self.current = 0
@@ -423,37 +423,145 @@ def uipac(bases, back='uipac'): #U	Uracil NOT SUPPORTED!!!
 		elif bases == 'N': return ['A','G','T','C']
 
 class SEAseqpair(readpair):
-    
-    def identify(self, handle, indata):
-
-	import re
-	matchfunk = hamming_distance
-
-	handle_start = None
-	handle_end   = None
-
-	perfect_match = re.search(handle.seq, self.r1.seq)
-	if perfect_match:
-	    handle_start = perfect_match.start()
-	    handle_end = perfect_match.end()
 	
-	elif indata.handlemm:
-	    mindist = [10000,-1]
-	    for i in range(len(self.r2.seq)):
+	def getN15(self):
+		if self.handle_start:self.n15 = self.r1.subseq(0,self.handle_start)
+		else: self.n15 = None
+    
+	def identify(self, handle, indata):
+
+		import re
+		matchfunk = hamming_distance
+	
+		handle_start = None
+		handle_end   = None
+	
+		perfect_match = re.search(handle.seq, self.r1.seq)
+		if perfect_match:
+		    handle_start = perfect_match.start()
+		    handle_end = perfect_match.end()
 		
-		if i+len(handle.seq) <= len(self.r1.seq):
-		    dist = matchfunk(handle.seq,self.r1.seq[i:i+len(handle.seq)])
-		else: dist = 1000
+		elif indata.handlemm:
+			mindist = [10000,-1]
+			for i in range(len(self.r2.seq)):
+			    
+			    if i+len(handle.seq) <= len(self.r1.seq):
+				dist = matchfunk(handle.seq,self.r1.seq[i:i+len(handle.seq)])
+			    else: dist = 1000
+			    
+			    if dist < mindist[0]: mindist =[dist,i]
+
+			if mindist[0] < indata.handlemm:
+			    handle_start = i
+			    handle_end = i+len(handle.seq)
+				
+			else: exthandle_end = None
+		    
+		self.handle_start = handle_start
+		self.handle_end   = handle_end
+
+class SEAseqSummary():
+	
+	def __init__(self):
+		self.barcodes = {}
+		self.readcount = 0
+		self.handlefound = 0
 		
-		if dist < mindist[0]: mindist =[dist,i]
-	    
-	    if mindist[0] < indata.handlemm:
-		handle_start = i
-		handle_end = i+len(handle.seq)
-	    else: exthandle_end = None
-	    
-	self.handle_start = handle_start
-	self.handle_end   = handle_end
+	def add(self, pair):
+		self.readcount += 1
+		if pair.handle_start: self.handlefound += 1
+		if pair.n15 and pair.n15.len == 15:
+			try: self.barcodes[pair.n15.seq] += 1
+			except KeyError: self.barcodes[pair.n15.seq] = 1
+		
+	def part1(self):
+		perc_c = str(round(100*float(self.handlefound)/self.readcount,2))+'%'
+		uniq_n15s = str(len(self.barcodes.keys()))
+		return 'in '+perc_c+' of the reads can the chandle be found, there are '+uniq_n15s+' uniq n15s'
+
+	def reducebarcodes(self,indata):
+		""" Find most common barcodes in well ( > 10% ??), then try to place other barcodes to this cluster
+		"""
+		
+		import multiprocessing
+		
+		print ''
+		
+		indata.bcmm = 3
+		indata.bced = 3
+		indata.minperc = 0
+		indata.minread = 10
+		maxdist = indata.bcmm
+		matchfunc = hamming_distance
+		if indata.bced: maxdist = indata.bced; matchfunc = levenshtein
+		
+		print 'precluster'
+		for bc, count in self.barcodes.iteritems():
+			percentage = round(100*float(count)/self.readcount,2)
+			if percentage >= indata.minperc and count >= indata.minread:print '\t',count,'\t',bc,'\t',percentage,'%'
+		
+		maxrounds = 10; temp = 0
+		go = True
+		print 'Doing "clustering":'
+		print 'round 0', len(self.barcodes),'barcodes'
+		while go:
+			indata.logfile.write('Starting round '+str(temp)+' ')
+			lenbcs = len(self.barcodes)
+			
+			# calculate the percentage of the read population that "support" the current barcode and get the top supported barcodes
+			percentages = {}
+			for bc, count in self.barcodes.iteritems():
+				if count < 10: continue
+				percentage = round(100*float(count)/self.readcount,2)
+				try: percentages[percentage].append(bc)
+				except KeyError:percentages[percentage]=[bc]
+			highest = percentages.keys()
+			highest.sort()
+			try: highest = highest[:10]
+			except IndexError: pass
+			temp1 = []
+			for percentage in highest:
+				for template_bc in percentages[percentage]:
+					temp1.append(template_bc)
+					if len(temp1) >= 100: break
+				if len(temp1) >= 100: break
+			highest = temp1
+			indata.logfile.write(',doing  '+str(len(self.barcodes)*len(highest))+' comparisons:\n')
+			
+			WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=100)
+			results = WorkerPool.imap(reducecore,iter(highest),chunksize=2)
+
+			# For each barcode in the top ten supported barcodes try to merge all other barcodes to that one
+			merged = []
+			progress = Progress(len(self.barcodes)*len(highest),unit='barcode',logfile=indata.logfile)
+			with progress:
+				for template_bc in highest:
+					if template_bc in merged: continue # if this bc already has been merged to another do not use it as template
+					for bc in self.barcodes.keys():
+						if bc == template_bc: continue # do not merge to self
+						dist = matchfunc(bc,template_bc)
+						if dist <= maxdist:
+							self.barcodes[template_bc] += self.barcodes[bc]
+							merged.append(bc)
+							del self.barcodes[bc]
+						progress.update()
+
+			WorkerPool.close()
+			WorkerPool.join()
+			
+			temp += 1
+			if temp == maxrounds or lenbcs == len(self.barcodes): go = False
+			
+			print 'round', temp,'resulted in', len(self.barcodes), 'barcodes','(', len(self.barcodes)-lenbcs,'st)'
+		
+		print 'postcluster'
+		for bc, count in self.barcodes.iteritems():
+		    percentage = round(100*float(count)/self.readcount,2)
+		    if percentage >= indata.minperc and count >= indata.minread:print '\t',count,'\t',bc,'\t',percentage,'%'
+
+def reducecore(bc):
+	import os
+	print bc, os.getpid()
 
 VARIATIONINFO = {
 					'c1':{'ext':'GACCATCACTTAAATCAGGTCCTCC', 'tj':'AGAGTCAAGTTATTTAAAAAATCTGGCC', 'ref':'ATTCAACAGTGATGGGACCATCACTTAAATCAGGTCCTCCKCCTCAGAGTCAAGTTATTTAAAAAATCTGGCCGATTTTGA','snp':'K'},
