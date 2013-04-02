@@ -422,6 +422,38 @@ def uipac(bases, back='uipac'): #U	Uracil NOT SUPPORTED!!!
 		elif bases == 'H': return ['A','C','T']
 		elif bases == 'N': return ['A','G','T','C']
 
+class SEAseqpair(readpair):
+    
+    def identify(self, handle, indata):
+
+	import re
+	matchfunk = hamming_distance
+
+	handle_start = None
+	handle_end   = None
+
+	perfect_match = re.search(handle.seq, self.r1.seq)
+	if perfect_match:
+	    handle_start = perfect_match.start()
+	    handle_end = perfect_match.end()
+	
+	elif indata.handlemm:
+	    mindist = [10000,-1]
+	    for i in range(len(self.r2.seq)):
+		
+		if i+len(handle.seq) <= len(self.r1.seq):
+		    dist = matchfunk(handle.seq,self.r1.seq[i:i+len(handle.seq)])
+		else: dist = 1000
+		
+		if dist < mindist[0]: mindist =[dist,i]
+	    
+	    if mindist[0] < indata.handlemm:
+		handle_start = i
+		handle_end = i+len(handle.seq)
+	    else: exthandle_end = None
+	    
+	self.handle_start = handle_start
+	self.handle_end   = handle_end
 
 VARIATIONINFO = {
 					'c1':{'ext':'GACCATCACTTAAATCAGGTCCTCC', 'tj':'AGAGTCAAGTTATTTAAAAAATCTGGCC', 'ref':'ATTCAACAGTGATGGGACCATCACTTAAATCAGGTCCTCCKCCTCAGAGTCAAGTTATTTAAAAAATCTGGCCGATTTTGA','snp':'K'},

@@ -1,7 +1,12 @@
 #! /bin/env python
 #! /usr/bin/env python2.7
 
+from tnt.lib import *
+import os
+import time
+
 MASTER = os.getppid()
+C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
 
 def main():
 #--------------------------MAIN PROGRAM-----------------------------
@@ -11,7 +16,38 @@ def main():
     indata.logfile.write('Running script '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'.\n')
     indata.logfile.write('Master process id='+str(MASTER)+'\n')
     indata.logfile.write('cmd: '+' '.join(sys.argv)+'\n')
-    
+
+
+    #deciding if to run multiprocessing or single process for debugging
+    import multiprocessing
+    if indata.debug: #single process // serial
+
+	results=[] # create holder for processed reads
+	indata.logfile.write('Part1: Running in debug mode identifying handles ...\n')
+	
+	progress = Progress(indata.reads2process, logfile=indata.logfile) # creates a progress "bar" thingy
+	#itarate through reads and do the "magicFunction"
+	with progress:
+	    for tmp in getPairs(indata):
+		progress.update()
+		results.append(foreachread(tmp))
+	
+	indata.logfile.write('Part1: search finished\n')
+	
+    else: # multiple processes in parallel
+	#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
+	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=100)
+	results = WorkerPool.imap(foreachread,getPairs(indata),chunksize=10)
+
+    # output log message about whats happening
+    if not indata.debug: indata.logfile.write('Part1: running in multiproccessing mode using '+str(indata.cpus)+' processes  ...\n')
+    else: indata.logfile.write('Part2: running the multiprocessing results handeling in serial\n')
+
+    progress = Progress(indata.reads2process, logfile=indata.logfile)
+    with progress:
+	for pair in results:
+	    pass
+	    progress.update()
     # Part1 - Parallel - each read pair:
     # check all reads and tryt to find "C handle"
     # and thereby also the barcode also try to identify the amplicon parts and any adapter sequences if present
@@ -29,6 +65,21 @@ def main():
 #--------------------------MAIN PROGRAM END-------------------------
 
 #--------------------- Functions, Subroutines and classes --------------------	
+def foreachread(tmp):
+
+    # unpack info
+    [pair, indata] = tmp
+    
+    # convert to SEAseq readpair
+    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
+    
+    indata.handlemm = 0
+    pair.identify(C_HANDLE, indata)
+    
+    return pair
+    
+    
+
 def getindata():
     import argparse
     argparser = argparse.ArgumentParser(description='Analysis of SEAseq amplicon data.', formatter_class=argparse.RawTextHelpFormatter,)
@@ -42,6 +93,7 @@ def getindata():
     argparser.add_argument(	'-l',			dest='logfile',	metavar='logfile',			type=str,	required=False,	default=False,	help='Print log messages to logfile (default stderr).')
     argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
     indata = argparser.parse_args(sys.argv[1:])
+    indata.selftest = False
     
     if indata.outfile: indata.outfile = open(indata.outfile, 'w',1)
     else: indata.outfile = sys.stdout
@@ -52,7 +104,7 @@ def getindata():
     # get the readcount
     indata.logfile.write('Getting readcount ... ')
     indata.numreads=bufcount(indata.reads1.name)/4
-    indata.logfile.write(str(numreads)+' read pairs in fastq files.\n');
+    indata.logfile.write(str(indata.numreads)+' read pairs in fastq files.\n');
 
     # calculate the number of reads to process
     indata.reads2process = indata.numreads
