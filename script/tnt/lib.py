@@ -488,168 +488,30 @@ class SEAseqSummary():
 		print ''
 		
 		indata.bcmm = 3
-		indata.bced = 3
+		indata.bced = 0
 		indata.minperc = 0
 		indata.minread = 100
 		maxdist = indata.bcmm
 		matchfunc = hamming_distance
 		if indata.bced: maxdist = indata.bced; matchfunc = levenshtein
 		
-		print 'precluster', len(self.barcodes)
-		for bc, count in self.barcodes.iteritems():
-			percentage = round(100*float(count)/self.readcount,2)
-			if percentage >= indata.minperc and count >= indata.minread:print '\t',count,'\t',bc,'\t',percentage,'%'
+		tempfile = open(rawbcs.tempfile,'w')
+		for bc in self.barcodes: tempfile.write('>'+bc+'\n'+bc+'\n')
+		tempfile.close()
 
-		hashtable = {}
-		hashtable2 = {}
-		mms = 4
-		progress = Progress(len(self.barcodes),unit='barcode',logfile=indata.logfile)
-		with progress:
-			for org_barcode in self.barcodes:
-				#print org_barcode
-				temp={}
-				hashtable2[org_barcode] = {}
-				levels = {0:[org_barcode]}
-				for level in range(1,mms+1):
-					levels[level]=[]
-					#print 'level',level
-					if level > 0:
-						for barcode in levels[level-1]:
-							for i in range(len(barcode)):
-								bci = barcode[:i]+'.'+barcode[i+1:]
-								try: levels[level].append(bci)
-								except KeyError: levels[level] = [bci]
-								#print level,'\t',bci
-								temp[bci] = True
-								hashtable2[org_barcode][bci] = True
-				for bci in temp:
-					try: hashtable[bci].append(org_barcode)
-					except KeyError: hashtable[bci] = [org_barcode]
-				progress.update()
-	
-		print len(hashtable)
-
-		clusters = {}
-		cc = 0
-
-		while hashtable2:
-			cluster_init_barcode = hashtable2.keys()[0] # take "first" barcode from dist (list)
-			ct_len = 0
-			cluster_together = {cluster_init_barcode:False} # initiate a cluster with this barcode
-			cc += 1
-			
-			while len(cluster_together) > ct_len: # if new bcs added since last round check them ohterwise cluster is "complete"
-				ct_len = len(cluster_together)
-				
-				# for each barcode in the cluster find similiar ones
-				for bc in cluster_together.keys(): 
-					
-					if cluster_together[bc]: continue # if we already checked the barcode continue
-					
-					# otherwise look for similar
-					for degen_bc in hashtable2[bc].keys(): # go through all degenerate bcs that this bc map to
-						try:
-							for bc2 in hashtable[degen_bc]: # go through any other bcs thath map to this degenerate bc
-								if bc2 not in cluster_together: cluster_together[bc2] = False # if not already in cluster add to cluster
-							del hashtable[degen_bc]
-						except KeyError: pass #this means this degenrate bc has already been added to a cluster and has therefore been removed
-					del hashtable2[bc] # remove so that this barcode cannot innitiate new clusters
-					cluster_together[bc] = True # now set bc to true so we dont have to check it again
-			clusters[cc] = {}
-			for bc in cluster_together:
-				clusters[cc][bc] = self.barcodes[bc]
-			
-		#for degenerated_bc,lista in hashtable.iteritems():
-		#	print 'working with',degenerated_bc,lista
-		#	if len(lista) > 1: print degenerated_bc , lista
-		#	for org_bc in lista:
-		#		already_in = False
-		#		for cluster_id, barcodes in clusters.iteritems():
-		#			if org_bc in barcodes.keys():
-		#				print '\t', org_bc, 'is already in cluster',cluster_id,'add other bc to this one'
-		#				already_in = True
-		#				for bc2 in lista:
-		#					if bc2 in barcodes.keys(): continue
-		#					else: clusters[cluster_id][bc2] = self.barcodes[bc2]; print '\t\t',bc2,'added to',cluster_id
-		#			if already_in: break
-		#		if already_in: break
-		#
-		#	if not already_in:
-		#		cc += 1
-		#		print '\tnone of the barcodes in a cluster creating', cc,
-		#		clusters[cc] = {}
-		#		for bc2 in lista:
-		#			clusters[cc][bc2] = self.barcodes[bc2]; print '\t\t',bc2,'added to',cc
-		#		print ''
-
-		for cluster_id, barcodes in clusters.iteritems():
-			print cluster_id, barcodes
-		print len(clusters)
+		import subprocess
 		
-		maxrounds = 10; temp = 0
-		go = True
-		#print 'Doing "clustering":'
-		#print 'round 0', len(self.barcodes),'barcodes'
-		#while go:
-		#	indata.logfile.write('Starting round '+str(temp)+' ')
-		#	lenbcs = len(self.barcodes)
-		#	
-		#	# calculate the percentage of the read population that "support" the current barcode and get the top supported barcodes
-		#	percentages = {}
-		#	for bc, count in self.barcodes.iteritems():
-		#		if count < 10: continue
-		#		percentage = round(100*float(count)/self.readcount,2)
-		#		try: percentages[percentage].append(bc)
-		#		except KeyError:percentages[percentage]=[bc]
-		#	highest = percentages.keys()
-		#	highest.sort()
-		#	try: highest = highest[:10]
-		#	except IndexError: pass
-		#	temp1 = []
-		#	for percentage in highest:
-		#		for template_bc in percentages[percentage]:
-		#			temp1.append(template_bc)
-		#			if len(temp1) >= 100: break
-		#		if len(temp1) >= 100: break
-		#	highest = temp1
-		#	indata.logfile.write(',doing  '+str(len(self.barcodes)*len(highest))+' comparisons:\n')
-		#	
-		#	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=100)
-		#	results = WorkerPool.imap(reducecore,iter(highest),chunksize=2)
+		##Store command for debugging purposes
+		#self.get_read_cmd = ' '.join(['samtools', 'view','-q', str(input.min_mapq), input.bamfile.name, self.chrom+':'+str(self.pos)+'-'+str( self.pos + self.reference.length -1)])
 		#
-		#	# For each barcode in the top ten supported barcodes try to merge all other barcodes to that one
-		#	merged = []
-		#	progress = Progress(len(self.barcodes)*len(highest),unit='barcode',logfile=indata.logfile)
-		#	with progress:
-		#		for template_bc in highest:
-		#			if template_bc in merged: continue # if this bc already has been merged to another do not use it as template
-		#			for bc in self.barcodes.keys():
-		#				if bc == template_bc: continue # do not merge to self
-		#				dist = matchfunc(bc,template_bc)
-		#				if dist <= maxdist:
-		#					self.barcodes[template_bc] += self.barcodes[bc]
-		#					merged.append(bc)
-		#					del self.barcodes[bc]
-		#				progress.update()
-		#
-		#	WorkerPool.close()
-		#	WorkerPool.join()
-		#	
-		#	temp += 1
-		#	if temp == maxrounds or lenbcs == len(self.barcodes): go = False
-		#	
-		#	print 'round', temp,'resulted in', len(self.barcodes), 'barcodes','(', len(self.barcodes)-lenbcs,'st)'
-		#
-		#print 'postcluster'
-		#for bc, count in self.barcodes.iteritems():
-		#    percentage = round(100*float(count)/self.readcount,2)
-		#    if percentage >= indata.minperc and count >= indata.minread:print '\t',count,'\t',bc,'\t',percentage,'%'
-		
-
-
-def reducecore(bc):
-	import os
-	print bc, os.getpid()
+		##startsubprocess that extracts samfile viewing the specified region
+		#samtools = subprocess.Popen(['samtools', 'view', input.bamfile.name, self.chrom+':'+str(self.pos)+'-'+str( self.pos + self.reference.length -1)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		#samfile, errdata = samtools.communicate()
+		#if samtools.returncode != 0:
+		#	print 'Samtools view Error code', samtools.returncode, errdata
+		#	sys.exit()
+		#samfile = StringIO(samfile)
+			
 
 VARIATIONINFO = {
 					'c1':{'ext':'GACCATCACTTAAATCAGGTCCTCC', 'tj':'AGAGTCAAGTTATTTAAAAAATCTGGCC', 'ref':'ATTCAACAGTGATGGGACCATCACTTAAATCAGGTCCTCCKCCTCAGAGTCAAGTTATTTAAAAAATCTGGCCGATTTTGA','snp':'K'},
