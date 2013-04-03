@@ -1,5 +1,5 @@
-#! /bin/env python
 #! /usr/bin/env python2.7
+#! /bin/env python
 
 from tnt.lib import *
 import os
