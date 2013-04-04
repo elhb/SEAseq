@@ -494,24 +494,88 @@ class SEAseqSummary():
 		maxdist = indata.bcmm
 		matchfunc = hamming_distance
 		if indata.bced: maxdist = indata.bced; matchfunc = levenshtein
-		
-		tempfile = open(rawbcs.tempfile,'w')
+
+		percentages={}
+		for bc, count in self.barcodes.iteritems():
+			percentage = round(100*float(count)/self.readcount,4)
+			try: percentages[percentage].append(bc)
+			except KeyError:percentages[percentage] = [bc]
+		highest = []
+		perc = percentages.keys()
+		perc.sort(reverse=True)
+		#print perc
+		while len(highest) < 1000:
+			try:
+				for bc in percentages[perc[0]]: highest.append(bc)
+			except IndexError: pass
+			perc=perc[1:]
+		tempfile = open('seed_bcs.tempfile','w')
+		for bc in highest: tempfile.write('>'+bc+'\n'+bc+'\n')
+		tempfile.close()
+		tempfile = open('raw_bcs.tempfile','w')
 		for bc in self.barcodes: tempfile.write('>'+bc+'\n'+bc+'\n')
 		tempfile.close()
 
 		import subprocess
+		from cStringIO import StringIO
 		
-		##Store command for debugging purposes
-		#self.get_read_cmd = ' '.join(['samtools', 'view','-q', str(input.min_mapq), input.bamfile.name, self.chrom+':'+str(self.pos)+'-'+str( self.pos + self.reference.length -1)])
-		#
-		##startsubprocess that extracts samfile viewing the specified region
-		#samtools = subprocess.Popen(['samtools', 'view', input.bamfile.name, self.chrom+':'+str(self.pos)+'-'+str( self.pos + self.reference.length -1)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-		#samfile, errdata = samtools.communicate()
-		#if samtools.returncode != 0:
-		#	print 'Samtools view Error code', samtools.returncode, errdata
-		#	sys.exit()
-		#samfile = StringIO(samfile)
-			
+		indata.logfile.write('starting '+' '.join(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file','raw_bcs.tempfile','-t',str(indata.cpus),'--predetermined-cluster-centers','seed_bcs.tempfile'])+'\n')
+		dnaclust = subprocess.Popen(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file','raw_bcs.tempfile','-t',str(indata.cpus),'--predetermined-cluster-centers','seed_bcs.tempfile'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		dnaclust_out, errdata = dnaclust.communicate()
+		if dnaclust.returncode != 0:
+			print 'dnaclust view Error code', dnaclust.returncode, errdata
+			sys.exit()
+		dnaclust_out = StringIO(dnaclust_out)
+		indata.logfile.write('dnaclust done, parsing result ... ')
+
+		clusters={}
+		cc=0
+		for line in dnaclust_out:
+			cc+=1
+			clusters[cc] ={'total':0,'barcodes':{},'highest':[0,'XXXXXXXXXXXXXX']}
+			line = line.rstrip().split('\t')
+			for bc in line:
+				clusters[cc]['barcodes'][bc]=self.barcodes[bc]
+				clusters[cc]['total']+=self.barcodes[bc]
+				if self.barcodes[bc] > clusters[cc]['highest'][0]:clusters[cc]['highest']=[self.barcodes[bc],bc]
+		indata.logfile.write('almost done ... ')
+		
+		counter = 0
+		reads_in_clusters={}
+		for cc in clusters:
+			try: reads_in_clusters[clusters[cc]['total']]+=1
+			except KeyError: reads_in_clusters[clusters[cc]['total']]=1
+			if clusters[cc]['total'] > 2:
+				counter+=1
+				#print cc,clusters[cc]['total'],clusters[cc]['highest'][1],clusters[cc]['highest'][0]
+		indata.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n')
+		print cc,'clusters whereof',counter,'has more than one read'
+		x=reads_in_clusters.keys()
+		x.sort()
+		y=[]
+		for i in x: y.append(reads_in_clusters[i])
+		x=x
+		y=y
+		import numpy as np
+		import matplotlib.pyplot as plt
+		plt.figure()
+		plt.axis([0,1000,0,20])
+		plt.xlabel('Total Number of Reads per Barcode Cluster')
+		plt.ylabel('Number of Clusters')
+		#pos = np.arange(len(x))
+		#width = 1.0     # gives histogram aspect to the bar diagram
+		#ax = plt.axes()
+		#ax.set_xticks(pos + (width / 2))
+		#ax.set_xticklabels(x,rotation='horizontal')
+		#plt.bar(pos, y, width, color='r')
+		##plt.show()
+		##plt.savefig(pp,format='pdf',bbox_inches=0)
+		plt.plot(x,y)
+		plt.suptitle('Diststibution', fontsize=12)
+		plt.savefig('pelle.pdf')
+		plt.close()
+		print 'done'
+
 
 VARIATIONINFO = {
 					'c1':{'ext':'GACCATCACTTAAATCAGGTCCTCC', 'tj':'AGAGTCAAGTTATTTAAAAAATCTGGCC', 'ref':'ATTCAACAGTGATGGGACCATCACTTAAATCAGGTCCTCCKCCTCAGAGTCAAGTTATTTAAAAAATCTGGCCGATTTTGA','snp':'K'},

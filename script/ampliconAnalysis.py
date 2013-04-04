@@ -111,6 +111,7 @@ def getindata():
     # get the readcount
     indata.logfile.write('Getting readcount ... ')
     indata.numreads=bufcount(indata.reads1.name)/4
+    #indata.numreads=10000
     indata.logfile.write(str(indata.numreads)+' read pairs in fastq files.\n');
 
     # calculate the number of reads to process
