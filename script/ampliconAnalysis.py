@@ -46,7 +46,6 @@ def main():
     summary = SEAseqSummary()
     with progress:
 	for pair in results:
-	    if pair.handle_start: pass#print pair.r1.seq[:pair.handle_start]
 	    progress.update()
 	    summary.add(pair)
     WorkerPool.close()
@@ -54,15 +53,20 @@ def main():
     
     print summary.part1()
 
-    summary.reducebarcodes(indata)
-
     # Part1 - Parallel - each read pair:
     # check all reads and tryt to find "C handle"
     # and thereby also the barcode also try to identify the amplicon parts and any adapter sequences if present
     # output some initial statistics
-    
+
+    summary.reducebarcodes(indata)
+
     # Part2 - Serial:
     # some kind of clustering of barcodes with predetermined number of missmatches
+    
+    f= open('clusters.tempfile','w')
+    f.write(summary.clusters)
+    f.close()
+    if False: summary.loadclusters(filename)    
     
     # Part3 - Parallel? - each barocde group: (assumes that we have monoclonal beads)
     # calculate statistics, level of clonality of amplicons, 

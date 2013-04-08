@@ -466,18 +466,28 @@ class SEAseqSummary():
 		self.barcodes = {}
 		self.readcount = 0
 		self.handlefound = 0
+		self.pairs = {}
 		
 	def add(self, pair):
 		self.readcount += 1
 		if pair.handle_start: self.handlefound += 1
 		if pair.n15 and pair.n15.len == 15:
-			try: self.barcodes[pair.n15.seq] += 1
-			except KeyError: self.barcodes[pair.n15.seq] = 1
+			try:
+				self.barcodes[pair.n15.seq] += 1
+				self.pairs[pair.n15.seq].append(pair)
+			except KeyError:
+				self.barcodes[pair.n15.seq] = 1
+				self.pairs[pair.n15.seq] = [pair]
 		
 	def part1(self):
 		perc_c = str(round(100*float(self.handlefound)/self.readcount,2))+'%'
 		uniq_n15s = str(len(self.barcodes.keys()))
 		return 'in '+perc_c+' of the reads can the chandle be found, there are '+uniq_n15s+' uniq n15s'
+
+	def loadclusters(self,filename):
+		f = open(filename,'r',)
+		self.clusters = eval(f.read)
+		f.close()
 
 	def reducebarcodes(self,indata):
 		""" Find most common barcodes in well ( > 10% ??), then try to place other barcodes to this cluster
@@ -518,7 +528,8 @@ class SEAseqSummary():
 
 		import subprocess
 		from cStringIO import StringIO
-		
+		import time
+		tempo = time.time()
 		indata.logfile.write('starting '+' '.join(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file','raw_bcs.tempfile','-t',str(indata.cpus),'--predetermined-cluster-centers','seed_bcs.tempfile'])+'\n')
 		dnaclust = subprocess.Popen(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file','raw_bcs.tempfile','-t',str(indata.cpus),'--predetermined-cluster-centers','seed_bcs.tempfile'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		dnaclust_out, errdata = dnaclust.communicate()
@@ -526,7 +537,7 @@ class SEAseqSummary():
 			print 'dnaclust view Error code', dnaclust.returncode, errdata
 			sys.exit()
 		dnaclust_out = StringIO(dnaclust_out)
-		indata.logfile.write('dnaclust done, parsing result ... ')
+		indata.logfile.write('dnaclust done after '+str(time.time()-tempo)+'s, parsing result ... ')
 
 		clusters={}
 		cc=0
@@ -559,7 +570,7 @@ class SEAseqSummary():
 		import numpy as np
 		import matplotlib.pyplot as plt
 		plt.figure()
-		plt.axis([0,1000,0,20])
+		plt.axis([0,500,0,20])
 		plt.xlabel('Total Number of Reads per Barcode Cluster')
 		plt.ylabel('Number of Clusters')
 		#pos = np.arange(len(x))
@@ -575,6 +586,7 @@ class SEAseqSummary():
 		plt.savefig('pelle.pdf')
 		plt.close()
 		print 'done'
+		self.clusters = clusters
 
 
 VARIATIONINFO = {
