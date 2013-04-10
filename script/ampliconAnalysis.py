@@ -58,19 +58,75 @@ def main():
     # and thereby also the barcode also try to identify the amplicon parts and any adapter sequences if present
     # output some initial statistics
 
-    summary.reducebarcodes(indata)
-
     # Part2 - Serial:
     # some kind of clustering of barcodes with predetermined number of missmatches
     
-    f= open('clusters.tempfile','w')
-    f.write(summary.clusters)
-    f.close()
-    if False: summary.loadclusters(filename)    
-    
-    # Part3 - Parallel? - each barocde group: (assumes that we have monoclonal beads)
-    # calculate statistics, level of clonality of amplicons, 
+    if True:
+	summary.reducebarcodes(indata)
+	f= open('clusters.tempfile','w')
+	f.write(str(summary.clusters))
+	f.close()
+    else:
+	summary.loadclusters('clusters.tempfile')    
 
+    indata.logfile.write('Preparing for sorting of reads to clusters\n')
+    cid_by_bc = {}
+    outfiles = {}
+    import os
+    try: os.makedirs('temporary.cluster.files')
+    except OSError:pass
+    progress = Progress(len(summary.clusters))
+    with progress:
+	for cluster_id, infodist in summary.clusters.iteritems():
+	    progress.update()
+	    if int(infodist['total']) > 2:
+		outfiles[cluster_id] = open('temporary.cluster.files/'+str(cluster_id)+'.reads','w')
+		outfiles[cluster_id].close()
+		for barcode in infodist['barcodes']:
+		    cid_by_bc[barcode] = cluster_id
+	    else: print 'low read cluster'
+
+    # Part3 - Parallel? - each barocde group: (assumes that we have monoclonal beads)
+    # calculate statistics, level of clonality of amplicons,
+    
+    if indata.debug: #single process // serial
+
+	results=[] # create holder for processed reads
+	indata.logfile.write('Part3: Running in debug mode identifying handles ...\n')
+	
+	progress = Progress(indata.reads2process, logfile=indata.logfile) # creates a progress "bar" thingy
+	#itarate through reads and do the "magicFunction"
+	with progress:
+	    for tmp in getPairs(indata):
+		progress.update()
+		results.append(foreachread(tmp))
+	
+	indata.logfile.write('Part3: search finished\n')
+	
+    else: # multiple processes in parallel
+	#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
+	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000)
+	results = WorkerPool.imap(foreachread2,getPairs(indata),chunksize=100)
+
+    # output log message about whats happening
+    if not indata.debug: indata.logfile.write('Part2: running in multiproccessing mode using '+str(indata.cpus)+' processes  ...\n')
+    else: indata.logfile.write('Part4: running the multiprocessing results handeling in serial\n')
+
+    progress = Progress(indata.reads2process, logfile=indata.logfile)
+    summary = SEAseqSummary()
+    with progress:
+	for pair in results:
+	    progress.update()
+	    if pair.n15 and pair.n15.len == 15 and not (pair.r1.illuminaadapter or pair.r2.illuminaadapter):
+		try:
+		    f = open(outfiles[cid_by_bc[pair.n15.seq]].name,'a')
+		    f.write(pair.n15.seq+'\t'+pair.r1.seq+'\t'+pair.r2.seq+'\n')
+		    f.close()
+		except KeyError: print 'low read cluster read ie not printed'
+    WorkerPool.close()
+    WorkerPool.join()
+    indata.logfile.write('reads sorted into cluster tempfiles')
+    
     # Part4 - Serial:
     # statistics summary
     
@@ -87,6 +143,21 @@ def foreachread(tmp):
     
     pair.identify(C_HANDLE, indata)
     pair.getN15()
+    
+    return pair
+
+def foreachread2(tmp):
+
+    # unpack info
+    [pair, indata] = tmp
+    
+    # convert to SEAseq readpair
+    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
+    
+    pair.identify(C_HANDLE, indata)
+    pair.getN15()
+    pair.identifyIllumina(indata):
+    if not (pair.r1.illuminaadapter or pair.r2.illuminaadapter): pair.getSpecific()
     
     return pair
     

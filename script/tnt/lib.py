@@ -429,36 +429,53 @@ class SEAseqpair(readpair):
 		else: self.n15 = None
     
 	def identify(self, handle, indata):
+		[handle_start, handle_end] = self.matchHandle(self, handle, indata, self.r1)
+		self.handle_start = handle_start
+		self.handle_end   = handle_end
 
+	def identifyIllumina(self, indata):
+		handle = sequence('illumina','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC')
+		indata.handlemm = 5
+		[handle_start, handle_end] = self.matchHandle(self, handle, indata, self.r1)
+		if handle_start: self.r1.illuminaadapter = True
+		else: self.r1.illuminaadapter = False
+		
+		handle = sequence('illumina','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT')
+		indata.handlemm = 5
+		[handle_start, handle_end] = self.matchHandle(self, handle, indata, self.r2)
+		if handle_start: self.r2.illuminaadapter = True
+		else: self.r2.illuminaadapter = False
+
+	def matchHandle(self, handle, indata, read):
 		import re
 		matchfunk = hamming_distance
 	
 		handle_start = None
 		handle_end   = None
 	
-		perfect_match = re.search(handle.seq, self.r1.seq)
+		perfect_match = re.search(handle.seq, read.seq)
 		if perfect_match:
 		    handle_start = perfect_match.start()
 		    handle_end = perfect_match.end()
 		
 		elif indata.handlemm:
 			mindist = [10000,-1]
-			for i in range(len(self.r2.seq)):
+			for i in range(len(read.seq)):
 			    
-			    if i+len(handle.seq) <= len(self.r1.seq):
-				dist = matchfunk(handle.seq,self.r1.seq[i:i+len(handle.seq)])
-			    else: dist = 1000
-			    
-			    if dist < mindist[0]: mindist =[dist,i]
+				if i+len(handle.seq) <= len(read.seq):
+					dist = matchfunk(handle.seq,read.seq[i:i+len(handle.seq)])
+				else: dist = 1000
+				
+				if dist < mindist[0]: mindist =[dist,i]
 
 			if mindist[0] < indata.handlemm:
-			    handle_start = i
-			    handle_end = i+len(handle.seq)
-				
-			else: exthandle_end = None
-		    
-		self.handle_start = handle_start
-		self.handle_end   = handle_end
+				handle_start = i
+				handle_end = i+len(handle.seq)
+			else:
+				handle_start = None
+				handle_end = None
+
+		return [handle_start, handle_end]
 
 class SEAseqSummary():
 	
@@ -474,10 +491,10 @@ class SEAseqSummary():
 		if pair.n15 and pair.n15.len == 15:
 			try:
 				self.barcodes[pair.n15.seq] += 1
-				self.pairs[pair.n15.seq].append(pair)
+#				self.pairs[pair.n15.seq].append(pair)
 			except KeyError:
 				self.barcodes[pair.n15.seq] = 1
-				self.pairs[pair.n15.seq] = [pair]
+#				self.pairs[pair.n15.seq] = [pair]
 		
 	def part1(self):
 		perc_c = str(round(100*float(self.handlefound)/self.readcount,2))+'%'
@@ -486,8 +503,9 @@ class SEAseqSummary():
 
 	def loadclusters(self,filename):
 		f = open(filename,'r',)
-		self.clusters = eval(f.read)
+		self.clusters = eval(f.read())
 		f.close()
+		print len(self.clusters)
 
 	def reducebarcodes(self,indata):
 		""" Find most common barcodes in well ( > 10% ??), then try to place other barcodes to this cluster
