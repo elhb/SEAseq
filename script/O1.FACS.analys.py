@@ -182,7 +182,7 @@ def main():
 
     sys.stderr.write('PART2: within each well;\n 1.try to classify PE missmatching barcodes to other known barcodes in well\n2.reduce the number of barcodes in well by grouping those with low editdistance\n')
     from matplotlib.backends.backend_pdf import PdfPages
-    pp = PdfPages('multipage.pdf')
+    pp = PdfPages(indata.pdf)
     wellids = []
     for i in range(1,13):
 	for i2 in ['A','B','C','D','E','F','G','H']: wellids.append(i2+str(i))
