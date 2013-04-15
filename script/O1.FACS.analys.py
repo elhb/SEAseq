@@ -118,6 +118,7 @@ def main():
     argparser.add_argument('-be',	dest='bbced',metavar='N',	type=int,	required=False,default=0, help='specify edit distance allowed in clustering of bead barcodes (levenshtein distance).')
     argparser.add_argument('-mr',	dest='minread',metavar='N',	type=int,	required=False,default=0, help='Minimum number of reads to output barcode (default 0).')
     argparser.add_argument('-mp',	dest='minperc',metavar='N',	type=int,	required=False,default=0, help='Minimum percentage of reads in well to output barcode (default 0).')
+    argparser.add_argument('-pdf',	dest='pdf',metavar='N',		type=str,	required=True,default='multipage.pdf', help='Name of output pdffile.')
     indata = argparser.parse_args(sys.argv[1:])
 
     #	AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT NNNNNNNNNNNNNNNNNNNN CTTGATCCTCTCTGAGCGCAGCGGGCG ---GV--- CAAGATAACGCGTGCTGGTT AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC --IH-- ATCTCGTATGCCGTCTTCTGCTTG
@@ -148,6 +149,7 @@ def main():
     for well in WELLS: wells[well] = Well(well)
     wells['OTHER'] = Well('OTHER')
 
+    sys.stderr.write('cmd:'+' '.join(sys.argv)+'\n')
     sys.stderr.write('PART1: identification of barcodes and cluster to well classification\n')
     rc = 0
     progress = Progress(bufcount(indata.reads1.name)/4)
@@ -174,6 +176,9 @@ def main():
 		    # if paired end match add to the "bothreadsmatch"-counter
 		    try: bothreadsmatch[cluster.fwd.subseq(0,20).seq] += 1
 		    except KeyError: bothreadsmatch[cluster.fwd.subseq(0,20).seq] = 1
+
+		    #try: wells[str(cluster.well)].add(cluster)
+		    #except KeyError:wells['OTHER'].add(cluster)
 
     sys.stderr.write('PART2: within each well;\n 1.try to classify PE missmatching barcodes to other known barcodes in well\n2.reduce the number of barcodes in well by grouping those with low editdistance\n')
     from matplotlib.backends.backend_pdf import PdfPages
@@ -284,7 +289,7 @@ class Well():
 			except AssertionError: dist1= 25
 			try: dist2 = hamming_distance(cluster.n20[1],bc)
 			except AssertionError: dist2 = 25
-			if dist1 <= indata.bbcmm:
+			if dist1 <= indata.bbcmm or dist2 <= indata.bbcmm:
 				if dist1 == dist2 and dist1 != 0: pass#print 'barcodes equally bad'
 				elif dist1 > dist2:
 					if dist2 < mindist[0]: mindist = [dist2, cluster.n20[1], bc]
@@ -301,13 +306,13 @@ class Well():
 
     @property
     def clustercount(self):
-	return len(self.doublen20clusters)+len(self.singlen20clusters)
+	return len(self.singlen20clusters)#+len(self.doublen20clusters)
 
     def reducebarcodes(self,indata, pp):
 	""" Find most common barcodes in well ( > 10% ??), then try to place other barcodes to this cluster
 	"""
 	print ''
-	print 'Well',self.id
+	print 'Well',self.id, self.clustercount,'read pairs (with 1 n20/cluster)'
 	maxdist = indata.bbcmm
 	matchfunc = hamming_distance
 	if indata.bbced: maxdist = indata.bbced; matchfunc = levenshtein
