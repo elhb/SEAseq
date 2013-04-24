@@ -112,7 +112,9 @@ def getPairs(indata):
 	#check if files are gzipped
 	import gzip
 	if file1.name.split('.')[-1] in ['gz','gzip']: file1 = gzip.open(file1.name)
+	else: file1 = open(file1.name,'r')
 	if file2.name.split('.')[-1] in ['gz','gzip']: file2 = gzip.open(file2.name)
+	else: file2 = open(file2.name,'r')
 
 	# choose random reads to analyze from fastq files
 	if indata.n:
@@ -429,26 +431,28 @@ class SEAseqpair(readpair):
 		else: self.n15 = None
     
 	def identify(self, handle, indata):
-		[handle_start, handle_end] = self.matchHandle(self, handle, indata, self.r1)
+		[handle_start, handle_end] = self.matchHandle(handle, indata, self.r1)
 		self.handle_start = handle_start
 		self.handle_end   = handle_end
 
 	def identifyIllumina(self, indata):
-		handle = sequence('illumina','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC')
-		indata.handlemm = 5
-		[handle_start, handle_end] = self.matchHandle(self, handle, indata, self.r1)
+		handle = sequence('illuminaUniversal','AGATCGGAAGAGC','AGATCGGAAGAGC')
+		indata.handlemm = 2
+		#handle = sequence('illumina','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC')
+		#indata.handlemm = 5
+		[handle_start, handle_end] = self.matchHandle(handle, indata, self.r1)
 		if handle_start: self.r1.illuminaadapter = True
 		else: self.r1.illuminaadapter = False
 		
-		handle = sequence('illumina','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT')
-		indata.handlemm = 5
-		[handle_start, handle_end] = self.matchHandle(self, handle, indata, self.r2)
+		#handle = sequence('illumina','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT')
+		#indata.handlemm = 5
+		[handle_start, handle_end] = self.matchHandle(handle, indata, self.r2)
 		if handle_start: self.r2.illuminaadapter = True
 		else: self.r2.illuminaadapter = False
 
-	def matchHandle(self, handle, indata, read):
+	def matchHandle(self, handle, indata, read, matchfunk=hamming_distance):
 		import re
-		matchfunk = hamming_distance
+		#matchfunk = hamming_distance
 	
 		handle_start = None
 		handle_end   = None
@@ -532,7 +536,7 @@ class SEAseqSummary():
 		perc = percentages.keys()
 		perc.sort(reverse=True)
 		#print perc
-		while len(highest) < 1000:
+		while len(highest) < 1:#000:
 			try:
 				for bc in percentages[perc[0]]: highest.append(bc)
 			except IndexError: pass
@@ -577,18 +581,21 @@ class SEAseqSummary():
 			if clusters[cc]['total'] > 2:
 				counter+=1
 				#print cc,clusters[cc]['total'],clusters[cc]['highest'][1],clusters[cc]['highest'][0]
-		indata.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n')
-		print cc,'clusters whereof',counter,'has more than one read'
-		x=reads_in_clusters.keys()
-		x.sort()
-		y=[]
-		for i in x: y.append(reads_in_clusters[i])
+		indata.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n\n')
+		print cc,'clusters whereof',counter,'has more than one read\n'
+		temp_x=reads_in_clusters.keys()
+		temp_x.sort()
+		y=[];x =[]
+		for i in xrange(max(temp_x)+1):
+			x.append(i)
+			try: y.append(reads_in_clusters[i])
+			except KeyError: y.append(0)
 		x=x
 		y=y
 		import numpy as np
 		import matplotlib.pyplot as plt
 		plt.figure()
-		plt.axis([0,500,0,20])
+		plt.axis([0,5000,0,20])
 		plt.xlabel('Total Number of Reads per Barcode Cluster')
 		plt.ylabel('Number of Clusters')
 		#pos = np.arange(len(x))
@@ -605,6 +612,50 @@ class SEAseqSummary():
 		plt.close()
 		print 'done'
 		self.clusters = clusters
+
+def classify_cluser(infile="temporary.cluster.files/1.reads",database="reference/4amplicons/4amplicons.fasta"):
+	from Bio.Blast.Applications import NcbiblastnCommandline
+	from Bio.Blast import NCBIXML
+	from cStringIO import StringIO
+	cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5)
+	blast_handle = cline.__call__()
+	blast_handle = StringIO(blast_handle[0])
+	blast_handle.seek(0)
+	records = NCBIXML.parse(blast_handle)
+	results = {'total':0}
+	for blast_record in records:
+		results['total']+=1
+		#print blast_record.query+'\t',
+		if blast_record.alignments:
+			try: results[blast_record.alignments[0].title.split(' ')[1]]+=1
+			except KeyError:results[blast_record.alignments[0].title.split(' ')[1]]=1
+		else:
+			try: results['No Hits']+=1
+			except KeyError:results['No Hits']=1
+	
+	output = 'Cluster number '+infile.split('/')[1].split('.')[0]+':\n'
+	output += 'Total number of reads '+str(results['total'])+' (='+str(results['total']/2)+'pairs)\n'
+	amplicons = 0
+	genome = 'Unknown'
+	max_rc = 0
+	for hit,count in results.iteritems():
+		if hit == 'total': continue
+		output += hit+'\t'+str(round(100*float(count)/results['total'],2))+'% ('+str(count)+' reads)\n'
+		if hit == 'No Hits':continue
+		if count > max_rc:
+			max_rc= count;
+			genome = hit
+		if round(100*float(count)/results['total'],2) >= 2: amplicons += 1 # if more than 2% of read pop else disregard
+	output += '\n'
+	
+	monoclonal = None
+	if amplicons == 1:
+		monoclonal = True
+	if amplicons > 1:
+		monoclonal = False
+		genome = 'Mixed'
+	
+	return [results['total'], output, monoclonal, genome]
 
 
 VARIATIONINFO = {

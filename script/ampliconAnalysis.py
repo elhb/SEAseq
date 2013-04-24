@@ -48,8 +48,8 @@ def main():
 	for pair in results:
 	    progress.update()
 	    summary.add(pair)
-    WorkerPool.close()
-    WorkerPool.join()
+    if not indata.debug:WorkerPool.close()
+    if not indata.debug:WorkerPool.join()
     
     print summary.part1()
 
@@ -75,19 +75,22 @@ def main():
     import os
     try: os.makedirs('temporary.cluster.files')
     except OSError:pass
-    progress = Progress(len(summary.clusters))
+    progress = Progress(len(summary.clusters),verb='minimal')
+    min_reads = 100
     with progress:
 	for cluster_id, infodist in summary.clusters.iteritems():
 	    progress.update()
-	    if int(infodist['total']) > 2:
-		outfiles[cluster_id] = open('temporary.cluster.files/'+str(cluster_id)+'.reads','w')
-		outfiles[cluster_id].close()
+	    if int(infodist['total']) > min_reads:
+		#outfiles[cluster_id] = open('temporary.cluster.files/'+str(cluster_id)+'.reads','w')
+		#outfiles[cluster_id].close()
 		for barcode in infodist['barcodes']:
 		    cid_by_bc[barcode] = cluster_id
-	    else: print 'low read cluster'
+	    else: pass#print 'low read cluster'
 
     # Part3 - Parallel? - each barocde group: (assumes that we have monoclonal beads)
     # calculate statistics, level of clonality of amplicons,
+    
+    del summary
     
     if indata.debug: #single process // serial
 
@@ -99,40 +102,81 @@ def main():
 	with progress:
 	    for tmp in getPairs(indata):
 		progress.update()
-		results.append(foreachread(tmp))
+		results.append(foreachread2(tmp))
 	
 	indata.logfile.write('Part3: search finished\n')
 	
     else: # multiple processes in parallel
 	#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
 	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000)
-	results = WorkerPool.imap(foreachread2,getPairs(indata),chunksize=100)
+	results = WorkerPool.imap(foreachread,getPairs(indata),chunksize=100)
 
     # output log message about whats happening
     if not indata.debug: indata.logfile.write('Part2: running in multiproccessing mode using '+str(indata.cpus)+' processes  ...\n')
     else: indata.logfile.write('Part4: running the multiprocessing results handeling in serial\n')
 
+    tempfiles = {}
     progress = Progress(indata.reads2process, logfile=indata.logfile)
-    summary = SEAseqSummary()
     with progress:
 	for pair in results:
 	    progress.update()
-	    if pair.n15 and pair.n15.len == 15 and not (pair.r1.illuminaadapter or pair.r2.illuminaadapter):
+	    if pair.n15 and pair.n15.len == 15:# and not (pair.r1.illuminaadapter or pair.r2.illuminaadapter):
 		try:
-		    f = open(outfiles[cid_by_bc[pair.n15.seq]].name,'a')
-		    f.write(pair.n15.seq+'\t'+pair.r1.seq+'\t'+pair.r2.seq+'\n')
+		    f = open('temporary.cluster.files/'+str(cid_by_bc[pair.n15.seq])+'.reads','a')
+		    f.write('>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n')
 		    f.close()
-		except KeyError: print 'low read cluster read ie not printed'
-    WorkerPool.close()
-    WorkerPool.join()
-    indata.logfile.write('reads sorted into cluster tempfiles')
-    
+		    del f
+		    tempfiles[cid_by_bc[pair.n15.seq]] = True
+		except KeyError: pass#print 'low read cluster read ie not printed'
+    if not indata.debug:WorkerPool.close()
+    if not indata.debug:WorkerPool.join()
+    indata.logfile.write('reads sorted into cluster tempfiles\n')
+
+    #Go through CLUSTERS
+
+    if indata.debug: #single process // serial
+
+	results=[] # create holder for processed reads
+	for infile in tempfiles.keys():
+	    results.append(foreach3(infile))
+	
+    else: # multiple processes in parallel
+	#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
+	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=100)
+	results = WorkerPool.imap(foreach3,tempfiles.keys(),chunksize=5)
+
+    monoclonal_clusts = 0
+    tot_clust  = 0
+
+    beadtypes = {}
+    for [tot_reads, output, monoclonal,genome] in results:
+	if tot_reads > min_reads:
+	    print output
+	    tot_clust+=1
+	    if monoclonal: monoclonal_clusts+=1
+	    try: beadtypes[genome] += 1
+	    except KeyError: beadtypes[genome] = 1
+
+    print 'We found',tot_clust,'clusters, with atleast',min_reads,'reads per cluster, out of theese were',str(round(100*float(monoclonal_clusts)/tot_clust,2)),'% monoclonal'
+    total = sum([ count for beadtype,count in beadtypes.iteritems()])
+    for beadtype,count in beadtypes.iteritems(): print beadtype, str(round(100*float(count)/total,2))+'% ('+str(count)+' beads)'
+
+    import shutil
+    shutil.rmtree('temporary.cluster.files/')
+    import os
+    os.remove('clusters.tempfile')
+    os.remove('seed_bcs.tempfile')
+    os.remove('raw_bcs.tempfile')
     # Part4 - Serial:
     # statistics summary
     
 #--------------------------MAIN PROGRAM END-------------------------
 
 #--------------------- Functions, Subroutines and classes --------------------	
+def foreach3(infile):
+    infile = 'temporary.cluster.files/'+str(infile)+'.reads'
+    return classify_cluser(infile=infile)
+
 def foreachread(tmp):
 
     # unpack info
@@ -156,8 +200,8 @@ def foreachread2(tmp):
     
     pair.identify(C_HANDLE, indata)
     pair.getN15()
-    pair.identifyIllumina(indata):
-    if not (pair.r1.illuminaadapter or pair.r2.illuminaadapter): pair.getSpecific()
+    pair.identifyIllumina(indata)
+    #if not (pair.r1.illuminaadapter or pair.r2.illuminaadapter): pass#pair.getSpecific(indata)
     
     return pair
     
