@@ -517,15 +517,15 @@ class SEAseqSummary():
 		
 		import multiprocessing
 		
-		print ''
+		indata.logfile.write( '\n' )
 		
-		indata.bcmm = 3
-		indata.bced = 0
+		#indata.bcmm = 3
+		#indata.bced = 0
 		indata.minperc = 0
-		indata.minread = 100
+		#indata.minread = 100
 		maxdist = indata.bcmm
 		matchfunc = hamming_distance
-		if indata.bced: maxdist = indata.bced; matchfunc = levenshtein
+		#if indata.bced: maxdist = indata.bced; matchfunc = levenshtein
 
 		percentages={}
 		for bc, count in self.barcodes.iteritems():
@@ -541,10 +541,10 @@ class SEAseqSummary():
 				for bc in percentages[perc[0]]: highest.append(bc)
 			except IndexError: pass
 			perc=perc[1:]
-		tempfile = open('seed_bcs.tempfile','w')
+		tempfile = open(indata.outfolder+'/seed_bcs.tempfile','w')
 		for bc in highest: tempfile.write('>'+bc+'\n'+bc+'\n')
 		tempfile.close()
-		tempfile = open('raw_bcs.tempfile','w')
+		tempfile = open(indata.outfolder+'/raw_bcs.tempfile','w')
 		for bc in self.barcodes: tempfile.write('>'+bc+'\n'+bc+'\n')
 		tempfile.close()
 
@@ -552,8 +552,8 @@ class SEAseqSummary():
 		from cStringIO import StringIO
 		import time
 		tempo = time.time()
-		indata.logfile.write('starting '+' '.join(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file','raw_bcs.tempfile','-t',str(indata.cpus),'--predetermined-cluster-centers','seed_bcs.tempfile'])+'\n')
-		dnaclust = subprocess.Popen(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file','raw_bcs.tempfile','-t',str(indata.cpus),'--predetermined-cluster-centers','seed_bcs.tempfile'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		indata.logfile.write('starting '+' '.join(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file',indata.outfolder+'/raw_bcs.tempfile','-t',str(indata.cpus),'--predetermined-cluster-centers',indata.outfolder+'/seed_bcs.tempfile'])+'\n')
+		dnaclust =               subprocess.Popen(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file',indata.outfolder+'/raw_bcs.tempfile','-t',str(indata.cpus),'--predetermined-cluster-centers',indata.outfolder+'/seed_bcs.tempfile'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		dnaclust_out, errdata = dnaclust.communicate()
 		if dnaclust.returncode != 0:
 			print 'dnaclust view Error code', dnaclust.returncode, errdata
@@ -582,7 +582,7 @@ class SEAseqSummary():
 				counter+=1
 				#print cc,clusters[cc]['total'],clusters[cc]['highest'][1],clusters[cc]['highest'][0]
 		indata.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n\n')
-		print cc,'clusters whereof',counter,'has more than one read\n'
+		indata.outfile.write(str( cc)+' clusters whereof '+str(counter)+' has more than one read\n\n')
 		temp_x=reads_in_clusters.keys()
 		temp_x.sort()
 		y=[];x =[]
@@ -610,10 +610,10 @@ class SEAseqSummary():
 		plt.suptitle('Diststibution', fontsize=12)
 		plt.savefig('pelle.pdf')
 		plt.close()
-		print 'done'
+		indata.logfile.write( 'done\n')
 		self.clusters = clusters
 
-def classify_cluser(infile="temporary.cluster.files/1.reads",database="reference/4amplicons/4amplicons.fasta"):
+def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="reference/4amplicons/4amplicons.fasta"):
 	from Bio.Blast.Applications import NcbiblastnCommandline
 	from Bio.Blast import NCBIXML
 	from cStringIO import StringIO
@@ -633,19 +633,24 @@ def classify_cluser(infile="temporary.cluster.files/1.reads",database="reference
 			try: results['No Hits']+=1
 			except KeyError:results['No Hits']=1
 	
-	output = 'Cluster number '+infile.split('/')[1].split('.')[0]+':\n'
+	output = 'Cluster number '+infile.split('/')[-1].split('.reads')[0]+':\n'
 	output += 'Total number of reads '+str(results['total'])+' (='+str(results['total']/2)+'pairs)\n'
 	amplicons = 0
 	genome = 'Unknown'
 	max_rc = 0
+	if indata.skipnohits:results['total']=results['total']-results['No Hits']
 	for hit,count in results.iteritems():
+		percentage = round(100*float(count)/results['total'],2)
 		if hit == 'total': continue
-		output += hit+'\t'+str(round(100*float(count)/results['total'],2))+'% ('+str(count)+' reads)\n'
-		if hit == 'No Hits':continue
+		elif hit == 'No Hits':
+			if not indata.skipnohits: output += hit+'\t'+str(percentage)+'% ('+str(count)+' reads)\n'
+			else: output += hit+'\t'+str('NA ')+'% ('+str(count)+' reads)\n'
+			continue
+		else: output += hit+'\t'+str(percentage)+'% ('+str(count)+' reads)\n'
 		if count > max_rc:
 			max_rc= count;
 			genome = hit
-		if round(100*float(count)/results['total'],2) >= 2: amplicons += 1 # if more than 2% of read pop else disregard
+		if percentage >= indata.gpct: amplicons += 1 # if more than 2% of read pop else disregard
 	output += '\n'
 	
 	monoclonal = None
