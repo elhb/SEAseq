@@ -45,8 +45,8 @@ def main():
 	    
 	else: # multiple processes in parallel
 	    #create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
-	    WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000)
-	    results = WorkerPool.imap(foreachread,getPairs(indata),chunksize=100)
+	    WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000000)
+	    results = WorkerPool.imap_unordered(foreachread,getPairs(indata),chunksize=100)
     
 	# output log message about whats happening
 	if not indata.debug: indata.logfile.write('Part1: running in multiproccessing mode using '+str(indata.cpus)+' processes  ...\n')
@@ -88,13 +88,13 @@ def main():
 	try: os.makedirs(indata.outfolder+'/temporary.cluster.files')
 	except OSError:pass
 	
-	progress = Progress(len(summary.clusters),verb='minimal')
+	progress = Progress(len(summary.clusters),verb='minimal', logfile=indata.logfile)
 	indata.mrc = indata.mrc # minimum number of reads per cluster to consider it
 	
 	with progress:
 	    for cluster_id, infodist in summary.clusters.iteritems():
 		progress.update()
-		if int(infodist['total']) > indata.mrc:
+		if int(infodist['total']) >= indata.mrc:
 		    for barcode in infodist['barcodes']:
 			cid_by_bc[barcode] = cluster_id
 		else: pass#print 'low read cluster'
@@ -113,8 +113,8 @@ def main():
 	    indata.logfile.write('Part3: sort finished start writing to files.\n')
 	else: # multiple processes in parallel
 	    #create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
-	    WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000)
-	    results = WorkerPool.imap(foreachread,getPairs(indata),chunksize=100)
+	    WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000000)
+	    results = WorkerPool.imap_unordered(foreachread,getPairs(indata),chunksize=100)
     
 	# output log message about whats happening
 	if not indata.debug: indata.logfile.write('Part2: Sorting reads to cluster '+str(indata.cpus)+' processes  ...\n')
@@ -128,6 +128,7 @@ def main():
 		if pair.n15 and pair.n15.len == 15:# and not (pair.r1.illuminaadapter or pair.r2.illuminaadapter):
 		    try:
 			f = open(indata.outfolder+'/temporary.cluster.files/'+str(cid_by_bc[pair.n15.seq])+'.reads','a')
+#			f.write('>'+pair.r1.header+'_r1\n'+pair.r1.subseq(35,150).seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.subseq(0,150).seq+'\n')
 			f.write('>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n')
 			f.close()
 			del f
@@ -147,30 +148,39 @@ def main():
 	import os
 	for filename in os.listdir(indata.analyzeclust): tempfiles[int(filename.split('/')[-1].split('.reads')[0])] = True;
 
+    indata.blastid = time.strftime("%A_%d_%b_%Y_%H_%M_%S",time.localtime())
     if indata.debug: #single process // serial
 	results=[] # create holder for processed reads
 	for tmp in yielder(tempfiles.keys(), indata):
 	    results.append(foreach3(tmp))
     else: # multiple processes in parallel
 	#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
-	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=100)
-	results = WorkerPool.imap(foreach3,yielder(tempfiles.keys(), indata),chunksize=5)
+	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10)
+	results = WorkerPool.imap_unordered(foreach3,yielder(tempfiles.keys(), indata),chunksize=2)
 
     monoclonal_clusts = 0
+    non_class = 0
     tot_clust  = 0
+    removed_primer_dimer=0
+    pdpercent=90
     beadtypes = {}
-    for [tot_reads, output, monoclonal,genome] in results:
-	if tot_reads > indata.mrc:
-	    indata.outfile.write(str( output)+'\n')
-	    tot_clust+=1
-	    if monoclonal: monoclonal_clusts+=1
-	    try: beadtypes[genome] += 1
-	    except KeyError: beadtypes[genome] = 1
+    progress = Progress(len(tempfiles.keys()), logfile=indata.logfile ,unit='cluster')
+    with progress:
+	for [tot_reads, output, monoclonal,genome,nohitperc,beforeremovalreads] in results:
+	    if beforeremovalreads >= indata.mrc:
+		if nohitperc > pdpercent:removed_primer_dimer+=1;continue
+		indata.outfile.write(str(output)+'\n')
+		tot_clust+=1
+		if monoclonal: monoclonal_clusts+=1
+		elif monoclonal== None: non_class+=1
+		try: beadtypes[genome] += 1
+		except KeyError: beadtypes[genome] = 1
+	    progress.update()
 
-    indata.outfile.write(str( 'We found '+str(tot_clust)+' clusters, with atleast '+str(indata.mrc)+' reads per cluster, out of theese were '+str(round(100*float(monoclonal_clusts)/tot_clust,2))+'% monoclonal')+'\n')
+    indata.outfile.write(str( 'We found '+str(tot_clust)+' clusters, with atleast '+str(indata.mrc)+' reads per cluster, out of theese were '+str(round(100*float(monoclonal_clusts)/tot_clust,2))+'% monoclonal ('+str(monoclonal_clusts)+')')+' and '+str(round(100*float(non_class)/tot_clust,2))+'% not classifiable ('+str(non_class)+'), '+str(removed_primer_dimer)+' clusters were classified as primer dimer (>='+str(pdpercent)+'% nohits) and removed\n')
 
     total = sum([ count for beadtype,count in beadtypes.iteritems()])
-    for beadtype,count in beadtypes.iteritems(): indata.outfile.write(str( beadtype +' '+ str(round(100*float(count)/total,2))+'% ('+str(count)+' beads)')+'\n')
+    for beadtype,count in beadtypes.iteritems(): indata.outfile.write(str( beadtype +' '+ str(round(100*float(count)/total,2))+'% ('+str(count)+' clusters)')+'\n')
 
     if not (indata.keeptemp):
 	import shutil
@@ -205,20 +215,21 @@ def foreachread(tmp):
     
     return pair
 
-def foreachread2(tmp):
-
-    # unpack info
-    [pair, indata] = tmp
-    
-    # convert to SEAseq readpair
-    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
-    
-    pair.identify(C_HANDLE, indata)
-    pair.getN15()
-    pair.identifyIllumina(indata)
-    #if not (pair.r1.illuminaadapter or pair.r2.illuminaadapter): pass#pair.getSpecific(indata)
-    
-    return pair
+#def foreachread2(tmp):
+#
+#    # unpack info
+#    [pair, indata] = tmp
+#    
+#    # convert to SEAseq readpair
+#    pair.r1=pair.r1.subseq(1,100)
+#    pair.r2=pair.r2.subseq(1,100)
+#    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
+#    
+#    pair.identify(C_HANDLE, indata)
+#    pair.getN15()
+#    pair.identifyIllumina(indata)
+#    #if not (pair.r1.illuminaadapter or pair.r2.illuminaadapter): pass#pair.getSpecific(indata)
+#    return pair
     
 def getindata():
     import argparse
@@ -237,9 +248,11 @@ def getindata():
     argparser.add_argument(	'-outfolder',		dest='outfolder',metavar='FOLDER',			type=str,	required=False,	default='.',	help='Folder where temporary outputfiles are stored (default current working dir).')
     argparser.add_argument(	'--keeptemp',		dest='keeptemp', 		action='store_true', 			required=False,	default=False,	help='Keep temporary files (default is to delete tempfiles).')
     argparser.add_argument(	'-analyseclusters',	dest='analyzeclust',metavar='FOLDER',			type=str,	required=False,	default=False,	help='Only analyze cluster files (default False)')
+    argparser.add_argument(	'-blastsetting',	dest='blastsetting',metavar='\["strict"\|"sloppy"\]',			type=str,	required=False,	default='strict',	help='setting for the blast either "strict" or "sloppy" (default False)')
     argparser.add_argument(	'-mrc',			dest='mrc',metavar='N',					type=int,	required=False,	default=100,	help='minimum number of reads per cluster to consider it (default 100)')
     argparser.add_argument(	'-gpct',		dest='gpct',metavar='N',				type=int,	required=False,	default=2,	help='disreagard genomes with less than X percent of read population (default 2)')
     argparser.add_argument(	'--skipnohits',		dest='skipnohits', 		action='store_true', 			required=False,	default=False,	help='Skip the No Hits reads in all calculations (default False).')
+    argparser.add_argument(	'--printblast',		dest='printblast', 		action='store_true', 			required=False,	default=False,	help='print details of the BLAST searcch for each cluster (default False).')
     indata = argparser.parse_args(sys.argv[1:])
     indata.selftest = False
     

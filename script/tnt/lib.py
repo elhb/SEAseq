@@ -175,6 +175,7 @@ def getPairs(indata):
 						readNumbersToPrint = readNumbersToPrint[1:]
 						if len(readNumbersToPrint) == 0: break
 
+
 class readpair():
     """ object representing an illumina cluster """
     
@@ -429,11 +430,14 @@ class SEAseqpair(readpair):
 	def getN15(self):
 		if self.handle_start:self.n15 = self.r1.subseq(0,self.handle_start)
 		else: self.n15 = None
+		return 0
+
     
 	def identify(self, handle, indata):
 		[handle_start, handle_end] = self.matchHandle(handle, indata, self.r1)
 		self.handle_start = handle_start
 		self.handle_end   = handle_end
+		return 0
 
 	def identifyIllumina(self, indata):
 		handle = sequence('illuminaUniversal','AGATCGGAAGAGC','AGATCGGAAGAGC')
@@ -449,6 +453,7 @@ class SEAseqpair(readpair):
 		[handle_start, handle_end] = self.matchHandle(handle, indata, self.r2)
 		if handle_start: self.r2.illuminaadapter = True
 		else: self.r2.illuminaadapter = False
+		return 0
 
 	def matchHandle(self, handle, indata, read, matchfunk=hamming_distance):
 		import re
@@ -499,6 +504,7 @@ class SEAseqSummary():
 			except KeyError:
 				self.barcodes[pair.n15.seq] = 1
 #				self.pairs[pair.n15.seq] = [pair]
+		return
 		
 	def part1(self):
 		perc_c = str(round(100*float(self.handlefound)/self.readcount,2))+'%'
@@ -510,6 +516,7 @@ class SEAseqSummary():
 		self.clusters = eval(f.read())
 		f.close()
 		print len(self.clusters)
+		return
 
 	def reducebarcodes(self,indata):
 		""" Find most common barcodes in well ( > 10% ??), then try to place other barcodes to this cluster
@@ -612,55 +619,88 @@ class SEAseqSummary():
 		plt.close()
 		indata.logfile.write( 'done\n')
 		self.clusters = clusters
+		return
 
 def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="reference/4amplicons/4amplicons.fasta"):
 	from Bio.Blast.Applications import NcbiblastnCommandline
 	from Bio.Blast import NCBIXML
 	from cStringIO import StringIO
-	cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5)
+	if indata.blastsetting == 'strict':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5)
+	elif indata.blastsetting == 'sloppy':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn')
 	blast_handle = cline.__call__()
 	blast_handle = StringIO(blast_handle[0])
 	blast_handle.seek(0)
 	records = NCBIXML.parse(blast_handle)
 	results = {'total':0}
+	import time
+	if indata.printblast: f = open(indata.outfolder+'/temporary.cluster.files/'+str(infile.split('/')[-1].split('.reads')[0])+'.blastResults.'+indata.blastid,'w')
 	for blast_record in records:
 		results['total']+=1
 		#print blast_record.query+'\t',
+		if indata.printblast:
+			f.write(blast_record.query+'\n')
 		if blast_record.alignments:
-			try: results[blast_record.alignments[0].title.split(' ')[1]]+=1
-			except KeyError:results[blast_record.alignments[0].title.split(' ')[1]]=1
+			if indata.printblast:
+				alignment = blast_record.alignments[0]
+				for hsp in alignment.hsps:
+					f.write('\t'+ '****Alignment****'+'\n')
+					f.write('\t'+ 'sequence: '+ alignment.title+'\n')
+					f.write('\t'+ 'length: '+ str(alignment.length)+'\n')
+					f.write('\t'+ 'e value: '+ str(hsp.expect)+'\n')
+					f.write('\t'+ hsp.query +'\n')
+					f.write('\t'+ hsp.match +'\n')
+					f.write('\t'+ hsp.sbjct +'\n')
+					if len(hsp.query) < 40 : f.write('\tTo short will ba counted as "No Hit"\n')
+					f.write('\n')
+			subj_name = blast_record.alignments[0].title.split(' ')[1]
+			if len(blast_record.alignments[0].hsps[0].query) <= 40: subj_name = 'No Hits'
+			try: results[subj_name]+=1
+			except KeyError:results[subj_name]=1
 		else:
 			try: results['No Hits']+=1
 			except KeyError:results['No Hits']=1
+	if indata.printblast: f.close()
 	
 	output = 'Cluster number '+infile.split('/')[-1].split('.reads')[0]+':\n'
 	output += 'Total number of reads '+str(results['total'])+' (='+str(results['total']/2)+'pairs)\n'
 	amplicons = 0
 	genome = 'Unknown'
 	max_rc = 0
-	if indata.skipnohits:results['total']=results['total']-results['No Hits']
+	
+	try: nohitperc = round(100*float(results['No Hits'])/results['total'],2)
+	except KeyError: nohitperc = 0
+	beforeremovalreads = results['total']
+	if indata.skipnohits:
+		try:results['total']=results['total']-results['No Hits']
+		except KeyError: pass
+		output += 'Total number of (SE) reads after removing "NoHits"-reads '+str(results['total'])+' (='+str(results['total']/2)+'pairs)\n'
 	for hit,count in results.iteritems():
+		if indata.skipnohits and results['total'] == 0: output += hit+'\t'+str('NA ')+'% ('+str(count)+' reads) (originally '+str(nohitperc)+'% before no hits removal)\n';break
 		percentage = round(100*float(count)/results['total'],2)
 		if hit == 'total': continue
 		elif hit == 'No Hits':
 			if not indata.skipnohits: output += hit+'\t'+str(percentage)+'% ('+str(count)+' reads)\n'
-			else: output += hit+'\t'+str('NA ')+'% ('+str(count)+' reads)\n'
+			else: output += hit+'\t'+str('NA ')+'% ('+str(count)+' reads) (originally '+str(nohitperc)+'% before no hits removal)\n'
 			continue
 		else: output += hit+'\t'+str(percentage)+'% ('+str(count)+' reads)\n'
 		if count > max_rc:
 			max_rc= count;
 			genome = hit
 		if percentage >= indata.gpct: amplicons += 1 # if more than 2% of read pop else disregard
-	output += '\n'
+	
 	
 	monoclonal = None
-	if amplicons == 1:
+	if amplicons == 0:
+		monoclonal = None
+		genome = 'Unknown'
+	elif amplicons == 1:
 		monoclonal = True
-	if amplicons > 1:
+	elif amplicons > 1:
 		monoclonal = False
 		genome = 'Mixed'
-	
-	return [results['total'], output, monoclonal, genome]
+	output += 'Cluster classified as monoclonal='+str(monoclonal)+' and genome is '+str(genome)+'.\n'
+	output += '\n'
+	return [results['total'], output, monoclonal, genome, nohitperc,beforeremovalreads]
 
 
 VARIATIONINFO = {
