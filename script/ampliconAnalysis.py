@@ -10,6 +10,7 @@ C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
 
 def main():
 #--------------------------MAIN PROGRAM-----------------------------
+    import gc
     indata = getindata()
     
     indata.logfile.write('Starting.\n')
@@ -17,90 +18,124 @@ def main():
     indata.logfile.write('Master process id='+str(MASTER)+'\n')
     indata.logfile.write('cmd: '+' '.join(sys.argv)+'\n')
 
-    import multiprocessing
-    import os
-    try: os.makedirs(indata.outfolder)
-    except OSError:pass
-
     if not indata.analyzeclust:
 
-	##
-	## FIND CHANDLE AND BARCODE SEQUENCE IN EACH READ PAIR
-	##
-
-	#deciding if to run multiprocessing or single process for debugging
-	if indata.debug: #single process // serial
-    
-	    results=[] # create holder for processed reads
-	    indata.logfile.write('Part1: Running in debug mode identifying handles ...\n')
-	    
-	    progress = Progress(indata.reads2process, logfile=indata.logfile) # creates a progress "bar" thingy
-	    #itarate through reads and do the "magicFunction"
-	    with progress:
-		for tmp in getPairs(indata):
-		    progress.update()
-		    results.append(foreachread(tmp))
-	    
-	    indata.logfile.write('Part1: search finished\n')
-	    
-	else: # multiple processes in parallel
-	    #create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
-	    WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000000)
-	    results = WorkerPool.imap_unordered(foreachread,getPairs(indata),chunksize=100)
-    
-	# output log message about whats happening
-	if not indata.debug: indata.logfile.write('Part1: running in multiproccessing mode using '+str(indata.cpus)+' processes  ...\n')
-	else: indata.logfile.write('Part2: running the multiprocessing results handeling in serial\n')
-    
-	progress = Progress(indata.reads2process, logfile=indata.logfile)
-	summary = SEAseqSummary()
-	with progress:
-	    for pair in results:
-		progress.update()
-		summary.add(pair)
-	if not indata.debug:WorkerPool.close()
-	if not indata.debug:WorkerPool.join()
 	
-	indata.outfile.write(str( summary.part1() )+'\n')
+	if not indata.onlysort:
+	    summary = cluster_barcodes(indata)
 
-	##
-	## CLUSTER BARCODES
-	##
-    
-	indata.logfile.write('Clustering the barcodes.\n')
-	if True:
-	    summary.reducebarcodes(indata)
-	    f= open(indata.outfolder+'/clusters.tempfile','w')
-	    f.write(str(summary.clusters))
-	    f.close()
-	else:
-	    summary.loadclusters(indata.outfolder+'/clusters.tempfile')    
-
-	##
 	## SORT READS TO BARCODE CLUSTERS
-	##
+	if indata.onlysort:
+	    summary = SEAseqSummary()
+	    summary.loadclusters(indata.outfolder+'/clusters.tempfile')
+	tempfiles = sortreads(summary.clusters,indata)
+        if indata.onlysort: sys.exit()
+
+    ## GO THROUGH EACH CLUSTER AND IDENTIFY THE READS
+    if not indata.analyzeclust: indata.analyzeclust = indata.outfolder+'/temporary.cluster.files'
+    else:
+	tempfiles = {}
+	import os
+	for filename in os.listdir(indata.analyzeclust):
+	    import re
+	    match = re.match('.{0,100}blast.{0,100}',filename)
+	    if match: continue
+	    tempfiles[int(filename.split('/')[-1].split('.reads')[0])] = True;
+    blast_it(tempfiles,indata)
+
+    ## CLEANUP
+    if not (indata.keeptemp):
+	import shutil
+	shutil.rmtree(indata.outfolder+'/'+'temporary.cluster.files/')
+	import os
+	os.remove(indata.outfolder+'/'+'clusters.tempfile')
+	os.remove(indata.outfolder+'/'+'seed_bcs.tempfile')
+	os.remove(indata.outfolder+'/'+'raw_bcs.tempfile')
     
-	indata.logfile.write('\nPreparing for sorting of reads to clusters\n')
+    indata.logfile.write('All Done.\n')
+#--------------------------MAIN PROGRAM END-------------------------
+
+#--------------------- Functions, Subroutines and classes --------------------	
+def cluster_barcodes(indata):
+    	    ##
+	    ## FIND CHANDLE AND BARCODE SEQUENCE IN EACH READ PAIR
+	    ##
+	    indata.logfile.write('Part1: Clustering barcodes START\n')
+	    #deciding if to run multiprocessing or single process for debugging
+	    if indata.debug: #single process // serial
 	
-	cid_by_bc = {}
-	outfiles = {}
+		results=[] # create holder for processed reads
+		indata.logfile.write('Part1: Running in debug mode identifying handles ...\n')
+		
+		progress = Progress(indata.reads2process, logfile=indata.logfile) # creates a progress "bar" thingy
+		#itarate through reads and do the "magicFunction"
+		with progress:
+		    for tmp in getPairs(indata):
+			progress.update()
+			results.append(foreachread(tmp))
+		
+		indata.logfile.write('Part1: search finished\n')
+		
+	    else: # multiple processes in parallel
+		import multiprocessing
+		#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
+		WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000000)
+		results = WorkerPool.imap_unordered(foreachread,getPairs(indata),chunksize=100)
+	
+	    # output log message about whats happening
+	    if not indata.debug: indata.logfile.write('Part1: running in multiproccessing mode using '+str(indata.cpus)+' processes  ...\n')
+	    else: indata.logfile.write('Part2: running the multiprocessing results handeling in serial\n')
+	
+	    progress = Progress(indata.reads2process, logfile=indata.logfile)
+	    summary = SEAseqSummary()
+	    with progress:
+		for pair in results:
+		    progress.update()
+		    summary.add(pair)
+	    if not indata.debug:WorkerPool.close()
+	    if not indata.debug:WorkerPool.join()
+	    
+	    indata.outfile.write(str( summary.part1() )+'\n')
+    
+	    ##
+	    ## CLUSTER BARCODES
+	    ##
+	
+	    indata.logfile.write('Clustering the barcodes.\n')
+	    summary.reducebarcodes(indata)
+	    if indata.onlycluster:
+		f= open(indata.outfolder+'/clusters.tempfile','w')
+		f.write(str(summary.clusters))
+		f.close()
+		indata.logfile.write('Part1: Clustering barcodes END\n')
+		sys.exit()
+	    indata.logfile.write('Part1: Clustering barcodes END\n')
+	    return summary	
+
+def sortreads(clusters,indata):
+	indata.logfile.write('Part2: Sorting reads to clusters START\n')
+	indata.logfile.write('\nPreparing for sorting of reads to clusters\n')
+
 	import os
 	try: os.makedirs(indata.outfolder+'/temporary.cluster.files')
 	except OSError:pass
-	
-	progress = Progress(len(summary.clusters),verb='minimal', logfile=indata.logfile)
-	indata.mrc = indata.mrc # minimum number of reads per cluster to consider it
-	
+
+	cid_by_bc = {}
+	progress = Progress(len(clusters),verb='minimal', logfile=indata.logfile)
 	with progress:
-	    for cluster_id, infodist in summary.clusters.iteritems():
+	    for cluster_id, infodist in clusters.iteritems():
 		progress.update()
 		if int(infodist['total']) >= indata.mrc:
 		    for barcode in infodist['barcodes']:
 			cid_by_bc[barcode] = cluster_id
 		else: pass#print 'low read cluster'
-    
-	del summary # delete summary object to save memory
-	
+
+	clusters.clear()
+	del clusters;del cluster_id; del infodist; # delete summary object to save memory, this does not reduce memory usage why?!?
+	import gc
+	gc.collect()
+	indata.cid_by_bc = cid_by_bc
+
 	if indata.debug: #single process // serial
 	    results=[] # create holder for processed reads
 	    indata.logfile.write('Part3: Running in debug mode sorting reads to clusters ...\n')
@@ -109,51 +144,77 @@ def main():
 	    with progress:
 		for tmp in getPairs(indata):
 		    progress.update()
-		    results.append(foreachread2(tmp))
+		    results.append(foreachread(tmp))
 	    indata.logfile.write('Part3: sort finished start writing to files.\n')
 	else: # multiple processes in parallel
+	    import multiprocessing
 	    #create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
-	    WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000000)
-	    results = WorkerPool.imap_unordered(foreachread,getPairs(indata),chunksize=100)
-    
+	    WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000)
+	    results = WorkerPool.imap_unordered(foreachread,getPairs(indata),chunksize=1000)
+
 	# output log message about whats happening
 	if not indata.debug: indata.logfile.write('Part2: Sorting reads to cluster '+str(indata.cpus)+' processes  ...\n')
 	else: indata.logfile.write('Part4: writing to cluster tempfiles\n')
-    
+
 	tempfiles = {}
 	progress = Progress(indata.reads2process, logfile=indata.logfile)
+#	outfiles = {}
+	outstrs = {};plupp = ''
 	with progress:
 	    for pair in results:
 		progress.update()
-		if pair.n15 and pair.n15.len == 15:# and not (pair.r1.illuminaadapter or pair.r2.illuminaadapter):
+		if pair.cid:# and not (pair.r1.illuminaadapter or pair.r2.illuminaadapter):
 		    try:
-			f = open(indata.outfolder+'/temporary.cluster.files/'+str(cid_by_bc[pair.n15.seq])+'.reads','a')
+#			f = open(indata.outfolder+'/temporary.cluster.files/'+str(cid_by_bc[pair.n15.seq])+'.reads','a')
+#			outfiles[cid_by_bc[pair.n15.seq]] = open(indata.outfolder+'/temporary.cluster.files/'+str(cid_by_bc[pair.n15.seq])+'.reads','a',1024*1024)
 #			f.write('>'+pair.r1.header+'_r1\n'+pair.r1.subseq(35,150).seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.subseq(0,150).seq+'\n')
-			f.write('>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n')
-			f.close()
-			del f
-			tempfiles[cid_by_bc[pair.n15.seq]] = True
+#			outfiles[cid_by_bc[pair.n15.seq]].write('>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n')
+#			plupp += '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
+			try: outstrs[pair.cid] += '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
+			except KeyError: outstrs[pair.cid] = '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
+#			f.write('>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n')
+#			f.close()
+			if sum([len(string) for string in outstrs.values()]) > 1024*1024*40 or len(outstrs) > 5000:
+			    indata.logfile.write('Buffer length ='+str(sum([len(string) for string in outstrs.values()]))+', number of subbuffers='+str(len(outstrs))+'. Printing buffers ...')
+			    for cluster_id, outstr in outstrs.iteritems():
+				f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.reads','a')
+				f.write(outstr)
+				f.close()
+				del f
+			    outstrs.clear()
+			    indata.logfile.write(' Done.\n')
+			#if len(outfiles) > 100:
+			#    indata.logfile.write('Closing files ...')
+			#    for outfile in outfiles.values(): outfile.close
+			#    outfiles = {}
+			#    indata.logfile.write('Done.\n')
+#			del f
+#			tempfiles[cid_by_bc[pair.n15.seq]] = True
 		    except KeyError: pass#print 'low read cluster read ie not printed'
+	indata.logfile.write('Printing last buffers ...')
+	for cluster_id, outstr in outstrs.iteritems():
+	    f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.reads','a')
+	    f.write(outstr)
+	    f.close()
+	    del f
+	outstrs.clear()
+	indata.logfile.write(' Done.\n')
 	if not indata.debug:WorkerPool.close()
 	if not indata.debug:WorkerPool.join()
 	indata.logfile.write('Reads sorted into cluster tempfiles\n')
+	indata.logfile.write('Part2: Sorting reads to clusters END\n')
+	gc.collect()
+        return tempfiles
 
-    ##
-    ## GO THROUGH EACH CLUSTER AND IDENTIFY THE READS
-    ##
-
-    if not indata.analyzeclust: indata.analyzeclust = indata.outfolder+'/temporary.cluster.files'
-    else:
-	tempfiles = {}
-	import os
-	for filename in os.listdir(indata.analyzeclust): tempfiles[int(filename.split('/')[-1].split('.reads')[0])] = True;
-
+def blast_it(tempfiles,indata):
+    indata.logfile.write('Part3: Identifying clusters by Blast START\n')
     indata.blastid = time.strftime("%A_%d_%b_%Y_%H_%M_%S",time.localtime())
     if indata.debug: #single process // serial
 	results=[] # create holder for processed reads
 	for tmp in yielder(tempfiles.keys(), indata):
 	    results.append(foreach3(tmp))
     else: # multiple processes in parallel
+	import multiprocessing
 	#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
 	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10)
 	results = WorkerPool.imap_unordered(foreach3,yielder(tempfiles.keys(), indata),chunksize=2)
@@ -167,6 +228,7 @@ def main():
     progress = Progress(len(tempfiles.keys()), logfile=indata.logfile ,unit='cluster')
     with progress:
 	for [tot_reads, output, monoclonal,genome,nohitperc,beforeremovalreads] in results:
+	    progress.update()
 	    if beforeremovalreads >= indata.mrc:
 		if nohitperc > pdpercent:removed_primer_dimer+=1;continue
 		indata.outfile.write(str(output)+'\n')
@@ -175,28 +237,17 @@ def main():
 		elif monoclonal== None: non_class+=1
 		try: beadtypes[genome] += 1
 		except KeyError: beadtypes[genome] = 1
-	    progress.update()
+	progress.update()
 
     indata.outfile.write(str( 'We found '+str(tot_clust)+' clusters, with atleast '+str(indata.mrc)+' reads per cluster, out of theese were '+str(round(100*float(monoclonal_clusts)/tot_clust,2))+'% monoclonal ('+str(monoclonal_clusts)+')')+' and '+str(round(100*float(non_class)/tot_clust,2))+'% not classifiable ('+str(non_class)+'), '+str(removed_primer_dimer)+' clusters were classified as primer dimer (>='+str(pdpercent)+'% nohits) and removed\n')
 
     total = sum([ count for beadtype,count in beadtypes.iteritems()])
     for beadtype,count in beadtypes.iteritems(): indata.outfile.write(str( beadtype +' '+ str(round(100*float(count)/total,2))+'% ('+str(count)+' clusters)')+'\n')
-
-    if not (indata.keeptemp):
-	import shutil
-	shutil.rmtree(indata.outfolder+'/'+'temporary.cluster.files/')
-	import os
-	os.remove(indata.outfolder+'/'+'clusters.tempfile')
-	os.remove(indata.outfolder+'/'+'seed_bcs.tempfile')
-	os.remove(indata.outfolder+'/'+'raw_bcs.tempfile')
+    indata.logfile.write('Part3: Identifying clusters by Blast END\n')
     
-#--------------------------MAIN PROGRAM END-------------------------
-
-#--------------------- Functions, Subroutines and classes --------------------	
 def yielder(lista, indata):
     for entry in lista: yield [entry, indata]
     
-
 def foreach3(tmp):
     [infile,indata] = tmp
     infile = indata.analyzeclust+'/'+str(infile)+'.reads'
@@ -205,13 +256,16 @@ def foreach3(tmp):
 def foreachread(tmp):
 
     # unpack info
-    [pair, indata] = tmp
+    pair, indata = tmp
+    del tmp
     
     # convert to SEAseq readpair
     pair = SEAseqpair(pair.header, pair.r1, pair.r2)
     
     pair.identify(C_HANDLE, indata)
     pair.getN15()
+    
+    if indata.cid_by_bc: pair.get_cid(indata)
     
     return pair
 
@@ -253,6 +307,8 @@ def getindata():
     argparser.add_argument(	'-gpct',		dest='gpct',metavar='N',				type=int,	required=False,	default=2,	help='disreagard genomes with less than X percent of read population (default 2)')
     argparser.add_argument(	'--skipnohits',		dest='skipnohits', 		action='store_true', 			required=False,	default=False,	help='Skip the No Hits reads in all calculations (default False).')
     argparser.add_argument(	'--printblast',		dest='printblast', 		action='store_true', 			required=False,	default=False,	help='print details of the BLAST searcch for each cluster (default False).')
+    argparser.add_argument(	'--onlycluster',	dest='onlycluster',		action='store_true',			required=False,	default=False,	help='Only do clustering of n15 sequences (default False)')
+    argparser.add_argument(	'--onlysort',		dest='onlysort',		action='store_true',			required=False,	default=False,	help='Only sort reads according to n15 sequences (default False)')
     indata = argparser.parse_args(sys.argv[1:])
     indata.selftest = False
     
@@ -274,6 +330,12 @@ def getindata():
 	if indata.skip: indata.reads2process -= indata.skip
 	if indata.stop: indata.reads2process = indata.stop
 	if indata.n:    indata.reads2process = indata.n
+
+    import os
+    try: os.makedirs(indata.outfolder)
+    except OSError:pass
+    
+    indata.cid_by_bc = False
 
     return indata
 

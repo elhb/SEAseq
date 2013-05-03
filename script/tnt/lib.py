@@ -32,7 +32,7 @@ class Progress():
 				'#Progress => '+str(self.percentage)+'%, '+
 				str( round((self.current-self.lcurrent)/(time.time()-self.ltime),2) )+' '+self.unit+'s/second, '+
 				time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+
-				', left:'+str(self.stf/60)+'min '+str(self.stf%60)+'s'+
+				', left: '+str(self.stf/60/60)+'h '+str(self.stf/60%60)+'min '+str(self.stf%60)+'s'+
 				'\n'
 				)
 			if self.type == 'minimal': self.logfile.write('..')
@@ -456,6 +456,7 @@ class SEAseqpair(readpair):
 		return 0
 
 	def matchHandle(self, handle, indata, read, matchfunk=hamming_distance):
+		
 		import re
 		#matchfunk = hamming_distance
 	
@@ -485,6 +486,12 @@ class SEAseqpair(readpair):
 				handle_end = None
 
 		return [handle_start, handle_end]
+
+	def get_cid(self,indata):
+		if self.n15 and self.n15.len == 15:
+			try: self.cid = indata.cid_by_bc[self.n15.seq]
+			except KeyError: self.cid = False
+		else: self.cid = None
 
 class SEAseqSummary():
 	
@@ -522,17 +529,11 @@ class SEAseqSummary():
 		""" Find most common barcodes in well ( > 10% ??), then try to place other barcodes to this cluster
 		"""
 		
-		import multiprocessing
-		
 		indata.logfile.write( '\n' )
 		
-		#indata.bcmm = 3
-		#indata.bced = 0
 		indata.minperc = 0
-		#indata.minread = 100
 		maxdist = indata.bcmm
 		matchfunc = hamming_distance
-		#if indata.bced: maxdist = indata.bced; matchfunc = levenshtein
 
 		percentages={}
 		for bc, count in self.barcodes.iteritems():
@@ -543,7 +544,7 @@ class SEAseqSummary():
 		perc = percentages.keys()
 		perc.sort(reverse=True)
 		#print perc
-		while len(highest) < 1:#000:
+		while len(highest) < 1000:
 			try:
 				for bc in percentages[perc[0]]: highest.append(bc)
 			except IndexError: pass
@@ -554,6 +555,7 @@ class SEAseqSummary():
 		tempfile = open(indata.outfolder+'/raw_bcs.tempfile','w')
 		for bc in self.barcodes: tempfile.write('>'+bc+'\n'+bc+'\n')
 		tempfile.close()
+		del percentages
 
 		import subprocess
 		from cStringIO import StringIO
@@ -566,7 +568,8 @@ class SEAseqSummary():
 			print 'dnaclust view Error code', dnaclust.returncode, errdata
 			sys.exit()
 		dnaclust_out = StringIO(dnaclust_out)
-		indata.logfile.write('dnaclust done after '+str(time.time()-tempo)+'s, parsing result ... ')
+		indata.logfile.write('dnaclust done after '+str(round(time.time()-tempo,2))+'s, parsing result ... ')
+		del dnaclust
 
 		clusters={}
 		cc=0
@@ -579,6 +582,7 @@ class SEAseqSummary():
 				clusters[cc]['total']+=self.barcodes[bc]
 				if self.barcodes[bc] > clusters[cc]['highest'][0]:clusters[cc]['highest']=[self.barcodes[bc],bc]
 		indata.logfile.write('almost done ... ')
+		del dnaclust_out
 		
 		counter = 0
 		reads_in_clusters={}
@@ -588,8 +592,11 @@ class SEAseqSummary():
 			if clusters[cc]['total'] > 2:
 				counter+=1
 				#print cc,clusters[cc]['total'],clusters[cc]['highest'][1],clusters[cc]['highest'][0]
+
+
 		indata.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n\n')
 		indata.outfile.write(str( cc)+' clusters whereof '+str(counter)+' has more than one read\n\n')
+
 		temp_x=reads_in_clusters.keys()
 		temp_x.sort()
 		y=[];x =[]
@@ -618,10 +625,14 @@ class SEAseqSummary():
 		plt.savefig('pelle.pdf')
 		plt.close()
 		indata.logfile.write( 'done\n')
+
 		self.clusters = clusters
+		del clusters
+
 		return
 
 def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="reference/4amplicons/4amplicons.fasta"):
+	#database="../reference/4amplicons/4amplicons.fasta"
 	from Bio.Blast.Applications import NcbiblastnCommandline
 	from Bio.Blast import NCBIXML
 	from cStringIO import StringIO
