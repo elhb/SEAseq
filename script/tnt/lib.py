@@ -544,7 +544,7 @@ class SEAseqSummary():
 		perc = percentages.keys()
 		perc.sort(reverse=True)
 		#print perc
-		while len(highest) < 1000:
+		while len(highest) < indata.seed:
 			try:
 				for bc in percentages[perc[0]]: highest.append(bc)
 			except IndexError: pass
@@ -552,6 +552,7 @@ class SEAseqSummary():
 		tempfile = open(indata.outfolder+'/seed_bcs.tempfile','w')
 		for bc in highest: tempfile.write('>'+bc+'\n'+bc+'\n')
 		tempfile.close()
+
 		tempfile = open(indata.outfolder+'/raw_bcs.tempfile','w')
 		for bc in self.barcodes: tempfile.write('>'+bc+'\n'+bc+'\n')
 		tempfile.close()
@@ -580,19 +581,18 @@ class SEAseqSummary():
 			for bc in line:
 				clusters[cc]['barcodes'][bc]=self.barcodes[bc]
 				clusters[cc]['total']+=self.barcodes[bc]
-				if self.barcodes[bc] > clusters[cc]['highest'][0]:clusters[cc]['highest']=[self.barcodes[bc],bc]
+				if self.barcodes[bc] > clusters[cc]['highest'][0]: clusters[cc]['highest']=[self.barcodes[bc],bc]
 		indata.logfile.write('almost done ... ')
 		del dnaclust_out
-		
+
 		counter = 0
 		reads_in_clusters={}
 		for cc in clusters:
 			try: reads_in_clusters[clusters[cc]['total']]+=1
 			except KeyError: reads_in_clusters[clusters[cc]['total']]=1
-			if clusters[cc]['total'] > 2:
+			if int(clusters[cc]['total']) > 1:
 				counter+=1
 				#print cc,clusters[cc]['total'],clusters[cc]['highest'][1],clusters[cc]['highest'][0]
-
 
 		indata.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n\n')
 		indata.outfile.write(str( cc)+' clusters whereof '+str(counter)+' has more than one read\n\n')
@@ -632,24 +632,38 @@ class SEAseqSummary():
 		return
 
 def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="reference/4amplicons/4amplicons.fasta"):
+
 	#database="../reference/4amplicons/4amplicons.fasta"
 	from Bio.Blast.Applications import NcbiblastnCommandline
 	from Bio.Blast import NCBIXML
 	from cStringIO import StringIO
+	import time
+	
+	#setting up blast
 	if indata.blastsetting == 'strict':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5)
 	elif indata.blastsetting == 'sloppy':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn')
+
+	#Blasting all reads in cluster 
 	blast_handle = cline.__call__()
 	blast_handle = StringIO(blast_handle[0])
 	blast_handle.seek(0)
 	records = NCBIXML.parse(blast_handle)
+
+	#checking blast results
 	results = {'total':0}
-	import time
 	if indata.printblast: f = open(indata.outfolder+'/temporary.cluster.files/'+str(infile.split('/')[-1].split('.reads')[0])+'.blastResults.'+indata.blastid,'w')
+	records_counter = 0
 	for blast_record in records:
-		results['total']+=1
+		records_counter +=1
+
 		#print blast_record.query+'\t',
-		if indata.printblast:
-			f.write(blast_record.query+'\n')
+		if indata.printblast: f.write(blast_record.query+'\n')
+		
+		readnumber = int(blast_record.query.split('_r')[1])
+		if readnumber == 1: r1_header = blast_record.query.split('_r')[0]
+		elif readnumber == 2 and records_counter%2 == 0: r2_header = blast_record.query.split('_r')[0]
+		else: indata.logfile.write('Warning: readnumber is funky!\n')
+		
 		if blast_record.alignments:
 			if indata.printblast:
 				alignment = blast_record.alignments[0]
@@ -662,44 +676,70 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 					f.write('\t'+ hsp.match +'\n')
 					f.write('\t'+ hsp.sbjct +'\n')
 					if len(hsp.query) < 40 : f.write('\tTo short will ba counted as "No Hit"\n')
-					f.write('\n')
-			subj_name = blast_record.alignments[0].title.split(' ')[1]
-			if len(blast_record.alignments[0].hsps[0].query) <= 40: subj_name = 'No Hits'
-			try: results[subj_name]+=1
-			except KeyError:results[subj_name]=1
+
+			if readnumber == 1:
+				r1_header = blast_record.query.split('_r')[0]
+				r1_subj_name = blast_record.alignments[0].title.split(' ')[1]
+				if len(blast_record.alignments[0].hsps[0].query) <= 40: subj_name = 'No Hits'
+			elif readnumber == 2 and records_counter%2 == 0:
+				r2_header = blast_record.query.split('_r')[0]
+				r2_subj_name = blast_record.alignments[0].title.split(' ')[1]
+				if len(blast_record.alignments[0].hsps[0].query) <= 40: subj_name = 'No Hits'
+			else: indata.logfile.write('Warning: readnumber is funky!\n')
 		else:
-			try: results['No Hits']+=1
-			except KeyError:results['No Hits']=1
-	if indata.printblast: f.close()
+			if readnumber == 1: r1_subj_name = 'No Hits'
+			elif readnumber == 2: r2_subj_name = 'No Hits'
+
+		if records_counter%2 == 0:
+			if r1_header == r2_header:
+				results['total']+=1
+				if r1_subj_name == r2_subj_name:
+					hit = r1_subj_name
+					if indata.printblast: f.write('## Read Pair Agree!\n')
+				else:
+					hit = 'Pair Disagree'
+					if indata.printblast: f.write('## Read Pair Disagree!\n')
+				try: results[hit]+=1
+				except KeyError:results[hit]=1
+			else: indata.logfile.write('WARNING: read pair headers missmatch!\n')
+		
+	if indata.printblast: f.write('\n\n');f.close()
 	
+	# print some info
 	output = 'Cluster number '+infile.split('/')[-1].split('.reads')[0]+':\n'
-	output += 'Total number of reads '+str(results['total'])+' (='+str(results['total']/2)+'pairs)\n'
+	output += 'Total number of read pairs '+str(results['total'])+'\n'#' (='+str(results['total']/2)+'pairs)\n'
+	
+	# check what amplicons were found in the results and determine cluster genome
 	amplicons = 0
 	genome = 'Unknown'
 	max_rc = 0
-	
-	try: nohitperc = round(100*float(results['No Hits'])/results['total'],2)
+	try: nohitperc = round(100*float(results['No Hits']+results['Pair Disagree'])/results['total'],2)
 	except KeyError: nohitperc = 0
 	beforeremovalreads = results['total']
 	if indata.skipnohits:
 		try:results['total']=results['total']-results['No Hits']
 		except KeyError: pass
-		output += 'Total number of (SE) reads after removing "NoHits"-reads '+str(results['total'])+' (='+str(results['total']/2)+'pairs)\n'
+		try:results['total']=results['total']-results['Pair Disagree']
+		except KeyError: pass
+		output += 'Total number of (SE) reads after removing "NoHits" and "Pair Disagree"-read pairs '+str(results['total'])+'\n'# (='+str(results['total']/2)+'pairs)\n'
+	
 	for hit,count in results.iteritems():
-		if indata.skipnohits and results['total'] == 0: output += hit+'\t'+str('NA ')+'% ('+str(count)+' reads) (originally '+str(nohitperc)+'% before no hits removal)\n';break
+		if indata.skipnohits and results['total'] == 0: output += hit+'\t'+str('NA ')+'% ('+str(count)+' read pairs) (originally '+str(nohitperc)+'% before no hits removal)\n';break
+		
 		percentage = round(100*float(count)/results['total'],2)
 		if hit == 'total': continue
-		elif hit == 'No Hits':
-			if not indata.skipnohits: output += hit+'\t'+str(percentage)+'% ('+str(count)+' reads)\n'
-			else: output += hit+'\t'+str('NA ')+'% ('+str(count)+' reads) (originally '+str(nohitperc)+'% before no hits removal)\n'
+		elif hit == 'No Hits' or hit == 'Pair Disagree':
+			if not indata.skipnohits: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
+			else: output += hit+'\t'+str('NA ')+'% ('+str(count)+' read pairs) (originally '+str(nohitperc)+'% before no hits removal)\n'
 			continue
-		else: output += hit+'\t'+str(percentage)+'% ('+str(count)+' reads)\n'
+		else: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
+		
 		if count > max_rc:
 			max_rc= count;
 			genome = hit
 		if percentage >= indata.gpct: amplicons += 1 # if more than 2% of read pop else disregard
 	
-	
+	output += str(amplicons)+'amplicons found genome thought to be '+genome +'\n'
 	monoclonal = None
 	if amplicons == 0:
 		monoclonal = None
@@ -709,6 +749,7 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 	elif amplicons > 1:
 		monoclonal = False
 		genome = 'Mixed'
+	else: indata.logfile.write('WARNING: something is really odd!!!\n')
 	output += 'Cluster classified as monoclonal='+str(monoclonal)+' and genome is '+str(genome)+'.\n'
 	output += '\n'
 	return [results['total'], output, monoclonal, genome, nohitperc,beforeremovalreads]

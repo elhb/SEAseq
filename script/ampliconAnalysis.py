@@ -33,14 +33,15 @@ def main():
 
     ## GO THROUGH EACH CLUSTER AND IDENTIFY THE READS
     if not indata.analyzeclust: indata.analyzeclust = indata.outfolder+'/temporary.cluster.files'
-    else:
-	tempfiles = {}
-	import os
-	for filename in os.listdir(indata.analyzeclust):
-	    import re
-	    match = re.match('.{0,100}blast.{0,100}',filename)
-	    if match: continue
-	    tempfiles[int(filename.split('/')[-1].split('.reads')[0])] = True;
+    
+    tempfiles = {}
+    import os
+    for filename in os.listdir(indata.analyzeclust):
+	import re
+	match = re.match('(.{0,100}blast.{0,100})|(.{0,100}barcodes.{0,100})',filename)
+	if match: continue
+	tempfiles[int(filename.split('/')[-1].split('.reads')[0])] = True;
+    
     blast_it(tempfiles,indata)
 
     ## CLEANUP
@@ -159,7 +160,8 @@ def sortreads(clusters,indata):
 	tempfiles = {}
 	progress = Progress(indata.reads2process, logfile=indata.logfile)
 #	outfiles = {}
-	outstrs = {};plupp = ''
+	outstrs = {};
+	barcodes2files={}
 	with progress:
 	    for pair in results:
 		progress.update()
@@ -172,13 +174,18 @@ def sortreads(clusters,indata):
 #			plupp += '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
 			try: outstrs[pair.cid] += '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
 			except KeyError: outstrs[pair.cid] = '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
+			try: barcodes2files[pair.cid] += pair.r1.header+'\t'+pair.n15.seq+'\n'
+			except KeyError: barcodes2files[pair.cid] += pair.r1.header+'\t'+pair.n15.seq+'\n'
 #			f.write('>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n')
 #			f.close()
-			if sum([len(string) for string in outstrs.values()]) > 1024*1024*40 or len(outstrs) > 5000:
+			if sum([len(string) for string in outstrs.values()]) > 1024*1024*40 or len(outstrs) > 2500:
 			    indata.logfile.write('Buffer length ='+str(sum([len(string) for string in outstrs.values()]))+', number of subbuffers='+str(len(outstrs))+'. Printing buffers ...')
 			    for cluster_id, outstr in outstrs.iteritems():
 				f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.reads','a')
 				f.write(outstr)
+				f.close()
+				f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.barcodes','a')
+				f.write(barcodes2files[cluster_id])
 				f.close()
 				del f
 			    outstrs.clear()
@@ -195,6 +202,9 @@ def sortreads(clusters,indata):
 	for cluster_id, outstr in outstrs.iteritems():
 	    f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.reads','a')
 	    f.write(outstr)
+	    f.close()
+	    f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.barcodes','a')
+	    f.write(barcodes2files[cluster_id])
 	    f.close()
 	    del f
 	outstrs.clear()
@@ -237,7 +247,7 @@ def blast_it(tempfiles,indata):
 		elif monoclonal== None: non_class+=1
 		try: beadtypes[genome] += 1
 		except KeyError: beadtypes[genome] = 1
-	progress.update()
+#	progress.update()
 
     indata.outfile.write(str( 'We found '+str(tot_clust)+' clusters, with atleast '+str(indata.mrc)+' reads per cluster, out of theese were '+str(round(100*float(monoclonal_clusts)/tot_clust,2))+'% monoclonal ('+str(monoclonal_clusts)+')')+' and '+str(round(100*float(non_class)/tot_clust,2))+'% not classifiable ('+str(non_class)+'), '+str(removed_primer_dimer)+' clusters were classified as primer dimer (>='+str(pdpercent)+'% nohits) and removed\n')
 
@@ -269,22 +279,6 @@ def foreachread(tmp):
     
     return pair
 
-#def foreachread2(tmp):
-#
-#    # unpack info
-#    [pair, indata] = tmp
-#    
-#    # convert to SEAseq readpair
-#    pair.r1=pair.r1.subseq(1,100)
-#    pair.r2=pair.r2.subseq(1,100)
-#    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
-#    
-#    pair.identify(C_HANDLE, indata)
-#    pair.getN15()
-#    pair.identifyIllumina(indata)
-#    #if not (pair.r1.illuminaadapter or pair.r2.illuminaadapter): pass#pair.getSpecific(indata)
-#    return pair
-    
 def getindata():
     import argparse
     argparser = argparse.ArgumentParser(description='Analysis of SEAseq amplicon data.', formatter_class=argparse.RawTextHelpFormatter)
@@ -304,6 +298,7 @@ def getindata():
     argparser.add_argument(	'-analyseclusters',	dest='analyzeclust',metavar='FOLDER',			type=str,	required=False,	default=False,	help='Only analyze cluster files (default False)')
     argparser.add_argument(	'-blastsetting',	dest='blastsetting',metavar='\["strict"\|"sloppy"\]',			type=str,	required=False,	default='strict',	help='setting for the blast either "strict" or "sloppy" (default False)')
     argparser.add_argument(	'-mrc',			dest='mrc',metavar='N',					type=int,	required=False,	default=100,	help='minimum number of reads per cluster to consider it (default 100)')
+    argparser.add_argument(	'-seed',		dest='seed',metavar='N',				type=int,	required=False,	default=1000,	help='number of top barcodes (with most reads) to use as seeds in clustering(default 1000)')
     argparser.add_argument(	'-gpct',		dest='gpct',metavar='N',				type=int,	required=False,	default=2,	help='disreagard genomes with less than X percent of read population (default 2)')
     argparser.add_argument(	'--skipnohits',		dest='skipnohits', 		action='store_true', 			required=False,	default=False,	help='Skip the No Hits reads in all calculations (default False).')
     argparser.add_argument(	'--printblast',		dest='printblast', 		action='store_true', 			required=False,	default=False,	help='print details of the BLAST searcch for each cluster (default False).')
@@ -311,6 +306,10 @@ def getindata():
     argparser.add_argument(	'--onlysort',		dest='onlysort',		action='store_true',			required=False,	default=False,	help='Only sort reads according to n15 sequences (default False)')
     indata = argparser.parse_args(sys.argv[1:])
     indata.selftest = False
+
+    import os
+    try: os.makedirs(indata.outfolder)
+    except OSError:pass
     
     if indata.outfile: indata.outfile = open(indata.outfile, 'w',1)
     else: indata.outfile = sys.stdout
@@ -330,11 +329,7 @@ def getindata():
 	if indata.skip: indata.reads2process -= indata.skip
 	if indata.stop: indata.reads2process = indata.stop
 	if indata.n:    indata.reads2process = indata.n
-
-    import os
-    try: os.makedirs(indata.outfolder)
-    except OSError:pass
-    
+   
     indata.cid_by_bc = False
 
     return indata
