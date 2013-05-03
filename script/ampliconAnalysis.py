@@ -167,17 +167,13 @@ def sortreads(clusters,indata):
 		progress.update()
 		if pair.cid:# and not (pair.r1.illuminaadapter or pair.r2.illuminaadapter):
 		    try:
-#			f = open(indata.outfolder+'/temporary.cluster.files/'+str(cid_by_bc[pair.n15.seq])+'.reads','a')
-#			outfiles[cid_by_bc[pair.n15.seq]] = open(indata.outfolder+'/temporary.cluster.files/'+str(cid_by_bc[pair.n15.seq])+'.reads','a',1024*1024)
-#			f.write('>'+pair.r1.header+'_r1\n'+pair.r1.subseq(35,150).seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.subseq(0,150).seq+'\n')
-#			outfiles[cid_by_bc[pair.n15.seq]].write('>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n')
-#			plupp += '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
+
 			try: outstrs[pair.cid] += '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
 			except KeyError: outstrs[pair.cid] = '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
+
 			try: barcodes2files[pair.cid] += pair.r1.header+'\t'+pair.n15.seq+'\n'
-			except KeyError: barcodes2files[pair.cid] += pair.r1.header+'\t'+pair.n15.seq+'\n'
-#			f.write('>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n')
-#			f.close()
+			except KeyError: barcodes2files[pair.cid] = pair.r1.header+'\t'+pair.n15.seq+'\n'
+
 			if sum([len(string) for string in outstrs.values()]) > 1024*1024*40 or len(outstrs) > 2500:
 			    indata.logfile.write('Buffer length ='+str(sum([len(string) for string in outstrs.values()]))+', number of subbuffers='+str(len(outstrs))+'. Printing buffers ...')
 			    for cluster_id, outstr in outstrs.iteritems():
@@ -189,6 +185,7 @@ def sortreads(clusters,indata):
 				f.close()
 				del f
 			    outstrs.clear()
+			    barcodes2files.clear()
 			    indata.logfile.write(' Done.\n')
 			#if len(outfiles) > 100:
 			#    indata.logfile.write('Closing files ...')
@@ -199,6 +196,7 @@ def sortreads(clusters,indata):
 #			tempfiles[cid_by_bc[pair.n15.seq]] = True
 		    except KeyError: pass#print 'low read cluster read ie not printed'
 	indata.logfile.write('Printing last buffers ...')
+	indata.logfile.write('Buffer length ='+str(sum([len(string) for string in outstrs.values()]))+', number of subbuffers='+str(len(outstrs))+'. Printing buffers ...')
 	for cluster_id, outstr in outstrs.iteritems():
 	    f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.reads','a')
 	    f.write(outstr)
@@ -208,6 +206,7 @@ def sortreads(clusters,indata):
 	    f.close()
 	    del f
 	outstrs.clear()
+	barcodes2files.clear()
 	indata.logfile.write(' Done.\n')
 	if not indata.debug:WorkerPool.close()
 	if not indata.debug:WorkerPool.join()

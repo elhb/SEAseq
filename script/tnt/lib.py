@@ -522,7 +522,7 @@ class SEAseqSummary():
 		f = open(filename,'r',)
 		self.clusters = eval(f.read())
 		f.close()
-		print len(self.clusters)
+		#print len(self.clusters)
 		return
 
 	def reducebarcodes(self,indata):
@@ -634,10 +634,20 @@ class SEAseqSummary():
 def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="reference/4amplicons/4amplicons.fasta"):
 
 	#database="../reference/4amplicons/4amplicons.fasta"
+	
 	from Bio.Blast.Applications import NcbiblastnCommandline
 	from Bio.Blast import NCBIXML
 	from cStringIO import StringIO
 	import time
+	
+	lines = bufcount(infile)
+	if lines/4 < indata.mrc:
+		genome = 'Unknown'
+		beforeremovalreads = 0
+		nohitperc = 0
+		monoclonal = 0
+		output = 'Cluster number '+infile.split('/')[-1].split('.reads')[0]+': Too few reads\n'
+		return [results['total'], output, monoclonal, genome, nohitperc,beforeremovalreads]
 	
 	#setting up blast
 	if indata.blastsetting == 'strict':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5)
