@@ -647,7 +647,7 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 		nohitperc = 0
 		monoclonal = 0
 		output = 'Cluster number '+infile.split('/')[-1].split('.reads')[0]+': Too few reads\n'
-		return [results['total'], output, monoclonal, genome, nohitperc,beforeremovalreads]
+		return [0, output, monoclonal, genome, nohitperc,beforeremovalreads]
 	
 	#setting up blast
 	if indata.blastsetting == 'strict':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5)
@@ -705,10 +705,10 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 				results['total']+=1
 				if r1_subj_name == r2_subj_name:
 					hit = r1_subj_name
-					if indata.printblast: f.write('## Read Pair Agree!\n')
+					if indata.printblast: f.write('## Read Pair Agree!\n\n')
 				else:
 					hit = 'Pair Disagree'
-					if indata.printblast: f.write('## Read Pair Disagree!\n')
+					if indata.printblast: f.write('## Read Pair Disagree!\n\n')
 				try: results[hit]+=1
 				except KeyError:results[hit]=1
 			else: indata.logfile.write('WARNING: read pair headers missmatch!\n')
@@ -723,8 +723,10 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 	amplicons = 0
 	genome = 'Unknown'
 	max_rc = 0
-	try: nohitperc = round(100*float(results['No Hits']+results['Pair Disagree'])/results['total'],2)
+	try: nohitperc = round(100*float(results['No Hits'])/results['total'],2)
 	except KeyError: nohitperc = 0
+	try: disagreeperc = round(100*float(results['Pair Disagree'])/results['total'],2)
+	except KeyError: disagreeperc = 0
 	beforeremovalreads = results['total']
 	if indata.skipnohits:
 		try:results['total']=results['total']-results['No Hits']
@@ -739,8 +741,10 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 		percentage = round(100*float(count)/results['total'],2)
 		if hit == 'total': continue
 		elif hit == 'No Hits' or hit == 'Pair Disagree':
+			if hit == 'No Hits': beforeperc = nohitperc
+			elif hit == 'Pair Disagree': beforeperc = disagreeperc
 			if not indata.skipnohits: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
-			else: output += hit+'\t'+str('NA ')+'% ('+str(count)+' read pairs) (originally '+str(nohitperc)+'% before no hits removal)\n'
+			else: output += hit+'\t'+str('NA ')+'% ('+str(count)+' read pairs) (originally '+str(beforeperc)+'% before no hits removal)\n'
 			continue
 		else: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
 		
@@ -749,7 +753,7 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 			genome = hit
 		if percentage >= indata.gpct: amplicons += 1 # if more than 2% of read pop else disregard
 	
-	output += str(amplicons)+'amplicons found genome thought to be '+genome +'\n'
+	#output += str(amplicons)+'amplicons found genome thought to be '+genome +'\n'
 	monoclonal = None
 	if amplicons == 0:
 		monoclonal = None
@@ -762,7 +766,7 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 	else: indata.logfile.write('WARNING: something is really odd!!!\n')
 	output += 'Cluster classified as monoclonal='+str(monoclonal)+' and genome is '+str(genome)+'.\n'
 	output += '\n'
-	return [results['total'], output, monoclonal, genome, nohitperc,beforeremovalreads]
+	return [results['total'], output, monoclonal, genome, nohitperc+disagreeperc,beforeremovalreads]
 
 
 VARIATIONINFO = {
