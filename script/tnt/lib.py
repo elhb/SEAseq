@@ -640,63 +640,52 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 	from cStringIO import StringIO
 	import time
 	
-	lines = bufcount(infile)
-	if lines/4 < indata.mrc:
-		genome = 'Unknown'
-		beforeremovalreads = 0
-		nohitperc = 0
-		monoclonal = 0
-		output = 'Cluster number '+infile.split('/')[-1].split('.reads')[0]+': Too few reads\n'
-		return [0, output, monoclonal, genome, nohitperc,beforeremovalreads]
-	
 	#setting up blast
-	if indata.blastsetting == 'strict':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5)
-	elif indata.blastsetting == 'sloppy':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn')
-
+	database="reference/4amplicons/4amplicons.fasta"
+	if indata.blastsetting == 'strict':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, out=infile+'.'+indata.blastid+'.blastout')
+	elif indata.blastsetting == 'sloppy':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn', out=infile+'.'+indata.blastid+'.blastout')
+	
 	#Blasting all reads in cluster 
 	blast_handle = cline.__call__()
-	blast_handle = StringIO(blast_handle[0])
-	blast_handle.seek(0)
-	records = NCBIXML.parse(blast_handle)
 
-	#checking blast results
+#	blast_handle = StringIO(blast_handle[0])
+#	blast_handle.seek(0)
+
+	f = open(infile+'.'+indata.blastid+'.blastout')
+	records = NCBIXML.parse(f)
+
 	results = {'total':0}
-	if indata.printblast:
-		import os
-		try: os.makedirs(indata.outfolder+'/temporary.cluster.files/blastResults.'+indata.blastid)
-		except OSError:pass
-		f = open(indata.outfolder+'/temporary.cluster.files/blastResults.'+indata.blastid+'/'+str(infile.split('/')[-1].split('.reads')[0])+'.blastResults.'+indata.blastid,'w')
 	records_counter = 0
+	#checking blast results
 	for blast_record in records:
 		records_counter +=1
 
 		#print blast_record.query+'\t',
-		if indata.printblast: f.write(blast_record.query+'\n')
-		
-		readnumber = int(blast_record.query.split('_r')[1])
-		if readnumber == 1: r1_header = blast_record.query.split('_r')[0]
-		elif readnumber == 2 and records_counter%2 == 0: r2_header = blast_record.query.split('_r')[0]
+#		if indata.printblast: f.write(blast_record.query+'\n')
+		readnumber = int(blast_record.query.split('_r')[1].split('_')[0])
+		if readnumber == 1: r1_header = blast_record.query
+		elif readnumber == 2 and records_counter%2 == 0: r2_header = blast_record.query
 		else: indata.logfile.write('Warning: readnumber is funky!\n')
 		
 		if blast_record.alignments:
-			if indata.printblast:
-				alignment = blast_record.alignments[0]
-				for hsp in alignment.hsps:
-					f.write('\t'+ '****Alignment****'+'\n')
-					f.write('\t'+ 'sequence: '+ alignment.title+'\n')
-					f.write('\t'+ 'length: '+ str(alignment.length)+'\n')
-					f.write('\t'+ 'e value: '+ str(hsp.expect)+'\n')
-					f.write('\t'+ hsp.query +'\n')
-					f.write('\t'+ hsp.match +'\n')
-					f.write('\t'+ hsp.sbjct +'\n')
-					if len(hsp.query) < 40 : f.write('\tTo short will ba counted as "No Hit"\n')
+			#if indata.printblast:
+			#	alignment = blast_record.alignments[0]
+			#	for hsp in alignment.hsps:
+			#		f.write('\t'+ '****Alignment****'+'\n')
+			#		f.write('\t'+ 'sequence: '+ alignment.title+'\n')
+			#		f.write('\t'+ 'length: '+ str(alignment.length)+'\n')
+			#		f.write('\t'+ 'e value: '+ str(hsp.expect)+'\n')
+			#		f.write('\t'+ hsp.query +'\n')
+			#		f.write('\t'+ hsp.match +'\n')
+			#		f.write('\t'+ hsp.sbjct +'\n')
+			#		if len(hsp.query) < 40 : f.write('\tTo short will ba counted as "No Hit"\n')
 
 			if readnumber == 1:
-				r1_header = blast_record.query.split('_r')[0]
+				r1_header = blast_record.query
 				r1_subj_name = blast_record.alignments[0].title.split(' ')[1]
 				if len(blast_record.alignments[0].hsps[0].query) <= 40: subj_name = 'No Hits'
 			elif readnumber == 2 and records_counter%2 == 0:
-				r2_header = blast_record.query.split('_r')[0]
+				r2_header = blast_record.query
 				r2_subj_name = blast_record.alignments[0].title.split(' ')[1]
 				if len(blast_record.alignments[0].hsps[0].query) <= 40: subj_name = 'No Hits'
 			else: indata.logfile.write('Warning: readnumber is funky!\n')
@@ -705,72 +694,21 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 			elif readnumber == 2: r2_subj_name = 'No Hits'
 
 		if records_counter%2 == 0:
-			if r1_header == r2_header:
+			if r1_header.split('_')[0] == r2_header.split('_')[0]:
+				[junk0,junk1,rawrn,cluster_id,n15] = r1_header.split('_') #@M00275:102:000000000-A33TB:1:1101:16119:1648 _ 1:N:0:7 _ 205 _ AAGAGTCAGACTGAA
+				cluster_id = int(cluster_id)
 				results['total']+=1
+				try: results[cluster_id]['total']+=1
+				except KeyError: results[cluster_id]= {'total':1}
 				if r1_subj_name == r2_subj_name:
 					hit = r1_subj_name
-					if indata.printblast: f.write('## Read Pair Agree!\n\n')
 				else:
 					hit = 'Pair Disagree'
-					if indata.printblast: f.write('## Read Pair Disagree!\n\n')
-				try: results[hit]+=1
-				except KeyError:results[hit]=1
+				try: results[cluster_id][hit]+=1
+				except KeyError:results[cluster_id][hit]=1
 			else: indata.logfile.write('WARNING: read pair headers missmatch!\n')
-		
-	if indata.printblast: f.write('\n\n');f.close()
-	
-	# print some info
-	output = 'Cluster number '+infile.split('/')[-1].split('.reads')[0]+':\n'
-	output += 'Total number of read pairs '+str(results['total'])+'\n'#' (='+str(results['total']/2)+'pairs)\n'
-	
-	# check what amplicons were found in the results and determine cluster genome
-	amplicons = 0
-	genome = 'Unknown'
-	max_rc = 0
-	try: nohitperc = round(100*float(results['No Hits'])/results['total'],2)
-	except KeyError: nohitperc = 0
-	try: disagreeperc = round(100*float(results['Pair Disagree'])/results['total'],2)
-	except KeyError: disagreeperc = 0
-	beforeremovalreads = results['total']
-	if indata.skipnohits:
-		try:results['total']=results['total']-results['No Hits']
-		except KeyError: pass
-		try:results['total']=results['total']-results['Pair Disagree']
-		except KeyError: pass
-		output += 'Total number of (SE) reads after removing "NoHits" and "Pair Disagree"-read pairs '+str(results['total'])+'\n'# (='+str(results['total']/2)+'pairs)\n'
-	
-	for hit,count in results.iteritems():
-		if indata.skipnohits and results['total'] == 0: output += hit+'\t'+str('NA ')+'% ('+str(count)+' read pairs) (originally '+str(nohitperc)+'% before no hits removal)\n';break
-		
-		percentage = round(100*float(count)/results['total'],2)
-		if hit == 'total': continue
-		elif hit == 'No Hits' or hit == 'Pair Disagree':
-			if hit == 'No Hits': beforeperc = nohitperc
-			elif hit == 'Pair Disagree': beforeperc = disagreeperc
-			if not indata.skipnohits: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
-			else: output += hit+'\t'+str('NA ')+'% ('+str(count)+' read pairs) (originally '+str(beforeperc)+'% before no hits removal)\n'
-			continue
-		else: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
-		
-		if count > max_rc:
-			max_rc= count;
-			genome = hit
-		if percentage >= indata.gpct: amplicons += 1 # if more than 2% of read pop else disregard
-	
-	#output += str(amplicons)+'amplicons found genome thought to be '+genome +'\n'
-	monoclonal = None
-	if amplicons == 0:
-		monoclonal = None
-		genome = 'Unknown'
-	elif amplicons == 1:
-		monoclonal = True
-	elif amplicons > 1:
-		monoclonal = False
-		genome = 'Mixed'
-	else: indata.logfile.write('WARNING: something is really odd!!!\n')
-	output += 'Cluster classified as monoclonal='+str(monoclonal)+' and genome is '+str(genome)+'.\n'
-	output += '\n'
-	return [results['total'], output, monoclonal, genome, nohitperc+disagreeperc,beforeremovalreads]
+	f.close()
+	return results
 
 
 VARIATIONINFO = {

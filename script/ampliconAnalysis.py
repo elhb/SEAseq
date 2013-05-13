@@ -28,21 +28,13 @@ def main():
 	if indata.onlysort:
 	    summary = SEAseqSummary()
 	    summary.loadclusters(indata.outfolder+'/clusters.tempfile')
-	tempfiles = sortreads(summary.clusters,indata)
+	sortreads(summary.clusters,indata)
         if indata.onlysort: sys.exit()
 
     ## GO THROUGH EACH CLUSTER AND IDENTIFY THE READS
     if not indata.analyzeclust: indata.analyzeclust = indata.outfolder+'/temporary.cluster.files'
     
-    tempfiles = {}
-    import os
-    for filename in os.listdir(indata.analyzeclust):
-	import re
-	match = re.match('(.{0,100}blast.{0,100})|(.{0,100}barcodes.{0,100})',filename)
-	if match: continue
-	tempfiles[int(filename.split('/')[-1].split('.reads')[0])] = True;
-    
-    blast_it(tempfiles,indata)
+    blast_it(indata)
 
     ## CLEANUP
     if not (indata.keeptemp):
@@ -159,9 +151,7 @@ def sortreads(clusters,indata):
 	if not indata.debug: indata.logfile.write('Part2: Sorting reads to cluster '+str(indata.cpus)+' processes  ...\n')
 	else: indata.logfile.write('Part4: writing to cluster tempfiles\n')
 
-	tempfiles = {}
 	progress = Progress(indata.reads2process, logfile=indata.logfile)
-#	outfiles = {}
 	outstrs = {};
 	barcodes2files={}
 	with progress:
@@ -174,72 +164,56 @@ def sortreads(clusters,indata):
 		progress.update()
 		if pair.cid:# and not (pair.r1.illuminaadapter or pair.r2.illuminaadapter):
 		    if indata.sortfmt == 'fq':
-			f1.write('@' + pair.r1.header + '_r1_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+			f1.write('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
 				+pair.r1.seq+'\n+\n'
 				+pair.r1.qual+'\n')
-			f2.write('@' + pair.r2.header + '_r2_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+			f2.write('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
 				+pair.r2.seq+'\n+\n'
 				+pair.r2.qual+'\n')
 		    elif indata.sortfmt == 'fa':
-			f1.write('>' + pair.r1.header + '_r1_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+			f1.write('>' + '_'.join(pair.r1.header.split(' ')) + '_r1_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
 				+pair.r1.seq+'\n'+
-				'>' + pair.r2.header + '_r2_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+				'>' + '_'.join(pair.r2.header.split(' ')) + '_r2_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
 				+pair.r2.seq+'\n')
 	    f1.close()
 	    if indata.sortfmt == 'fq': f2.close()
-#		    try:
-#
-#			try: outstrs[pair.cid] += '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
-#			except KeyError: outstrs[pair.cid] = '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
-#
-#			try: barcodes2files[pair.cid] += pair.r1.header+'\t'+pair.n15.seq+'\n'
-#			except KeyError: barcodes2files[pair.cid] = pair.r1.header+'\t'+pair.n15.seq+'\n'
-#
-#			if sum([len(string) for string in outstrs.values()]) > 1024*1024*40 or len(outstrs) > 2500:
-#			    indata.logfile.write('Buffer length ='+str(sum([len(string) for string in outstrs.values()]))+', number of subbuffers='+str(len(outstrs))+'. Printing buffers ...')
-#			    for cluster_id, outstr in outstrs.iteritems():
-#				f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.reads','a')
-#				f.write(outstr)
-#				f.close()
-#				f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.barcodes','a')
-#				f.write(barcodes2files[cluster_id])
-#				f.close()
-#				del f
-#			    outstrs.clear()
-#			    barcodes2files.clear()
-#			    indata.logfile.write(' Done.\n')
-#			#if len(outfiles) > 100:
-#			#    indata.logfile.write('Closing files ...')
-#			#    for outfile in outfiles.values(): outfile.close
-#			#    outfiles = {}
-#			#    indata.logfile.write('Done.\n')
-##			del f
-##			tempfiles[cid_by_bc[pair.n15.seq]] = True
-#		    except KeyError: pass#print 'low read cluster read ie not printed'
-#	indata.logfile.write('Printing last buffers ...')
-#	indata.logfile.write('Buffer length ='+str(sum([len(string) for string in outstrs.values()]))+', number of subbuffers='+str(len(outstrs))+'. Printing buffers ...')
-#	for cluster_id, outstr in outstrs.iteritems():
-#	    f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.reads','a')
-#	    f.write(outstr)
-#	    f.close()
-#	    f = open(indata.outfolder+'/temporary.cluster.files/barcodes/'+str(cluster_id)+'.barcodes','a')
-#	    f.write(barcodes2files[cluster_id])
-#	    f.close()
-#	    del f
-#	outstrs.clear()
-#	barcodes2files.clear()
-#	indata.logfile.write(' Done.\n')
 
 	if not indata.debug:WorkerPool.close()
 	if not indata.debug:WorkerPool.join()
 	indata.logfile.write('Reads sorted into cluster tempfiles\n')
 	indata.logfile.write('Part2: Sorting reads to clusters END\n')
 	gc.collect()
-        return tempfiles
+        return 0
 
-def blast_it(tempfiles,indata):
+def blast_it(indata):
     indata.logfile.write('Part3: Identifying clusters by Blast START\n')
     indata.blastid = time.strftime("%A_%d_%b_%Y_%H_%M_%S",time.localtime())
+
+    infile = indata.analyzeclust+'/sorted.reads.fa'
+    lines = bufcount(infile)
+    reads = lines/2
+    pairs = reads/2
+
+    indata.logfile.write('Splitting infiles ...\n')
+    tempfiles = {}
+    f = open(infile)
+    sub=1;rc=0.00;f_sub = open(infile+'.'+str(sub)+'_sub.fa','w');tempfiles[f_sub.name]=True
+    progress = Progress(lines, logfile=indata.logfile ,unit='line')
+    with progress:
+	for line in f:
+	    rc+=0.25
+	    progress.update()
+	    f_sub.write(line)
+	    if rc >= 50000.0:
+		sub+=1;
+		f_sub.close();
+		#if sub > 8: break
+		f_sub = open(infile+'.'+str(sub)+'_sub.fa','w');
+		rc=0.00;tempfiles[f_sub.name]=True
+		#indata.logfile.write(f_sub.name+'\n')
+    f_sub.close()
+    indata.logfile.write('DONE\n')
+
     if indata.debug: #single process // serial
 	results=[] # create holder for processed reads
 	for tmp in yielder(tempfiles.keys(), indata):
@@ -248,7 +222,7 @@ def blast_it(tempfiles,indata):
 	import multiprocessing
 	#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
 	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10)
-	results = WorkerPool.imap_unordered(foreach3,yielder(tempfiles.keys(), indata),chunksize=2)
+	results = WorkerPool.imap_unordered(foreach3,yielder(tempfiles.keys(), indata),chunksize=1)
 
     monoclonal_clusts = 0
     non_class = 0
@@ -256,10 +230,86 @@ def blast_it(tempfiles,indata):
     removed_primer_dimer=0
     pdpercent=90
     beadtypes = {}
-    progress = Progress(len(tempfiles.keys()), logfile=indata.logfile ,unit='cluster')
+    progress = Progress(len(tempfiles.keys()), logfile=indata.logfile ,unit='file')
+    info_dict = {'total':0}
     with progress:
-	for [tot_reads, output, monoclonal,genome,nohitperc,beforeremovalreads] in results:
+	for tmp in results:
 	    progress.update()
+	
+	    info_dict['total'] += tmp['total']
+	    for cluster_id, data in tmp.iteritems():
+
+		if cluster_id != 'total':
+
+		    try: info_dict[cluster_id]['total'] += tmp[cluster_id]['total']
+		    except KeyError: info_dict[cluster_id] = {'total':tmp[cluster_id]['total']}
+
+		    for genome, count in data.iteritems():
+			if genome != 'total':
+			    try:info_dict[cluster_id][genome] += count
+			    except KeyError:info_dict[cluster_id][genome] = count
+
+    indata.logfile.write('Parsing info_dict ... \n')
+    for cluster_id, data in info_dict.iteritems(): #could be done in parallel
+	if cluster_id == 'total':continue
+	if info_dict[cluster_id]['total'] >= indata.mrc:
+
+	    # print some info
+	    output = 'Cluster number '+str(cluster_id)+':\n'
+	    output += 'Total number of read pairs '+str(data['total'])+'\n'
+	    
+	    # check what amplicons were found in the results and determine cluster genome
+	    amplicons = 0
+	    genome = 'Unknown'
+	    max_rc = 0
+	    
+	    try: nohitperc = round(100*float(data['No Hits'])/data['total'],2)
+	    except KeyError: nohitperc = 0
+	    try: disagreeperc = round(100*float(data['Pair Disagree'])/data['total'],2)
+	    except KeyError: disagreeperc = 0
+	    beforeremovalreads = data['total']
+	    if indata.skipnohits:
+	    	try:data['total']=data['total']-data['No Hits']
+	    	except KeyError: pass
+	    	try:data['total']=data['total']-data['Pair Disagree']
+	    	except KeyError: pass
+	    	output += 'Total number of (SE) reads after removing "NoHits" and "Pair Disagree"-read pairs '+str(data['total'])+'\n'# (='+str(results['total']/2)+'pairs)\n'
+	    
+	    for hit,count in data.iteritems():
+	    	if indata.skipnohits and data['total'] == 0: output += hit+'\t'+str('NA ')+'% ('+str(count)+' read pairs) (originally '+str(nohitperc)+'% before no hits removal)\n';break
+	    	
+	    	percentage = round(100*float(count)/data['total'],2)
+	    	if hit == 'total': continue
+	    	elif hit == 'No Hits' or hit == 'Pair Disagree':
+	    		if hit == 'No Hits': beforeperc = nohitperc
+	    		elif hit == 'Pair Disagree': beforeperc = disagreeperc
+	    		if not indata.skipnohits: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
+	    		else: output += hit+'\t'+str('NA ')+'% ('+str(count)+' read pairs) (originally '+str(beforeperc)+'% before no hits removal)\n'
+	    		continue
+	    	else: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
+	    	
+	    	if count > max_rc:
+	    		max_rc= count;
+	    		genome = hit
+	    	if percentage >= indata.gpct: amplicons += 1 # if more than 2% of read pop else disregard
+	    
+	    #output += str(amplicons)+'amplicons found genome thought to be '+genome +'\n'
+	    monoclonal = None
+	    if amplicons == 0:
+	    	monoclonal = None
+	    	genome = 'Unknown'
+	    elif amplicons == 1:
+	    	monoclonal = True
+	    elif amplicons > 1:
+	    	monoclonal = False
+	    	genome = 'Mixed'
+	    else: indata.logfile.write('WARNING: something is really odd!!!\n')
+	    output += 'Cluster classified as monoclonal='+str(monoclonal)+' and genome is '+str(genome)+'.\n'
+	    output += '\n'
+    
+	    #for [tot_reads, output, monoclonal,genome,nohitperc,beforeremovalreads] in results:
+	    #	progress.update()
+	    tot_reads = data['total']
 	    if beforeremovalreads >= indata.mrc:
 		if nohitperc > pdpercent:removed_primer_dimer+=1;continue
 		indata.outfile.write(str(output)+'\n')
@@ -268,7 +318,6 @@ def blast_it(tempfiles,indata):
 		elif monoclonal== None: non_class+=1
 		try: beadtypes[genome] += 1
 		except KeyError: beadtypes[genome] = 1
-#	progress.update()
 
     indata.outfile.write(str( 'We found '+str(tot_clust)+' clusters, with atleast '+str(indata.mrc)+' reads per cluster, out of theese were '+str(round(100*float(monoclonal_clusts)/tot_clust,2))+'% monoclonal ('+str(monoclonal_clusts)+')')+' and '+str(round(100*float(non_class)/tot_clust,2))+'% not classifiable ('+str(non_class)+'), '+str(removed_primer_dimer)+' clusters were classified as primer dimer (>='+str(pdpercent)+'% nohits) and removed\n')
 
@@ -281,8 +330,10 @@ def yielder(lista, indata):
     
 def foreach3(tmp):
     [infile,indata] = tmp
-    infile = indata.analyzeclust+'/'+str(infile)+'.reads'
-    return classify_cluser(indata,infile=infile)
+    tmp = classify_cluser(indata,infile=infile)
+    import os
+    os.remove(infile)
+    return tmp
 
 def foreachread(tmp):
 
@@ -326,7 +377,7 @@ def getindata():
     argparser.add_argument(	'--printblast',		dest='printblast', 		action='store_true', 			required=False,	default=False,	help='print details of the BLAST searcch for each cluster (default False).')
     argparser.add_argument(	'--onlycluster',	dest='onlycluster',		action='store_true',			required=False,	default=False,	help='Only do clustering of n15 sequences (default False)')
     argparser.add_argument(	'--onlysort',		dest='onlysort',		action='store_true',			required=False,	default=False,	help='Only sort reads according to n15 sequences (default False)')
-    argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq]',			type=str,	required=False,	default='fq',	help='Format to output reads to fa=fasta or fq=fastq (default fastq)')
+    argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq]',			type=str,	required=False,	default='fa',	help='Format to output reads to fa=fasta or fq=fastq (default fastq)')
     indata = argparser.parse_args(sys.argv[1:])
     indata.selftest = False
 
