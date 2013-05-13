@@ -661,7 +661,11 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 
 	#checking blast results
 	results = {'total':0}
-	if indata.printblast: f = open(indata.outfolder+'/temporary.cluster.files/'+str(infile.split('/')[-1].split('.reads')[0])+'.blastResults.'+indata.blastid,'w')
+	if indata.printblast:
+		import os
+		try: os.makedirs(indata.outfolder+'/temporary.cluster.files/blastResults.'+indata.blastid)
+		except OSError:pass
+		f = open(indata.outfolder+'/temporary.cluster.files/blastResults.'+indata.blastid+'/'+str(infile.split('/')[-1].split('.reads')[0])+'.blastResults.'+indata.blastid,'w')
 	records_counter = 0
 	for blast_record in records:
 		records_counter +=1

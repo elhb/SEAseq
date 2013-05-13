@@ -120,6 +120,8 @@ def sortreads(clusters,indata):
 	import os
 	try: os.makedirs(indata.outfolder+'/temporary.cluster.files')
 	except OSError:pass
+	try: os.makedirs(indata.outfolder+'/temporary.cluster.files/barcodes')
+	except OSError:pass
 
 	cid_by_bc = {}
 	progress = Progress(len(clusters),verb='minimal', logfile=indata.logfile)
@@ -150,7 +152,7 @@ def sortreads(clusters,indata):
 	else: # multiple processes in parallel
 	    import multiprocessing
 	    #create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
-	    WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000)
+	    WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
 	    results = WorkerPool.imap_unordered(foreachread,getPairs(indata),chunksize=1000)
 
 	# output log message about whats happening
@@ -163,51 +165,71 @@ def sortreads(clusters,indata):
 	outstrs = {};
 	barcodes2files={}
 	with progress:
+	    if indata.sortfmt == 'fq':
+		f1 = open(indata.outfolder+'/temporary.cluster.files/sorted.reads.1.fq','w')
+		f2 = open(indata.outfolder+'/temporary.cluster.files/sorted.reads.2.fq','w')
+	    elif indata.sortfmt == 'fa':
+		f1 = open(indata.outfolder+'/temporary.cluster.files/sorted.reads.fa','w')
 	    for pair in results:
 		progress.update()
 		if pair.cid:# and not (pair.r1.illuminaadapter or pair.r2.illuminaadapter):
-		    try:
+		    if indata.sortfmt == 'fq':
+			f1.write('@' + pair.r1.header + '_r1_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+				+pair.r1.seq+'\n+\n'
+				+pair.r1.qual+'\n')
+			f2.write('@' + pair.r2.header + '_r2_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+				+pair.r2.seq+'\n+\n'
+				+pair.r2.qual+'\n')
+		    elif indata.sortfmt == 'fa':
+			f1.write('>' + pair.r1.header + '_r1_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+				+pair.r1.seq+'\n'+
+				'>' + pair.r2.header + '_r2_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+				+pair.r2.seq+'\n')
+	    f1.close()
+	    if indata.sortfmt == 'fq': f2.close()
+#		    try:
+#
+#			try: outstrs[pair.cid] += '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
+#			except KeyError: outstrs[pair.cid] = '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
+#
+#			try: barcodes2files[pair.cid] += pair.r1.header+'\t'+pair.n15.seq+'\n'
+#			except KeyError: barcodes2files[pair.cid] = pair.r1.header+'\t'+pair.n15.seq+'\n'
+#
+#			if sum([len(string) for string in outstrs.values()]) > 1024*1024*40 or len(outstrs) > 2500:
+#			    indata.logfile.write('Buffer length ='+str(sum([len(string) for string in outstrs.values()]))+', number of subbuffers='+str(len(outstrs))+'. Printing buffers ...')
+#			    for cluster_id, outstr in outstrs.iteritems():
+#				f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.reads','a')
+#				f.write(outstr)
+#				f.close()
+#				f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.barcodes','a')
+#				f.write(barcodes2files[cluster_id])
+#				f.close()
+#				del f
+#			    outstrs.clear()
+#			    barcodes2files.clear()
+#			    indata.logfile.write(' Done.\n')
+#			#if len(outfiles) > 100:
+#			#    indata.logfile.write('Closing files ...')
+#			#    for outfile in outfiles.values(): outfile.close
+#			#    outfiles = {}
+#			#    indata.logfile.write('Done.\n')
+##			del f
+##			tempfiles[cid_by_bc[pair.n15.seq]] = True
+#		    except KeyError: pass#print 'low read cluster read ie not printed'
+#	indata.logfile.write('Printing last buffers ...')
+#	indata.logfile.write('Buffer length ='+str(sum([len(string) for string in outstrs.values()]))+', number of subbuffers='+str(len(outstrs))+'. Printing buffers ...')
+#	for cluster_id, outstr in outstrs.iteritems():
+#	    f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.reads','a')
+#	    f.write(outstr)
+#	    f.close()
+#	    f = open(indata.outfolder+'/temporary.cluster.files/barcodes/'+str(cluster_id)+'.barcodes','a')
+#	    f.write(barcodes2files[cluster_id])
+#	    f.close()
+#	    del f
+#	outstrs.clear()
+#	barcodes2files.clear()
+#	indata.logfile.write(' Done.\n')
 
-			try: outstrs[pair.cid] += '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
-			except KeyError: outstrs[pair.cid] = '>'+pair.r1.header+'_r1\n'+pair.r1.seq+'\n>'+pair.r2.header+'_r2\n'+pair.r2.seq+'\n'
-
-			try: barcodes2files[pair.cid] += pair.r1.header+'\t'+pair.n15.seq+'\n'
-			except KeyError: barcodes2files[pair.cid] = pair.r1.header+'\t'+pair.n15.seq+'\n'
-
-			if sum([len(string) for string in outstrs.values()]) > 1024*1024*40 or len(outstrs) > 2500:
-			    indata.logfile.write('Buffer length ='+str(sum([len(string) for string in outstrs.values()]))+', number of subbuffers='+str(len(outstrs))+'. Printing buffers ...')
-			    for cluster_id, outstr in outstrs.iteritems():
-				f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.reads','a')
-				f.write(outstr)
-				f.close()
-				f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.barcodes','a')
-				f.write(barcodes2files[cluster_id])
-				f.close()
-				del f
-			    outstrs.clear()
-			    barcodes2files.clear()
-			    indata.logfile.write(' Done.\n')
-			#if len(outfiles) > 100:
-			#    indata.logfile.write('Closing files ...')
-			#    for outfile in outfiles.values(): outfile.close
-			#    outfiles = {}
-			#    indata.logfile.write('Done.\n')
-#			del f
-#			tempfiles[cid_by_bc[pair.n15.seq]] = True
-		    except KeyError: pass#print 'low read cluster read ie not printed'
-	indata.logfile.write('Printing last buffers ...')
-	indata.logfile.write('Buffer length ='+str(sum([len(string) for string in outstrs.values()]))+', number of subbuffers='+str(len(outstrs))+'. Printing buffers ...')
-	for cluster_id, outstr in outstrs.iteritems():
-	    f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.reads','a')
-	    f.write(outstr)
-	    f.close()
-	    f = open(indata.outfolder+'/temporary.cluster.files/'+str(cluster_id)+'.barcodes','a')
-	    f.write(barcodes2files[cluster_id])
-	    f.close()
-	    del f
-	outstrs.clear()
-	barcodes2files.clear()
-	indata.logfile.write(' Done.\n')
 	if not indata.debug:WorkerPool.close()
 	if not indata.debug:WorkerPool.join()
 	indata.logfile.write('Reads sorted into cluster tempfiles\n')
@@ -291,18 +313,20 @@ def getindata():
     argparser.add_argument(	'-l',			dest='logfile',	metavar='logfile',			type=str,	required=False,	default=False,	help='Print log messages to logfile (default stderr).')
     argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
     argparser.add_argument(	'-hm',			dest='handlemm',metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in handle sequence (default 0)')
-    argparser.add_argument(	'-bm',			dest='bcmm',metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in barcode sequence during clustering (default 0)')
+    argparser.add_argument(	'-bm',			dest='bcmm',	metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in barcode sequence during clustering (default 0)')
     argparser.add_argument(	'-outfolder',		dest='outfolder',metavar='FOLDER',			type=str,	required=False,	default='.',	help='Folder where temporary outputfiles are stored (default current working dir).')
     argparser.add_argument(	'--keeptemp',		dest='keeptemp', 		action='store_true', 			required=False,	default=False,	help='Keep temporary files (default is to delete tempfiles).')
-    argparser.add_argument(	'-analyseclusters',	dest='analyzeclust',metavar='FOLDER',			type=str,	required=False,	default=False,	help='Only analyze cluster files (default False)')
-    argparser.add_argument(	'-blastsetting',	dest='blastsetting',metavar='\["strict"\|"sloppy"\]',			type=str,	required=False,	default='strict',	help='setting for the blast either "strict" or "sloppy" (default False)')
-    argparser.add_argument(	'-mrc',			dest='mrc',metavar='N',					type=int,	required=False,	default=100,	help='minimum number of reads per cluster to consider it (default 100)')
-    argparser.add_argument(	'-seed',		dest='seed',metavar='N',				type=int,	required=False,	default=1000,	help='number of top barcodes (with most reads) to use as seeds in clustering(default 1000)')
-    argparser.add_argument(	'-gpct',		dest='gpct',metavar='N',				type=int,	required=False,	default=2,	help='disreagard genomes with less than X percent of read population (default 2)')
+    argparser.add_argument(	'-analyzeclusters',	dest='analyzeclust',metavar='FOLDER',			type=str,	required=False,	default=False,	help='Only analyze cluster files (default False)')
+    argparser.add_argument(	'-analysis',		dest='analyzeclust',metavar='[blast/bowtie]',		type=str,	required=False,	default='blast',help='Type of analysis mapping by bowtie or use blast (default blast)')
+    argparser.add_argument(	'-blastsettting',	dest='blastsetting',metavar='\["strict"\|"sloppy"\]',	type=str,	required=False,	default='strict',help='setting for the blast either "strict" or "sloppy" (default False)')
+    argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=100,	help='minimum number of reads per cluster to consider it (default 100)')
+    argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=1000,	help='number of top barcodes (with most reads) to use as seeds in clustering(default 1000)')
+    argparser.add_argument(	'-gpct',		dest='gpct',	metavar='N',				type=int,	required=False,	default=2,	help='disreagard genomes with less than X percent of read population (default 2)')
     argparser.add_argument(	'--skipnohits',		dest='skipnohits', 		action='store_true', 			required=False,	default=False,	help='Skip the No Hits reads in all calculations (default False).')
     argparser.add_argument(	'--printblast',		dest='printblast', 		action='store_true', 			required=False,	default=False,	help='print details of the BLAST searcch for each cluster (default False).')
     argparser.add_argument(	'--onlycluster',	dest='onlycluster',		action='store_true',			required=False,	default=False,	help='Only do clustering of n15 sequences (default False)')
     argparser.add_argument(	'--onlysort',		dest='onlysort',		action='store_true',			required=False,	default=False,	help='Only sort reads according to n15 sequences (default False)')
+    argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq]',			type=str,	required=False,	default='fq',	help='Format to output reads to fa=fasta or fq=fastq (default fastq)')
     indata = argparser.parse_args(sys.argv[1:])
     indata.selftest = False
 
