@@ -668,26 +668,15 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 		else: indata.logfile.write('Warning: readnumber is funky!\n')
 		
 		if blast_record.alignments:
-			#if indata.printblast:
-			#	alignment = blast_record.alignments[0]
-			#	for hsp in alignment.hsps:
-			#		f.write('\t'+ '****Alignment****'+'\n')
-			#		f.write('\t'+ 'sequence: '+ alignment.title+'\n')
-			#		f.write('\t'+ 'length: '+ str(alignment.length)+'\n')
-			#		f.write('\t'+ 'e value: '+ str(hsp.expect)+'\n')
-			#		f.write('\t'+ hsp.query +'\n')
-			#		f.write('\t'+ hsp.match +'\n')
-			#		f.write('\t'+ hsp.sbjct +'\n')
 			#		if len(hsp.query) < 40 : f.write('\tTo short will ba counted as "No Hit"\n')
-
 			if readnumber == 1:
 				r1_header = blast_record.query
 				r1_subj_name = blast_record.alignments[0].title.split(' ')[1]
-				if len(blast_record.alignments[0].hsps[0].query) <= 40: subj_name = 'No Hits'
+				if len(blast_record.alignments[0].hsps[0].query) <= 40: r1_subj_name = 'No Hits'
 			elif readnumber == 2 and records_counter%2 == 0:
 				r2_header = blast_record.query
 				r2_subj_name = blast_record.alignments[0].title.split(' ')[1]
-				if len(blast_record.alignments[0].hsps[0].query) <= 40: subj_name = 'No Hits'
+				if len(blast_record.alignments[0].hsps[0].query) <= 40: r2_subj_name = 'No Hits'
 			else: indata.logfile.write('Warning: readnumber is funky!\n')
 		else:
 			if readnumber == 1: r1_subj_name = 'No Hits'
@@ -698,16 +687,25 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 				[junk0,junk1,rawrn,cluster_id,n15] = r1_header.split('_') #@M00275:102:000000000-A33TB:1:1101:16119:1648 _ 1:N:0:7 _ 205 _ AAGAGTCAGACTGAA
 				cluster_id = int(cluster_id)
 				results['total']+=1
+				
 				try: results[cluster_id]['total']+=1
 				except KeyError: results[cluster_id]= {'total':1}
+				
 				if r1_subj_name == r2_subj_name:
 					hit = r1_subj_name
 				else:
 					hit = 'Pair Disagree'
+				
 				try: results[cluster_id][hit]+=1
 				except KeyError:results[cluster_id][hit]=1
+			
 			else: indata.logfile.write('WARNING: read pair headers missmatch!\n')
 	f.close()
+	
+	import os
+	os.remove(infile)
+	os.remove(infile+'.'+indata.blastid+'.blastout')
+	
 	return results
 
 

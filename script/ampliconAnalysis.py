@@ -44,8 +44,10 @@ def main():
 	os.remove(indata.outfolder+'/'+'clusters.tempfile')
 	os.remove(indata.outfolder+'/'+'seed_bcs.tempfile')
 	os.remove(indata.outfolder+'/'+'raw_bcs.tempfile')
-    
+
+    indata.outfile.close()
     indata.logfile.write('All Done.\n')
+    indata.logfile.close()
 #--------------------------MAIN PROGRAM END-------------------------
 
 #--------------------- Functions, Subroutines and classes --------------------	
@@ -199,20 +201,19 @@ def blast_it(indata):
     f = open(infile)
     sub=1;rc=0.00;f_sub = open(infile+'.'+str(sub)+'_sub.fa','w');tempfiles[f_sub.name]=True
     progress = Progress(lines, logfile=indata.logfile ,unit='line')
-    with progress:
+    with progress: # Split fasta to smaller parts for parallel blasting and results handelling
 	for line in f:
 	    rc+=0.25
 	    progress.update()
 	    f_sub.write(line)
-	    if rc >= 50000.0:
+	    if rc >= indata.readsinsub:
 		sub+=1;
 		f_sub.close();
-		#if sub > 8: break
+		#if sub > 100: break
 		f_sub = open(infile+'.'+str(sub)+'_sub.fa','w');
 		rc=0.00;tempfiles[f_sub.name]=True
-		#indata.logfile.write(f_sub.name+'\n')
     f_sub.close()
-    indata.logfile.write('DONE\n')
+    indata.logfile.write('Done. Resulted in '+str(sub)+' parts in total.\n')
 
     if indata.debug: #single process // serial
 	results=[] # create holder for processed reads
@@ -224,15 +225,10 @@ def blast_it(indata):
 	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10)
 	results = WorkerPool.imap_unordered(foreach3,yielder(tempfiles.keys(), indata),chunksize=1)
 
-    monoclonal_clusts = 0
-    non_class = 0
-    tot_clust  = 0
-    removed_primer_dimer=0
-    pdpercent=90
-    beadtypes = {}
+    indata.logfile.write('Now doing blasting and xml parsing ... \n')
     progress = Progress(len(tempfiles.keys()), logfile=indata.logfile ,unit='file')
     info_dict = {'total':0}
-    with progress:
+    with progress: # blast and prse results in parallel store info in dict
 	for tmp in results:
 	    progress.update()
 	
@@ -250,79 +246,103 @@ def blast_it(indata):
 			    except KeyError:info_dict[cluster_id][genome] = count
 
     indata.logfile.write('Parsing info_dict ... \n')
-    for cluster_id, data in info_dict.iteritems(): #could be done in parallel
-	if cluster_id == 'total':continue
-	if info_dict[cluster_id]['total'] >= indata.mrc:
-
-	    # print some info
-	    output = 'Cluster number '+str(cluster_id)+':\n'
-	    output += 'Total number of read pairs '+str(data['total'])+'\n'
-	    
-	    # check what amplicons were found in the results and determine cluster genome
-	    amplicons = 0
-	    genome = 'Unknown'
-	    max_rc = 0
-	    
-	    try: nohitperc = round(100*float(data['No Hits'])/data['total'],2)
-	    except KeyError: nohitperc = 0
-	    try: disagreeperc = round(100*float(data['Pair Disagree'])/data['total'],2)
-	    except KeyError: disagreeperc = 0
-	    beforeremovalreads = data['total']
-	    if indata.skipnohits:
-	    	try:data['total']=data['total']-data['No Hits']
-	    	except KeyError: pass
-	    	try:data['total']=data['total']-data['Pair Disagree']
-	    	except KeyError: pass
-	    	output += 'Total number of (SE) reads after removing "NoHits" and "Pair Disagree"-read pairs '+str(data['total'])+'\n'# (='+str(results['total']/2)+'pairs)\n'
-	    
-	    for hit,count in data.iteritems():
-	    	if indata.skipnohits and data['total'] == 0: output += hit+'\t'+str('NA ')+'% ('+str(count)+' read pairs) (originally '+str(nohitperc)+'% before no hits removal)\n';break
-	    	
-	    	percentage = round(100*float(count)/data['total'],2)
-	    	if hit == 'total': continue
-	    	elif hit == 'No Hits' or hit == 'Pair Disagree':
-	    		if hit == 'No Hits': beforeperc = nohitperc
-	    		elif hit == 'Pair Disagree': beforeperc = disagreeperc
-	    		if not indata.skipnohits: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
-	    		else: output += hit+'\t'+str('NA ')+'% ('+str(count)+' read pairs) (originally '+str(beforeperc)+'% before no hits removal)\n'
-	    		continue
-	    	else: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
-	    	
-	    	if count > max_rc:
-	    		max_rc= count;
-	    		genome = hit
-	    	if percentage >= indata.gpct: amplicons += 1 # if more than 2% of read pop else disregard
-	    
-	    #output += str(amplicons)+'amplicons found genome thought to be '+genome +'\n'
-	    monoclonal = None
-	    if amplicons == 0:
-	    	monoclonal = None
-	    	genome = 'Unknown'
-	    elif amplicons == 1:
-	    	monoclonal = True
-	    elif amplicons > 1:
-	    	monoclonal = False
-	    	genome = 'Mixed'
-	    else: indata.logfile.write('WARNING: something is really odd!!!\n')
-	    output += 'Cluster classified as monoclonal='+str(monoclonal)+' and genome is '+str(genome)+'.\n'
-	    output += '\n'
     
-	    #for [tot_reads, output, monoclonal,genome,nohitperc,beforeremovalreads] in results:
-	    #	progress.update()
-	    tot_reads = data['total']
-	    if beforeremovalreads >= indata.mrc:
-		if nohitperc > pdpercent:removed_primer_dimer+=1;continue
-		indata.outfile.write(str(output)+'\n')
-		tot_clust+=1
-		if monoclonal: monoclonal_clusts+=1
-		elif monoclonal== None: non_class+=1
-		try: beadtypes[genome] += 1
-		except KeyError: beadtypes[genome] = 1
+    orgname = indata.outfile.name
+    for indata.mrc in [2,10,20,30,40,50,60,70,80,90,100,125,150,175,200,225,250,300,350,400,450,500,600,700,800,900,1000,1500,2000]:
+	monoclonal_clusts = 0
+	non_class = 0
+	tot_clust  = 0
+	removed_primer_dimer=0
+	pdpercent=90
+	beadtypes = {}
+	indata.logfile.write('Runnning mrc '+str(indata.mrc)+' ...\n')
+	indata.outfile.close()
+	indata.outfile = open(orgname+'.mrc_'+str(indata.mrc),'w')
+	for cluster_id, data in info_dict.iteritems(): # go through info dict and summarize each cluster then summarize all clusters #could be done in parallel
+	    if cluster_id == 'total':continue
+	    if info_dict[cluster_id]['total'] >= indata.mrc:
 
-    indata.outfile.write(str( 'We found '+str(tot_clust)+' clusters, with atleast '+str(indata.mrc)+' reads per cluster, out of theese were '+str(round(100*float(monoclonal_clusts)/tot_clust,2))+'% monoclonal ('+str(monoclonal_clusts)+')')+' and '+str(round(100*float(non_class)/tot_clust,2))+'% not classifiable ('+str(non_class)+'), '+str(removed_primer_dimer)+' clusters were classified as primer dimer (>='+str(pdpercent)+'% nohits) and removed\n')
-
-    total = sum([ count for beadtype,count in beadtypes.iteritems()])
-    for beadtype,count in beadtypes.iteritems(): indata.outfile.write(str( beadtype +' '+ str(round(100*float(count)/total,2))+'% ('+str(count)+' clusters)')+'\n')
+		# print some info
+		output = 'Cluster number '+str(cluster_id)+':\n'
+		output += 'Total number of read pairs '+str(data['total'])+'\n'
+		
+		# check what amplicons were found in the results and determine cluster genome
+		amplicons = 0
+		genome = 'Unknown'
+		max_rc = 0
+		
+		try: nohitperc = round(100*float(data['No Hits'])/data['total'],2)
+		except KeyError: nohitperc = 0
+		try: disagreeperc = round(100*float(data['Pair Disagree'])/data['total'],2)
+		except KeyError: disagreeperc = 0
+		beforeremovalreads = data['total']
+		postremtotal = data['total']
+		if indata.skipnohits:
+		    try:postremtotal=postremtotal-data['No Hits']
+		    except KeyError: pass
+		    try:postremtotal=postremtotal-data['Pair Disagree']
+		    except KeyError: pass
+		    output += 'Total number of (SE) reads after removing "NoHits" and "Pair Disagree"-read pairs '+str(postremtotal)+'\n'# (='+str(results['total']/2)+'pairs)\n'
+		
+		for hit,count in data.iteritems():
+		    if indata.skipnohits and postremtotal == 0:
+			try:output += 'No Hits'+'\t'+str('NA ')+'% ('+str(data['No Hits'])+' read pairs) (originally '+str(nohitperc)+'% before no hits removal)\n';
+			except KeyError:pass
+			try:output += 'Pair Disagree'+'\t'+str('NA ')+'% ('+str(data['Pair Disagree'])+' read pairs) (originally '+str(disagreeperc)+'% before no hits removal)\n';
+			except KeyError:pass
+			break
+		    
+		    percentage = round(100*float(count)/postremtotal,2)
+		    if hit == 'total': continue
+		    elif hit == 'No Hits' or hit == 'Pair Disagree':
+			    if hit == 'No Hits': beforeperc = nohitperc
+			    elif hit == 'Pair Disagree': beforeperc = disagreeperc
+			    if not indata.skipnohits: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
+			    else: output += hit+'\t'+str('NA ')+'% ('+str(count)+' read pairs) (originally '+str(beforeperc)+'% before no hits removal)\n'
+			    continue
+		    else: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
+		    
+		    if count > max_rc:
+			    max_rc= count;
+			    genome = hit
+		    if percentage >= indata.gpct: amplicons += 1 # if more than 2% of read pop else disregard
+		
+		#output += str(amplicons)+'amplicons found genome thought to be '+genome +'\n'
+		monoclonal = None
+		if amplicons == 0:
+		    monoclonal = None
+		    genome = 'Unknown'
+		elif amplicons == 1:
+		    monoclonal = True
+		elif amplicons > 1:
+		    monoclonal = False
+		    genome = 'Mixed'
+		else: indata.logfile.write('WARNING: something is really odd!!!\n')
+		output += 'Cluster classified as monoclonal='+str(monoclonal)+' and genome is '+str(genome)+'.\n'
+		output += '\n'
+	
+		#for [tot_reads, output, monoclonal,genome,nohitperc,beforeremovalreads] in results:
+		#	progress.update()
+		if beforeremovalreads >= indata.mrc:
+		    if nohitperc > pdpercent or postremtotal == 0:
+			removed_primer_dimer+=1;
+			output += 'This cluster has to many pairs classified as primerdimer or similar and will therefore be discarded.\n'
+			continue
+		    indata.outfile.write(str(output)+'\n')
+		    tot_clust+=1
+		    if monoclonal: monoclonal_clusts+=1
+		    elif monoclonal== None: non_class+=1
+		    try: beadtypes[genome] += 1
+		    except KeyError: beadtypes[genome] = 1
+    
+	if tot_clust > 0:
+	    moncperc = str(round(100*float(monoclonal_clusts)/tot_clust,2))
+	    noclassperc=str(round(100*float(non_class)/tot_clust,2))
+	else: moncperc=noclassperc='0'
+	indata.outfile.write(str( 'We found '+str(tot_clust)+' clusters, with atleast '+str(indata.mrc)+' reads per cluster, out of theese were '+moncperc+'% monoclonal ('+str(monoclonal_clusts)+')')+' and '+noclassperc+'% not classifiable ('+str(non_class)+'), '+str(removed_primer_dimer)+' clusters were classified as primer dimer (>='+str(pdpercent)+'% nohits) and removed\n')
+    
+	total = sum([ count for beadtype,count in beadtypes.iteritems()])
+	for beadtype,count in beadtypes.iteritems(): indata.outfile.write(str( beadtype +' '+ str(round(100*float(count)/total,2))+'% ('+str(count)+' clusters)')+'\n')
     indata.logfile.write('Part3: Identifying clusters by Blast END\n')
     
 def yielder(lista, indata):
@@ -331,8 +351,6 @@ def yielder(lista, indata):
 def foreach3(tmp):
     [infile,indata] = tmp
     tmp = classify_cluser(indata,infile=infile)
-    import os
-    os.remove(infile)
     return tmp
 
 def foreachread(tmp):
@@ -368,11 +386,12 @@ def getindata():
     argparser.add_argument(	'-outfolder',		dest='outfolder',metavar='FOLDER',			type=str,	required=False,	default='.',	help='Folder where temporary outputfiles are stored (default current working dir).')
     argparser.add_argument(	'--keeptemp',		dest='keeptemp', 		action='store_true', 			required=False,	default=False,	help='Keep temporary files (default is to delete tempfiles).')
     argparser.add_argument(	'-analyzeclusters',	dest='analyzeclust',metavar='FOLDER',			type=str,	required=False,	default=False,	help='Only analyze cluster files (default False)')
-    argparser.add_argument(	'-analysis',		dest='analyzeclust',metavar='[blast/bowtie]',		type=str,	required=False,	default='blast',help='Type of analysis mapping by bowtie or use blast (default blast)')
+    argparser.add_argument(	'-analysis',		dest='analyzeclust',metavar='[blast/bowtie]',		type=str,	required=False,	default='blast',help='Type of analysis mapping by bowtie or use blast (default blast) NOTE: currently only does blast!')
     argparser.add_argument(	'-blastsettting',	dest='blastsetting',metavar='\["strict"\|"sloppy"\]',	type=str,	required=False,	default='strict',help='setting for the blast either "strict" or "sloppy" (default False)')
-    argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=100,	help='minimum number of reads per cluster to consider it (default 100)')
+    argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=100,	help='minimum number of reads per cluster to consider it (default 100) DISABLED: tests from 10 to 1000')
     argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=1000,	help='number of top barcodes (with most reads) to use as seeds in clustering(default 1000)')
     argparser.add_argument(	'-gpct',		dest='gpct',	metavar='N',				type=int,	required=False,	default=2,	help='disreagard genomes with less than X percent of read population (default 2)')
+    argparser.add_argument(	'-ris',			dest='readsinsub',metavar='N',				type=float,	required=False,	default=1000,	help='Read pairs to be placed in each sub part for blasting (default 1000)')
     argparser.add_argument(	'--skipnohits',		dest='skipnohits', 		action='store_true', 			required=False,	default=False,	help='Skip the No Hits reads in all calculations (default False).')
     argparser.add_argument(	'--printblast',		dest='printblast', 		action='store_true', 			required=False,	default=False,	help='print details of the BLAST searcch for each cluster (default False).')
     argparser.add_argument(	'--onlycluster',	dest='onlycluster',		action='store_true',			required=False,	default=False,	help='Only do clustering of n15 sequences (default False)')
