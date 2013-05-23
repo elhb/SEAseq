@@ -247,8 +247,14 @@ def blast_it(indata):
 
     indata.logfile.write('Parsing info_dict ... \n')
     
+    if indata.printblast:
+	import os
+	try: os.makedirs(indata.outfolder+'/blastReports')
+	except OSError:pass
     orgname = indata.outfile.name
-    for indata.mrc in [2,10,20,30,40,50,60,70,80,90,100,125,150,175,200,225,250,300,350,400,450,500,600,700,800,900,1000,1500,2000]:
+    graph_info = {}
+    import numpy as np
+    for indata.mrc in [2,10,20,30,40,50,60,70,80,90,100,125,150,175,200,225,250,300,350,400,450,500,600,700,800,900,1000,1500,2000,2500,3000,3500,4000,4500,5000,6000,7000,8000,9000,10000]:
 	monoclonal_clusts = 0
 	non_class = 0
 	tot_clust  = 0
@@ -258,10 +264,22 @@ def blast_it(indata):
 	indata.logfile.write('Runnning mrc '+str(indata.mrc)+' ...\n')
 	indata.outfile.close()
 	indata.outfile = open(orgname+'.mrc_'+str(indata.mrc),'w')
+	if indata.mrc == 2 and indata.printblast:
+	    temp = 0
+#	    for i in info_dict.keys():
+#		if info_dict[i]['total'] >= 2:
+#		    temp+=1
+#	    progress = Progress(temp, logfile=indata.logfile ,unit='cluster')
+	    progress = Progress(len(info_dict), logfile=indata.logfile ,unit='cluster')
+	    progress.__enter__()
 	for cluster_id, data in info_dict.iteritems(): # go through info dict and summarize each cluster then summarize all clusters #could be done in parallel
 	    if cluster_id == 'total':continue
 	    if info_dict[cluster_id]['total'] >= indata.mrc:
-
+		if indata.mrc == 2 and indata.printblast:
+		    progress.update()
+		    fx = open(indata.outfolder+'/blastReports/c'+str(cluster_id)+'.txt','w')
+		    fx.write( '######### CLUSTER '+str(cluster_id)+' ##########'+data['output'])
+		    fx.close()
 		# print some info
 		output = 'Cluster number '+str(cluster_id)+':\n'
 		output += 'Total number of read pairs '+str(data['total'])+'\n'
@@ -270,6 +288,7 @@ def blast_it(indata):
 		amplicons = 0
 		genome = 'Unknown'
 		max_rc = 0
+		monoclonal = None
 		
 		try: nohitperc = round(100*float(data['No Hits'])/data['total'],2)
 		except KeyError: nohitperc = 0
@@ -292,31 +311,35 @@ def blast_it(indata):
 			except KeyError:pass
 			break
 		    
-		    percentage = round(100*float(count)/postremtotal,2)
-		    if hit == 'total': continue
+		    if hit != 'output': percentage = round(100*float(count)/postremtotal,2)
+		    if hit == 'total' or hit == 'output': continue
 		    elif hit == 'No Hits' or hit == 'Pair Disagree':
-			    if hit == 'No Hits': beforeperc = nohitperc
-			    elif hit == 'Pair Disagree': beforeperc = disagreeperc
-			    if not indata.skipnohits: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
-			    else: output += hit+'\t'+str('NA ')+'% ('+str(count)+' read pairs) (originally '+str(beforeperc)+'% before no hits removal)\n'
+			    if hit == 'No Hits':	beforeperc = nohitperc
+			    elif hit == 'Pair Disagree':beforeperc = disagreeperc
+			    if not indata.skipnohits:	output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
+			    else:			output += hit+'\t'+str('NA ')+'% ('+str(count)+' read pairs) (originally '+str(beforeperc)+'% before no hits removal)\n'
 			    continue
 		    else: output += hit+'\t'+str(percentage)+'% ('+str(count)+' read pairs)\n'
-		    
+
+		    if percentage >= indata.rqpct and (hit != 'No Hits' and hit != 'Pair Disagree'):
+			monoclonal = True
+			genome = hit
 		    if count > max_rc:
-			    max_rc= count;
+			    max_rc = count;
 			    genome = hit
 		    if percentage >= indata.gpct: amplicons += 1 # if more than 2% of read pop else disregard
 		
 		#output += str(amplicons)+'amplicons found genome thought to be '+genome +'\n'
-		monoclonal = None
-		if amplicons == 0:
+		if amplicons == 0 and not monoclonal:
 		    monoclonal = None
 		    genome = 'Unknown'
 		elif amplicons == 1:
 		    monoclonal = True
-		elif amplicons > 1:
+		    if round(100*float(data[genome])/postremtotal,2) < indata.rqpct: monoclonal = False; genome = 'Mixed'
+		elif amplicons > 1 and not monoclonal:
 		    monoclonal = False
 		    genome = 'Mixed'
+		elif (amplicons > 1) and round(100*float(data[genome])/postremtotal,2) >= indata.rqpct and monoclonal:pass
 		else: indata.logfile.write('WARNING: something is really odd!!!\n')
 		output += 'Cluster classified as monoclonal='+str(monoclonal)+' and genome is '+str(genome)+'.\n'
 		output += '\n'
@@ -334,15 +357,64 @@ def blast_it(indata):
 		    elif monoclonal== None: non_class+=1
 		    try: beadtypes[genome] += 1
 		    except KeyError: beadtypes[genome] = 1
-    
+	if indata.mrc == 2 and indata.printblast:progress.__exit__()
+	    
 	if tot_clust > 0:
 	    moncperc = str(round(100*float(monoclonal_clusts)/tot_clust,2))
 	    noclassperc=str(round(100*float(non_class)/tot_clust,2))
 	else: moncperc=noclassperc='0'
 	indata.outfile.write(str( 'We found '+str(tot_clust)+' clusters, with atleast '+str(indata.mrc)+' reads per cluster, out of theese were '+moncperc+'% monoclonal ('+str(monoclonal_clusts)+')')+' and '+noclassperc+'% not classifiable ('+str(non_class)+'), '+str(removed_primer_dimer)+' clusters were classified as primer dimer (>='+str(pdpercent)+'% nohits) and removed\n')
+	graph_info[indata.mrc] = {'monoclonal':moncperc,'clustercount':tot_clust,'nonclass':noclassperc,'primerdimer':removed_primer_dimer}
     
 	total = sum([ count for beadtype,count in beadtypes.iteritems()])
-	for beadtype,count in beadtypes.iteritems(): indata.outfile.write(str( beadtype +' '+ str(round(100*float(count)/total,2))+'% ('+str(count)+' clusters)')+'\n')
+	graph_info[indata.mrc]['beadtype_total']=total;
+	for beadtype,count in beadtypes.iteritems():
+	    indata.outfile.write(str( beadtype +' '+ str(round(100*float(count)/total,2))+'% ('+str(count)+' clusters)')+'\n');
+	    graph_info[indata.mrc][beadtype]=count;
+#    if indata.printblast:fx.close()
+
+    indata.logfile.write('Making graphs ... \n')
+    temp_x=graph_info.keys()
+    temp_x.sort()
+    y1=[];x =[];y2=[]
+    for i in temp_x:
+	    x.append(i)
+	    y1.append(graph_info[i]['monoclonal'])
+	    y2.append(graph_info[i]['clustercount'])
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib import rc
+    for scale in [[0,5000,0,20],[0,500,0,20],[0,1000,0,20]]:
+	    fig = plt.figure(figsize=(20, 15), dpi=100)
+	    ax = fig.add_subplot(111)
+	    ax.plot(x, y1, '-', label = 'Percentage Monoclonal')
+	    #ax.plot(x, Rn, '-', label = 'Rn')
+	    ax2 = ax.twinx()
+	    ax2.plot(x, y2, '-r', label = 'Number of clusters')
+	    lines, labels = ax.get_legend_handles_labels()
+	    lines2, labels2 = ax2.get_legend_handles_labels()
+	    ax2.legend(lines + lines2, labels + labels2, loc=7)
+
+	    ax.grid(b=True, which='both')
+	    ax.set_xlabel('Read pairs per Barcode Cluster')
+	    ax.set_ylabel('Percentage Monoclonal')
+	    ax2.set_ylabel('Number of Clusters')
+	    
+	    ax.set_ylim(0,100)
+	    ax2.set_ylim(0, 1000)
+	    
+	    ax.set_xlim(scale[0],scale[1])
+	    ax2.set_xlim(scale[0],scale[1])
+
+	    ax.set_xticks(np.arange(scale[0],scale[1]+1,scale[1]/10))
+	    ax.set_yticks(np.arange(0,101,10))
+	    ax2.set_yticks(np.arange(0,1001,100))
+
+	    plt.savefig(indata.outfolder+'/finalresult.x_'+str(scale[0])+'-'+str(scale[1])+'.y_'+str(scale[2])+'-'+str(scale[3])+'.pdf')
+	    plt.close()
+	    
+    indata.logfile.write( 'done\n')
+
     indata.logfile.write('Part3: Identifying clusters by Blast END\n')
     
 def yielder(lista, indata):
@@ -372,34 +444,38 @@ def foreachread(tmp):
 def getindata():
     import argparse
     argparser = argparse.ArgumentParser(description='Analysis of SEAseq amplicon data.', formatter_class=argparse.RawTextHelpFormatter)
-    argparser.add_argument(	'--debug',		dest='debug', 			action='store_true', 			required=False,	default=False,	help='debug (run as regular single process python script).')
-    argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='skip the first N read pairs in files (default 0).')
-    argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='stop after N read pairs, set to 0 to disable (default 0).')
-    argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='indata "fastq"-file read1.')
-    argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='indata "fastq"-file read2.')
+    argparser.add_argument(	'--debug',		dest='debug', 			action='store_true', 			required=False,	default=False,	help='Debug (run as regular single process python script).')
+    argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='Skip the first N read pairs in files (default 0).')
+    argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
+    argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='Indata "fastq"-file read1.')
+    argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='Indata "fastq"-file read2.')
     argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to start (default 1).')
-    argparser.add_argument(	'-o',			dest='outfile',	metavar='outfile',			type=str,	required=False,	default=False,	help='Print output to outfile (default stdout).')
+    argparser.add_argument(	'-o',			dest='outfile',	metavar='outfile',			type=str,	required=True,	default=False,	help='Print output to outfile.')
     argparser.add_argument(	'-l',			dest='logfile',	metavar='logfile',			type=str,	required=False,	default=False,	help='Print log messages to logfile (default stderr).')
     argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
     argparser.add_argument(	'-hm',			dest='handlemm',metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in handle sequence (default 0)')
     argparser.add_argument(	'-bm',			dest='bcmm',	metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in barcode sequence during clustering (default 0)')
-    argparser.add_argument(	'-outfolder',		dest='outfolder',metavar='FOLDER',			type=str,	required=False,	default='.',	help='Folder where temporary outputfiles are stored (default current working dir).')
+    argparser.add_argument(	'-outfolder',		dest='outfolder',metavar='FOLDER',			type=str,	required=True,	default='.',	help='Folder where temporary outputfiles are stored (default current working dir).')
     argparser.add_argument(	'--keeptemp',		dest='keeptemp', 		action='store_true', 			required=False,	default=False,	help='Keep temporary files (default is to delete tempfiles).')
     argparser.add_argument(	'-analyzeclusters',	dest='analyzeclust',metavar='FOLDER',			type=str,	required=False,	default=False,	help='Only analyze cluster files (default False)')
     argparser.add_argument(	'-analysis',		dest='analyzeclust',metavar='[blast/bowtie]',		type=str,	required=False,	default='blast',help='Type of analysis mapping by bowtie or use blast (default blast) NOTE: currently only does blast!')
-    argparser.add_argument(	'-blastsettting',	dest='blastsetting',metavar='\["strict"\|"sloppy"\]',	type=str,	required=False,	default='strict',help='setting for the blast either "strict" or "sloppy" (default False)')
-    argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=100,	help='minimum number of reads per cluster to consider it (default 100) DISABLED: tests from 10 to 1000')
-    argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=1000,	help='number of top barcodes (with most reads) to use as seeds in clustering(default 1000)')
-    argparser.add_argument(	'-gpct',		dest='gpct',	metavar='N',				type=int,	required=False,	default=2,	help='disreagard genomes with less than X percent of read population (default 2)')
+    argparser.add_argument(	'-blastsettting',	dest='blastsetting',metavar='\["strict"\|"sloppy"\]',	type=str,	required=False,	default='strict',help='Setting for the blast either "strict" or "sloppy" (default False)')
+    argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED: tests from 10 to 1000')
+    argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=1000,	help='Number of top barcodes (with most reads) to use as seeds in clustering(default 1000)')
+    argparser.add_argument(	'-gpct',		dest='gpct',	metavar='N',				type=float,	required=False,	default=2.0,	help='Disreagard genomes with less than N percent of read population (default 2)')
+    argparser.add_argument(	'-rqpct',		dest='rqpct',	metavar='N',				type=float,	required=False,	default=95.0,	help='Require at least N percent of read population for the major amplicon type to count the cluster as monoclonal (default 95, overrides the "-gpct" option)')
     argparser.add_argument(	'-ris',			dest='readsinsub',metavar='N',				type=float,	required=False,	default=1000,	help='Read pairs to be placed in each sub part for blasting (default 1000)')
     argparser.add_argument(	'--skipnohits',		dest='skipnohits', 		action='store_true', 			required=False,	default=False,	help='Skip the No Hits reads in all calculations (default False).')
-    argparser.add_argument(	'--printblast',		dest='printblast', 		action='store_true', 			required=False,	default=False,	help='print details of the BLAST searcch for each cluster (default False).')
+    argparser.add_argument(	'--printblast',		dest='printblast', 		action='store_true', 			required=False,	default=False,	help='print details of the BLAST searcch for each cluster (default False).NOT WORKING!')
     argparser.add_argument(	'--onlycluster',	dest='onlycluster',		action='store_true',			required=False,	default=False,	help='Only do clustering of n15 sequences (default False)')
     argparser.add_argument(	'--onlysort',		dest='onlysort',		action='store_true',			required=False,	default=False,	help='Only sort reads according to n15 sequences (default False)')
     argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq]',			type=str,	required=False,	default='fa',	help='Format to output reads to fa=fasta or fq=fastq (default fastq)')
+    argparser.add_argument(	'-blastdb',		dest='blastdb',	metavar='STR',			type=str,	required=False,	default="/bubo/proj/b2011011/SEAseq/reference/4amplicons/4amplicons.fasta",	help='blast database (default "/bubo/proj/b2011011/SEAseq/reference/4amplicons/4amplicons.fasta")')
     indata = argparser.parse_args(sys.argv[1:])
     indata.selftest = False
 
+    assert indata.reads1 != indata.reads2, 'Error: read 1 and read 2 cannot be same file!\n'
+    
     import os
     try: os.makedirs(indata.outfolder)
     except OSError:pass

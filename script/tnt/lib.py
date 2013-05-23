@@ -608,22 +608,23 @@ class SEAseqSummary():
 		y=y
 		import numpy as np
 		import matplotlib.pyplot as plt
-		plt.figure()
-		plt.axis([0,5000,0,20])
-		plt.xlabel('Total Number of Reads per Barcode Cluster')
-		plt.ylabel('Number of Clusters')
-		#pos = np.arange(len(x))
-		#width = 1.0     # gives histogram aspect to the bar diagram
-		#ax = plt.axes()
-		#ax.set_xticks(pos + (width / 2))
-		#ax.set_xticklabels(x,rotation='horizontal')
-		#plt.bar(pos, y, width, color='r')
-		##plt.show()
-		##plt.savefig(pp,format='pdf',bbox_inches=0)
-		plt.plot(x,y)
-		plt.suptitle('Diststibution', fontsize=12)
-		plt.savefig('pelle.pdf')
-		plt.close()
+		for scale in [[0,5000,0,20],[0,1000,0,20]]:
+			plt.figure()
+			plt.axis(scale)
+			plt.xlabel('Total Number of Reads per Barcode Cluster')
+			plt.ylabel('Number of Clusters')
+			#pos = np.arange(len(x))
+			#width = 1.0     # gives histogram aspect to the bar diagram
+			#ax = plt.axes()
+			#ax.set_xticks(pos + (width / 2))
+			#ax.set_xticklabels(x,rotation='horizontal')
+			#plt.bar(pos, y, width, color='r')
+			##plt.show()
+			##plt.savefig(pp,format='pdf',bbox_inches=0)
+			plt.plot(x,y)
+			plt.suptitle('Diststibution', fontsize=12)
+			plt.savefig(indata.outfolder+'/clustering.x_'+str(scale[0])+'-'+str(scale[1])+'.y_'+str(scale[2])+'-'+str(scale[3])+'.pdf')
+			plt.close()
 		indata.logfile.write( 'done\n')
 
 		self.clusters = clusters
@@ -641,7 +642,7 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 	import time
 	
 	#setting up blast
-	database="reference/4amplicons/4amplicons.fasta"
+	database=indata.blastdb
 	if indata.blastsetting == 'strict':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, out=infile+'.'+indata.blastid+'.blastout')
 	elif indata.blastsetting == 'sloppy':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn', out=infile+'.'+indata.blastid+'.blastout')
 	
@@ -657,6 +658,7 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 	results = {'total':0}
 	records_counter = 0
 	#checking blast results
+	if indata.printblast:o=''
 	for blast_record in records:
 		records_counter +=1
 
@@ -667,7 +669,20 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 		elif readnumber == 2 and records_counter%2 == 0: r2_header = blast_record.query
 		else: indata.logfile.write('Warning: readnumber is funky!\n')
 		
+		if indata.printblast:o+=blast_record.query+'\n'
 		if blast_record.alignments:
+			if indata.printblast:
+				alignment = blast_record.alignments[0]
+				for hsp in alignment.hsps:
+					o+='\t'+ '****Alignment****'+'\n'
+					o+='\t'+ 'sequence: '+ alignment.title+'\n'
+					o+='\t'+ 'length: '+ str(alignment.length)+'\n'
+					o+='\t'+ 'e value: '+ str(hsp.expect)+'\n'
+					o+='\tq: '+str(hsp.query_start)+'\t'+ hsp.query +'\n'
+					o+='\tm:  \t'+ hsp.match +'\n'
+					o+='\ts: '+str(hsp.sbjct_start)+'\t'+ hsp.sbjct +'\n'
+					if len(hsp.query) < 40 : o+='\tTo short will ba counted as "No Hit"\n'
+
 			#		if len(hsp.query) < 40 : f.write('\tTo short will ba counted as "No Hit"\n')
 			if readnumber == 1:
 				r1_header = blast_record.query
@@ -689,17 +704,25 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 				results['total']+=1
 				
 				try: results[cluster_id]['total']+=1
-				except KeyError: results[cluster_id]= {'total':1}
+				except KeyError: results[cluster_id]= {'total':1,'output':''}
 				
 				if r1_subj_name == r2_subj_name:
 					hit = r1_subj_name
+					if indata.printblast: o+='## Read Pair Agree!\n'
 				else:
 					hit = 'Pair Disagree'
-				
+					if indata.printblast: o+='## Read Pair Disagree!\n'
 				try: results[cluster_id][hit]+=1
 				except KeyError:results[cluster_id][hit]=1
+				
+				if indata.printblast:results[cluster_id]['output'] += o+'\n\n'; o=''
 			
 			else: indata.logfile.write('WARNING: read pair headers missmatch!\n')
+		if indata.printblast:o+='\n'+'\n'
+	if indata.printblast:pass
+		#f2= open(indata.outfolder+'/blastReport.txt','a')
+		#f2.write(o+'\n\n');
+		#f2.close()
 	f.close()
 	
 	import os
