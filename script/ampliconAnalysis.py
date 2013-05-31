@@ -461,7 +461,7 @@ def getindata():
     argparser.add_argument(	'-analysis',		dest='analyzeclust',metavar='[blast/bowtie]',		type=str,	required=False,	default='blast',help='Type of analysis mapping by bowtie or use blast (default blast) NOTE: currently only does blast!')
     argparser.add_argument(	'-blastsettting',	dest='blastsetting',metavar='\["strict"\|"sloppy"\]',	type=str,	required=False,	default='strict',help='Setting for the blast either "strict" or "sloppy" (default False)')
     argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED: tests from 10 to 1000')
-    argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=1000,	help='Number of top barcodes (with most reads) to use as seeds in clustering(default 1000)')
+    argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=100,	help='Number of top barcodes (with most reads) to use as seeds in clustering(default 100)')
     argparser.add_argument(	'-gpct',		dest='gpct',	metavar='N',				type=float,	required=False,	default=2.0,	help='Disreagard genomes with less than N percent of read population (default 2)')
     argparser.add_argument(	'-rqpct',		dest='rqpct',	metavar='N',				type=float,	required=False,	default=95.0,	help='Require at least N percent of read population for the major amplicon type to count the cluster as monoclonal (default 95, overrides the "-gpct" option)')
     argparser.add_argument(	'-ris',			dest='readsinsub',metavar='N',				type=float,	required=False,	default=1000,	help='Read pairs to be placed in each sub part for blasting (default 1000)')
