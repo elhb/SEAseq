@@ -1,1 +1,162 @@
+#! /bin/env python
+#! /usr/bin/env python2.7
+
+###
 # main wrapper will take cmdline input and run programs
+###
+
+def main():
+    import sys
+    try: cmd = sys.argv[1]
+    except IndexError:
+	sys.stderr.write('Please specify a command, if you need help run SEAseq help.\n')
+	cmd = None
+
+    indata = getindata(cmd)   
+
+    if cmd == 'init':
+			    init(indata)
+    elif cmd == 'addfqs':
+			    addfqs(indata)
+    elif cmd == 'cluster':
+			    print 'cluster'; raise NotImplementedError
+    elif cmd == 'sort':
+			    print 'sort'; raise NotImplementedError
+    elif cmd == None:
+			    pass
+    else:
+			    sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n')
+
+def addfqs(indata):
+
+    indata.config = initiate_file(indata.path+'/'+'config', mode='r')
+
+    before = ''
+    after = ''
+    for line in indata.config:
+	if line.rstrip() == '# Infiles dictionary:':
+	    infiles = eval(indata.config.next())
+	    after = '\n'
+	elif not after: before += line
+	elif after:after += line
+    indata.config.close()
+
+    import os
+    import sys
+    r1 = os.path.abspath(indata.reads1.name)
+    r2 = os.path.abspath(indata.reads2.name)
+    if r1 in infiles['r1'] + infiles['r2'] or r2 in infiles['r1'] + infiles['r2']: sys.stderr.write('ERROR:\nat least one of the files:\n'+r1+'\n'+r2+'\nare already in the config file.\n'); return 1
+    infiles['r1'].append()
+    infiles['r2'].append()
+
+    indata.config = initiate_file(indata.path+'/'+'config', mode='ow')
+    indata.config.write(before+'# Infiles dictionary:\n'+str(infiles)+after)
+    indata.config.close()
+
+def init(indata):
+    
+    import os
+    import sys
+
+    if os.path.exists(indata.path+'/'+'config'):
+	sys.stderr.write('This analysis has already been initiated try another command.\n')
+	return
+    
+    try: os.mkdir(indata.path)
+    except OSError:
+	_continue = ''
+	while not _continue or _continue[0] not in ['Y','y', 'N','n']:
+	    _continue = raw_input('WARNING: the folder '+indata.path+' already excists. Continue anyway? (yes/no) ')
+	if _continue[0] in ['Y','y']: pass
+	elif _continue[0] in ['N','n']: return
+	else:
+	    sys.stderr.write('Error 1\n.'); return 1
+
+    indata.outfile = initiate_file(indata.outfile)
+    indata.logfile = initiate_file(indata.logfile)
+    indata.config = initiate_file(indata.path+'/'+'config')
+
+    abspath = os.path.abspath(indata.path)
+    infiles = {'r1':[],'r2':[]}
+
+    indata.config.write(
+	'# Absolute path:\n'+abspath+'\n'+
+	'# Infiles dictionary:\n'+str(infiles)+'\n'
+	)
+
+def initiate_file(filename, mode='w'):
+    import os
+    if mode == 'w' and os.path.exists(filename):
+	tmp = filename
+	filename = raw_input('WARNING: the file '+filename+' already excists. Enter an alternative filename (leave empty to overwrite):')
+	if not filename: filename = tmp
+    if mode =='ow': mode ='w'
+    out = open(filename, mode)
+    return out
+
+def getindata(cmd):
+    import argparse
+    argparser = argparse.ArgumentParser(description='Analysis of SEAseq amplicon data from realsamples after clustering.', formatter_class=argparse.RawTextHelpFormatter)
+    argparser.add_argument('cmd')
+    argparser.add_argument(	'--debug',		dest='debug', 			action='store_true', 			required=False,	default=False,	help='Debug (run as regular single process python script).')
+    argparser.add_argument('-path',	dest='path',	metavar='path',		type=str,required=True,	default=False,	help='Set the analysis path.')
+
+    #argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='Skip the first N read pairs in files (default 0).')
+    #argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
+    #argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to start (default 1).')
+    #argparser.add_argument(	'-o',			dest='outfile',	metavar='outfile',			type=str,	required=True,	default=False,	help='Print output to outfile.')
+    #argparser.add_argument(	'-l',			dest='logfile',	metavar='logfile',			type=str,	required=False,	default=False,	help='Print log messages to logfile (default stderr).')
+    #argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
+    #argparser.add_argument(	'-hm',			dest='handlemm',metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in handle sequence (default 0)')
+
+    if cmd == 'init': pass
+    elif cmd == 'addfqs':
+	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='Indata "fastq"-file read1.')
+	argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='Indata "fastq"-file read2.')
+    elif cmd == 'cluster':pass
+    elif cmd == 'sort':pass
+
+    import sys
+    indata = argparser.parse_args(sys.argv[1:])
+    if indata.path[-1] == '/': indata.path=indata.path[:-1]
+
+    indata.selftest = False
+    if cmd == 'init':
+	indata.outfile = indata.path + '/' + 'init.out.txt'
+	indata.logfile = indata.path + '/' + 'init.log.txt'
+    elif cmd == 'addfqs':
+	assert indata.reads1 != indata.reads2, 'Error: read 1 and read 2 cannot be same file!\n'
+	indata.outfile = indata.path + '/' + 'addfqs.out.txt'
+	indata.logfile = indata.path + '/' + 'addfqs.log.txt'
+    elif cmd == 'cluster':pass
+    elif cmd == 'sort':pass
+
+    
+    #if indata.outfile: indata.outfile = open(indata.outfile, 'w',1)
+    #else: indata.outfile = sys.stdout
+    #
+    #if indata.logfile: indata.logfile = open(indata.logfile, 'w',1)
+    #else: indata.logfile = sys.stderr
+    
+    # get the readcount
+    #indata.logfile.write('Getting readcount ... ')
+    #indata.numreads=bufcount(indata.reads1.name)/4
+    ##indata.numreads=10000
+    #indata.logfile.write(str(indata.numreads)+' read pairs in fastq files.\n');
+    #
+    ## calculate the number of reads to process
+    #indata.reads2process = indata.numreads
+    #if indata.skip: indata.reads2process -= indata.skip
+    #if indata.stop: indata.reads2process = indata.stop
+    #if indata.n:    indata.reads2process = indata.n
+   
+    return indata
+
+
+
+#####
+#check if run or imported // call main() or not
+#####
+if __name__ == "__main__":
+    main()
+#END of script
