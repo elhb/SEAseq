@@ -109,7 +109,7 @@ def getPairs(indata):
 	# choose random reads to analyze from fastq files
 	if indata.n:
 		import random
-		numreads=bufcount(indata.reads1.name)/4
+		numreads=indata.numreads
 		if indata.stop: numreads = indata.stop
 		indata.logfile.write('Choosing '+str(indata.n)+' random pairs to analyze ... ')
 		readNumbersToPrint = {}
@@ -547,11 +547,11 @@ class SEAseqSummary():
 				for bc in percentages[perc[0]]: highest.append(bc)
 			except IndexError: pass
 			perc=perc[1:]
-		tempfile = open(indata.outfolder+'/seed_bcs.tempfile','w')
+		tempfile = open(indata.path+'/seed_bcs.fa','w')
 		for bc in highest: tempfile.write('>'+bc+'\n'+bc+'\n')
 		tempfile.close()
 
-		tempfile = open(indata.outfolder+'/raw_bcs.tempfile','w')
+		tempfile = open(indata.path+'/raw_bcs.fa','w')
 		for bc in self.barcodes: tempfile.write('>'+bc+'\n'+bc+'\n')
 		tempfile.close()
 		del percentages
@@ -560,8 +560,8 @@ class SEAseqSummary():
 		from cStringIO import StringIO
 		import time
 		tempo = time.time()
-		indata.logfile.write('starting '+' '.join(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file',indata.outfolder+'/raw_bcs.tempfile','-t',str(indata.cpus),'--predetermined-cluster-centers',indata.outfolder+'/seed_bcs.tempfile'])+'\n')
-		dnaclust =               subprocess.Popen(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file',indata.outfolder+'/raw_bcs.tempfile','-t',str(indata.cpus),'--predetermined-cluster-centers',indata.outfolder+'/seed_bcs.tempfile'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		indata.logfile.write('starting '+' '.join(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file',indata.path+'/raw_bcs.fa','-t',str(indata.cpus),'--predetermined-cluster-centers',indata.path+'/seed_bcs.fa'])+'\n')
+		dnaclust =               subprocess.Popen(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file',indata.path+'/raw_bcs.fa','-t',str(indata.cpus),'--predetermined-cluster-centers',indata.path+'/seed_bcs.fa'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		dnaclust_out, errdata = dnaclust.communicate()
 		if dnaclust.returncode != 0:
 			print 'dnaclust view Error code', dnaclust.returncode, errdata
@@ -621,7 +621,7 @@ class SEAseqSummary():
 			##plt.savefig(pp,format='pdf',bbox_inches=0)
 			plt.plot(x,y)
 			plt.suptitle('Diststibution', fontsize=12)
-			plt.savefig(indata.outfolder+'/clustering.x_'+str(scale[0])+'-'+str(scale[1])+'.y_'+str(scale[2])+'-'+str(scale[3])+'.pdf')
+			plt.savefig(indata.path+'/clustering.x_'+str(scale[0])+'-'+str(scale[1])+'.y_'+str(scale[2])+'-'+str(scale[3])+'.pdf')
 			plt.close()
 		indata.logfile.write( 'done\n')
 
@@ -718,7 +718,7 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 			else: indata.logfile.write('WARNING: read pair headers missmatch!\n')
 		if indata.printblast:o+='\n'+'\n'
 	if indata.printblast:pass
-		#f2= open(indata.outfolder+'/blastReport.txt','a')
+		#f2= open(indata.path+'/blastReport.txt','a')
 		#f2.write(o+'\n\n');
 		#f2.close()
 	f.close()

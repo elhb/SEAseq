@@ -33,10 +33,12 @@ def main():
     if cmd == 'init':			init(indata)
     elif cmd == 'addfqs':		addfqs(indata)
     elif cmd == 'clusterbarcodes':	clusterbarcodes(indata)
-    elif cmd == 'sortreads':		print 'sortreads'; raise NotImplementedError
+    elif cmd == 'sortreads':		sortreads(indata)
     elif cmd[0] in ['H','h']:		pass
     elif cmd == None:			pass
     else: sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n')
+
+def sortreads(indata):
 
 def foreachread_cluster(tmp):
 
@@ -264,7 +266,11 @@ def getindata(cmd):
 	argparser.add_argument(	'-bm',			dest='bcmm',	metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in barcode sequence during clustering (default 0)')
         argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED: tests from 10 to 1000')
         argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=100,	help='Number of top barcodes (with most reads) to use as seeds in clustering(default 100)')
-    elif cmd == 'sortreads':pass
+    elif cmd == 'sortreads':
+        argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq]',			type=str,	required=False,	default='fa',	help='Format to output reads to fa=fasta or fq=fastq (default fastq)')
+	argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='Skip the first N read pairs in files (default 0).')
+	argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
+	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
 
     import sys
     indata = argparser.parse_args(sys.argv[1:])
