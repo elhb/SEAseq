@@ -4,6 +4,9 @@
 ###
 # main wrapper will take cmdline input and run programs
 ###
+import os
+from SEAseqLib.mainLibrary import *
+MASTER = os.getpid()
 
 def main():
     import sys
@@ -12,25 +15,109 @@ def main():
 	sys.stderr.write('Please specify a command, if you need help run SEAseq help.\n')
 	cmd = None
 
-    indata = getindata(cmd)   
+    if cmd[0] not in ['H','h']: indata = getindata(cmd)
+    else:	sys.stdout.write(
+				    '\nProgram: SEAseq\n'
+				    +'Version: ALPHA\n'
+				    +'For analysis of SEAseq data.\n\n'
+				    +'Usage:\tSEAseq <command> -path <analysis folder> [options]\n\n'
+				    +'Commands:\n'
+				    +'\tinit'		+' '.join(['' for i in range(20-len('init'))])			+'Initiate a new anlysis\n'
+				    +'\taddfqs'		+' '.join(['' for i in range(20-len('addfqs'))])		+'Add fastq files to be analysed\n'
+				    +'\tclusterbarcodes'+' '.join(['' for i in range(20-len('clusterbarcodes'))])	+'cluster reads according to barcode sequence\n'
+				    +'\tsortreads'	+' '.join(['' for i in range(20-len('sortreads'))])		+'sort reads to barcode clusters\n'
+				    +'\thelp'		+' '.join(['' for i in range(20-len('help'))])		+'print this help message and exit\n'
+				    )
 
-    if cmd == 'init':
-			    init(indata)
-    elif cmd == 'addfqs':
-			    addfqs(indata)
-    elif cmd == 'cluster':
-			    print 'cluster'; raise NotImplementedError
-    elif cmd == 'sort':
-			    print 'sort'; raise NotImplementedError
-    elif cmd == None:
-			    pass
-    else:
-			    sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n')
+    if cmd == 'init':			init(indata)
+    elif cmd == 'addfqs':		addfqs(indata)
+    elif cmd == 'clusterbarcodes':	clusterbarcodes(indata)
+    elif cmd == 'sortreads':		print 'sortreads'; raise NotImplementedError
+    elif cmd[0] in ['H','h']:		pass
+    elif cmd == None:			pass
+    else: sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n')
+
+def foreachread_cluster(tmp):
+
+    # unpack info
+    pair, indata = tmp
+    del tmp
+    
+    # convert to SEAseq readpair
+    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
+
+    C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
+    pair.identify(C_HANDLE, indata)
+    pair.getN15()
+    
+    if indata.cid_by_bc: pair.get_cid(indata)
+    
+    return pair
+
+def clusterbarcodes(indata):
+
+    indata.outfile = initiate_file(indata.outfile, indata, mode='a')
+    indata.logfile = initiate_file(indata.logfile, indata, mode='a')
+
+    import time
+    import sys
+    indata.logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
+    indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
+    indata.logfile.write('Master process id='+str(MASTER)+'\n')
+
+    indata.logfile.write('Get infiles from config-file. <---NOT IMPLEMENTED YET!\n')
+
+    indata.logfile.write('Part1: identifying barcode sequences in reads.\n')
+    #deciding if to run multiprocessing or single process for debugging
+    if indata.debug: #single process // serial
+	results=[] # create holder for processed reads
+	indata.logfile.write('Running in debug mode identifying handles ...\n')
+	progress = Progress(indata.reads2process, logfile=indata.logfile) # creates a progress "bar" thingy
+	with progress:
+	    for tmp in getPairs(indata): #itarate through reads and do the "magicFunction"
+		progress.update()
+		results.append(foreachread_cluster(tmp))
+	indata.logfile.write('handle identification finished.\n')
+    else: # multiple processes in parallel
+	import multiprocessing
+	#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
+	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000000)
+	results = WorkerPool.imap_unordered(foreachread_cluster,getPairs(indata),chunksize=100)
+    if not indata.debug: indata.logfile.write('Running in multiproccessing mode using '+str(indata.cpus)+' processes  ...\n')
+    else: indata.logfile.write('Running the multiprocessing results handeling in serial ... \n')
+    progress = Progress(indata.reads2process, logfile=indata.logfile)
+    summary = SEAseqSummary()
+    with progress:
+	for pair in results:
+	    progress.update()
+	    summary.add(pair)
+    if not indata.debug:WorkerPool.close()
+    if not indata.debug:WorkerPool.join()
+    indata.outfile.write(str( summary.part1() )+'\n')
+    indata.logfile.write('Part1: finished barcode sequences identified.\n')
+    
+    indata.logfile.write('Part2: Clustering the identified barcodes.\n')
+    summary.reducebarcodes(indata)
+    indata.logfile.write('Writing cluster info to file.\n')
+    f = open(indata.path+'/clusters.tempfile','w')
+    f.write(str(summary.clusters))
+    f.close()
+    indata.logfile.write('Part2: Clustering barcodes END\n')
+    return summary
 
 def addfqs(indata):
 
-    indata.config = initiate_file(indata.path+'/'+'config', mode='r')
+    indata.outfile = initiate_file(indata.outfile, indata, mode='a')
+    indata.logfile = initiate_file(indata.logfile, indata, mode='a')
 
+    import time
+    import sys
+    indata.logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
+    indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
+    indata.logfile.write('Master process id='+str(MASTER)+'\n')
+
+    indata.logfile.write('Reading current config ...\n')
+    indata.config = initiate_file(indata.path+'/'+'config',indata , mode='r')
     before = ''
     after = ''
     for line in indata.config:
@@ -41,62 +128,96 @@ def addfqs(indata):
 	elif after:after += line
     indata.config.close()
 
+    indata.logfile.write('Adding filenames to config file.\n')
     import os
     import sys
     r1 = os.path.abspath(indata.reads1.name)
     r2 = os.path.abspath(indata.reads2.name)
-    if r1 in infiles['r1'] + infiles['r2'] or r2 in infiles['r1'] + infiles['r2']: sys.stderr.write('ERROR:\nat least one of the files:\n'+r1+'\n'+r2+'\nare already in the config file.\n'); return 1
-    infiles['r1'].append()
-    infiles['r2'].append()
-
-    indata.config = initiate_file(indata.path+'/'+'config', mode='ow')
+    if r1 in infiles['r1'] + infiles['r2'] or r2 in infiles['r1'] + infiles['r2']:
+	sys.stderr.write('ERROR:\nat least one of the files:\n'+r1+'\n'+r2+'\nare already in the config file.\n');
+	indata.logfile.write('ERROR:\nat least one of the files:\n'+r1+'\n'+r2+'\nare already in the config file.\nExiting withiout changes.\n');
+	return 1
+    infiles['r1'].append(r1)
+    infiles['r2'].append(r2)
+    indata.config = initiate_file(indata.path+'/'+'config', indata, mode='ow')
     indata.config.write(before+'# Infiles dictionary:\n'+str(infiles)+after)
     indata.config.close()
+    indata.logfile.write('Files '+r1+' and '+r2+' sucessfully added to infiles dist in config.\n\n')
+    indata.logfile.close()
+    return 0
 
 def init(indata):
     
     import os
     import sys
+    tmp_log = ''
 
     if os.path.exists(indata.path+'/'+'config'):
 	sys.stderr.write('This analysis has already been initiated try another command.\n')
 	return
     
-    try: os.mkdir(indata.path)
+    try:
+	os.mkdir(indata.path)
+	tmp_log += 'Folder '+indata.path+' created sucessfully.\n'
     except OSError:
 	_continue = ''
 	while not _continue or _continue[0] not in ['Y','y', 'N','n']:
 	    _continue = raw_input('WARNING: the folder '+indata.path+' already excists. Continue anyway? (yes/no) ')
+	tmp_log += 'WARNING: the folder '+indata.path+' already excists. Continue anyway? (yes/no) '+_continue+'\nUsing already exsisting folder ...\n'
 	if _continue[0] in ['Y','y']: pass
 	elif _continue[0] in ['N','n']: return
 	else:
 	    sys.stderr.write('Error 1\n.'); return 1
 
-    indata.outfile = initiate_file(indata.outfile)
-    indata.logfile = initiate_file(indata.logfile)
-    indata.config = initiate_file(indata.path+'/'+'config')
+    indata.outfile = initiate_file(indata.outfile, indata)
+    indata.logfile = initiate_file(indata.logfile, indata)
+
+    import time
+    indata.logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
+    indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
+    indata.logfile.write('Master process id='+str(MASTER)+'\n')
+    indata.logfile.write(tmp_log)
+
+    indata.logfile.write('Creating config file:\n')
+    indata.config = initiate_file(indata.path+'/'+'config', indata)
 
     abspath = os.path.abspath(indata.path)
     infiles = {'r1':[],'r2':[]}
 
+    indata.logfile.write('Writing settings to config file ...\n')
     indata.config.write(
 	'# Absolute path:\n'+abspath+'\n'+
 	'# Infiles dictionary:\n'+str(infiles)+'\n'
 	)
 
-def initiate_file(filename, mode='w'):
+    indata.logfile.write('Analysis '+abspath+' sucesfully initiated.\n')
+    return 0
+
+def initiate_file(filename, indata, mode='w'):
     import os
+    
+    if type(indata.logfile) == file and mode != 'r': indata.logfile.write('Initiating '+filename+' ...\n')
+    
     if mode == 'w' and os.path.exists(filename):
 	tmp = filename
 	filename = raw_input('WARNING: the file '+filename+' already excists. Enter an alternative filename (leave empty to overwrite):')
-	if not filename: filename = tmp
+	if type(indata.logfile) == file and mode != 'r': indata.logfile.write('WARNING: the file '+filename+' already excists. Enter an alternative filename (leave empty to overwrite):')
+	if not filename:
+	    filename = tmp
+	    if type(indata.logfile) == file and mode != 'r': indata.logfile.write('overwriting\n')
+	#else:
+	#    if type(indata.logfile) == file and mode != 'r': indata.logfile.write('Creating file '+filename+'.\n')
+    
     if mode =='ow': mode ='w'
     out = open(filename, mode)
+    
+    if type(indata.logfile) == file and mode != 'r': indata.logfile.write('File '+filename+' sucessfully initiated.\n')
+    
     return out
 
 def getindata(cmd):
     import argparse
-    argparser = argparse.ArgumentParser(description='Analysis of SEAseq amplicon data from realsamples after clustering.', formatter_class=argparse.RawTextHelpFormatter)
+    argparser = argparse.ArgumentParser(description='Analysis of SEAseq data.', formatter_class=argparse.RawTextHelpFormatter)
     argparser.add_argument('cmd')
     argparser.add_argument(	'--debug',		dest='debug', 			action='store_true', 			required=False,	default=False,	help='Debug (run as regular single process python script).')
     argparser.add_argument('-path',	dest='path',	metavar='path',		type=str,required=True,	default=False,	help='Set the analysis path.')
@@ -113,8 +234,8 @@ def getindata(cmd):
     elif cmd == 'addfqs':
 	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='Indata "fastq"-file read1.')
 	argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='Indata "fastq"-file read2.')
-    elif cmd == 'cluster':pass
-    elif cmd == 'sort':pass
+    elif cmd == 'clusterbarcodes':pass
+    elif cmd == 'sortreads':pass
 
     import sys
     indata = argparser.parse_args(sys.argv[1:])
@@ -128,8 +249,8 @@ def getindata(cmd):
 	assert indata.reads1 != indata.reads2, 'Error: read 1 and read 2 cannot be same file!\n'
 	indata.outfile = indata.path + '/' + 'addfqs.out.txt'
 	indata.logfile = indata.path + '/' + 'addfqs.log.txt'
-    elif cmd == 'cluster':pass
-    elif cmd == 'sort':pass
+    elif cmd == 'clusterbarcodes':pass
+    elif cmd == 'sortreads':pass
 
     
     #if indata.outfile: indata.outfile = open(indata.outfile, 'w',1)
