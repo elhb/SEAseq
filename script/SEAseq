@@ -38,7 +38,121 @@ def main():
     elif cmd == None:			pass
     else: sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n')
 
+def foreachread_sort(tmp):
+
+    # unpack info
+    pair, indata = tmp
+    del tmp
+    
+    # convert to SEAseq readpair
+    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
+    
+    C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
+    pair.identify(C_HANDLE, indata)
+    pair.getN15()
+    
+    pair.get_cid(indata)
+    
+    return pair
+
 def sortreads(indata):
+
+    indata.outfile = initiate_file(indata.outfile, indata, mode='a')
+    indata.logfile = initiate_file(indata.logfile, indata, mode='a')
+
+    import time
+    import sys
+    indata.logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
+    indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
+    indata.logfile.write('Master process id='+str(MASTER)+'\n')
+
+    indata.logfile.write('Get infiles from config-file.\n')
+    indata = readConfig(indata)
+    
+    # get the readcount
+    indata.logfile.write('Getting readcount ...\n')
+    indata.numreads = 0
+    for filename in indata.config['infiles']['r1']:
+	tmp = bufcount(filename)/4
+	indata.logfile.write(filename+' -> '+str(tmp) +' reads.\n')
+	indata.numreads += tmp
+    indata.logfile.write(str(indata.numreads)+' read pairs in fastq files.\n');
+    # calculate the number of reads to process
+    indata.reads2process = indata.numreads
+    if indata.skip: indata.reads2process -= indata.skip
+    if indata.stop: indata.reads2process = indata.stop
+    if indata.n:    indata.reads2process = indata.n
+
+    indata.logfile.write('\nLoading clustering data ...\n')
+    summary = SEAseqSummary()
+    summary.loadclusters(indata.path+'/clusters.tempfile')
+    cid_by_bc = {}
+    progress = Progress(len(summary.clusters),verb='minimal', logfile=indata.logfile)
+    with progress:
+	for cluster_id, infodist in summary.clusters.iteritems():
+	    progress.update()
+	    if int(infodist['total']) >= indata.mrc:
+		for barcode in infodist['barcodes']:
+		    cid_by_bc[barcode] = cluster_id
+	    else: pass#print 'low read cluster'
+    summary.clusters.clear()
+    del summary.clusters;del cluster_id; del infodist; # delete summary object to save memory, this does not reduce memory usage why?!?
+    indata.cid_by_bc = cid_by_bc
+
+    import os
+    try: os.makedirs(indata.path+'/sortedReads')
+    except OSError:pass
+    #try: os.makedirs(indata.path+'/sortedReads/barcodes')
+    #except OSError:pass
+
+    if indata.debug: #single process // serial
+	results=[] # create holder for processed reads
+	indata.logfile.write('Part1: Sorting reads to clusters ...\n')
+	indata.logfile.write('Running in debug mode sorting reads to clusters ...\n')
+	progress = Progress(indata.reads2process, logfile=indata.logfile) # creates a progress "bar" thingy
+	#itarate through reads and do the "magicFunction"
+	with progress:
+	    for tmp in getPairs(indata):
+		progress.update()
+		results.append(foreachread_sort(tmp))
+	indata.logfile.write('sort finished, start writing to files ... \n')
+    else: # multiple processes in parallel
+	import multiprocessing
+	#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
+	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
+	results = WorkerPool.imap_unordered(foreachread_sort,getPairs(indata),chunksize=1000)
+
+    if not indata.debug: indata.logfile.write('Part1: Sorting reads to cluster '+str(indata.cpus)+' processes  ...\n')
+    progress = Progress(indata.reads2process, logfile=indata.logfile)
+    with progress:
+	if indata.sortfmt == 'fq':
+	    f1 = open(indata.path+'/sortedReads/sorted.reads.1.fq','w')
+	    f2 = open(indata.path+'/sortedReads/sorted.reads.2.fq','w')
+	elif indata.sortfmt == 'fa':
+	    f1 = open(indata.path+'/sortedReads/sorted.reads.fa','w')
+	for pair in results:
+	    progress.update()
+	    if pair.cid:
+		if indata.sortfmt == 'fq':
+		    f1.write('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+			    +pair.r1.seq+'\n+\n'
+			    +pair.r1.qual+'\n')
+		    f2.write('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+			    +pair.r2.seq+'\n+\n'
+			    +pair.r2.qual+'\n')
+		elif indata.sortfmt == 'fa':
+		    f1.write('>' + '_'.join(pair.r1.header.split(' ')) + '_r1_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+			    +pair.r1.seq+'\n'+
+			    '>' + '_'.join(pair.r2.header.split(' ')) + '_r2_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+			    +pair.r2.seq+'\n')
+	f1.close()
+	if indata.sortfmt == 'fq': f2.close()
+
+    if not indata.debug:WorkerPool.close()
+    if not indata.debug:WorkerPool.join()
+    indata.logfile.write('Reads sorted into cluster tempfiles\n')
+    indata.logfile.write('Part1: Sorting reads to clusters END\n')
+    return 0
 
 def foreachread_cluster(tmp):
 
@@ -249,34 +363,29 @@ def getindata(cmd):
     argparser.add_argument('cmd')
     argparser.add_argument(	'--debug',		dest='debug', 			action='store_true', 			required=False,	default=False,	help='Debug (run as regular single process python script).')
     argparser.add_argument('-path',	dest='path',	metavar='<path>',		type=str,required=True,	default=False,	help='Set the analysis path.')
-
-    #argparser.add_argument(	'-o',			dest='outfile',	metavar='outfile',			type=str,	required=True,	default=False,	help='Print output to outfile.')
-    #argparser.add_argument(	'-l',			dest='logfile',	metavar='logfile',			type=str,	required=False,	default=False,	help='Print log messages to logfile (default stderr).')
-
     if cmd == 'init': pass
     elif cmd == 'addfqs':
 	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='Indata "fastq"-file read1.')
 	argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='Indata "fastq"-file read2.')
     elif cmd == 'clusterbarcodes':
+	argparser.add_argument(	'-bm',			dest='bcmm',	metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in barcode sequence during clustering (default 0)')
+        argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=100,	help='Number of top barcodes (with most reads) to use as seeds in clustering(default 100)')
+    elif cmd == 'sortreads':
+        argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq]',			type=str,	required=False,	default='fq',	help='Format to output reads to fa=fasta or fq=fastq (default fastq)')
+    if cmd == 'sortreads' or cmd == 'clusterbarcodes':
 	argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to run in parallel (default 1).')
 	argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='Skip the first N read pairs in files (default 0).')
 	argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
 	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
-	argparser.add_argument(	'-hm',			dest='handlemm',metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in handle sequence (default 0)')
-	argparser.add_argument(	'-bm',			dest='bcmm',	metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in barcode sequence during clustering (default 0)')
         argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED: tests from 10 to 1000')
-        argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=100,	help='Number of top barcodes (with most reads) to use as seeds in clustering(default 100)')
-    elif cmd == 'sortreads':
-        argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq]',			type=str,	required=False,	default='fa',	help='Format to output reads to fa=fasta or fq=fastq (default fastq)')
-	argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='Skip the first N read pairs in files (default 0).')
-	argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
-	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
+	argparser.add_argument(	'-hm',			dest='handlemm',metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in handle sequence (default 0)')
 
     import sys
     indata = argparser.parse_args(sys.argv[1:])
     if indata.path[-1] == '/': indata.path=indata.path[:-1]
 
     indata.selftest = False
+
     if cmd == 'init':
 	indata.outfile = indata.path + '/' + 'init.out.txt'
 	indata.logfile = indata.path + '/' + 'init.log.txt'
@@ -287,15 +396,10 @@ def getindata(cmd):
     elif cmd == 'clusterbarcodes':
 	indata.outfile = indata.path + '/' + 'clusterBarcodes.out.txt'
 	indata.logfile = indata.path + '/' + 'clusterBarcodes.log.txt'    
-    elif cmd == 'sortreads':pass
+    elif cmd == 'sortreads':
+	indata.outfile = indata.path + '/' + 'sortReads.out.txt'
+	indata.logfile = indata.path + '/' + 'sortReads.log.txt'    
 
-    
-    #if indata.outfile: indata.outfile = open(indata.outfile, 'w',1)
-    #else: indata.outfile = sys.stdout
-    #
-    #if indata.logfile: indata.logfile = open(indata.logfile, 'w',1)
-    #else: indata.logfile = sys.stderr
-    
     return indata
 
 #####
