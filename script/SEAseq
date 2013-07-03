@@ -15,7 +15,8 @@ def main():
 	sys.stderr.write('Please specify a command, if you need help run SEAseq help.\n')
 	cmd = None
 
-    if cmd[0] not in ['H','h']: indata = getindata(cmd)
+    if cmd and cmd[0] not in ['H','h']: indata = getindata(cmd)
+    elif not cmd: return 1
     else:	sys.stdout.write(
 				    '\nProgram: SEAseq\n'
 				    +'Version: ALPHA\n'
@@ -50,7 +51,7 @@ def foreachread_cluster(tmp):
     pair.identify(C_HANDLE, indata)
     pair.getN15()
     
-    if indata.cid_by_bc: pair.get_cid(indata)
+    #if indata.cid_by_bc: pair.get_cid(indata)
     
     return pair
 
@@ -65,7 +66,22 @@ def clusterbarcodes(indata):
     indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
     indata.logfile.write('Master process id='+str(MASTER)+'\n')
 
-    indata.logfile.write('Get infiles from config-file. <---NOT IMPLEMENTED YET!\n')
+    indata.logfile.write('Get infiles from config-file.\n')
+    indata = readConfig(indata)
+    
+    # get the readcount
+    indata.logfile.write('Getting readcount ...\n')
+    indata.numreads = 0
+    for filename in indata.config['infiles']['r1']:
+	tmp = bufcount(filename)/4
+	indata.logfile.write(filename+' -> '+str(tmp) +' reads.\n')
+	indata.numreads += tmp
+    indata.logfile.write(str(indata.numreads)+' read pairs in fastq files.\n');
+    # calculate the number of reads to process
+    indata.reads2process = indata.numreads
+    if indata.skip: indata.reads2process -= indata.skip
+    if indata.stop: indata.reads2process = indata.stop
+    if indata.n:    indata.reads2process = indata.n
 
     indata.logfile.write('Part1: identifying barcode sequences in reads.\n')
     #deciding if to run multiprocessing or single process for debugging
@@ -104,6 +120,16 @@ def clusterbarcodes(indata):
     f.close()
     indata.logfile.write('Part2: Clustering barcodes END\n')
     return summary
+
+def readConfig(indata):
+    indata.logfile.write('Reading config-file ...\n')
+    indata.config = initiate_file(indata.path+'/'+'config',indata , mode='r')
+    for line in indata.config:
+	if	line.rstrip() == '# Absolute path:':	    	abspath = indata.config.next().rstrip()
+	elif	line.rstrip() == '# Infiles dictionary:':	infiles = eval(indata.config.next())
+    indata.config.close()
+    indata.config = {'abspath':abspath,'infiles':infiles}
+    return indata
 
 def addfqs(indata):
 
@@ -209,7 +235,7 @@ def initiate_file(filename, indata, mode='w'):
 	#    if type(indata.logfile) == file and mode != 'r': indata.logfile.write('Creating file '+filename+'.\n')
     
     if mode =='ow': mode ='w'
-    out = open(filename, mode)
+    out = open(filename, mode,1)
     
     if type(indata.logfile) == file and mode != 'r': indata.logfile.write('File '+filename+' sucessfully initiated.\n')
     
@@ -220,21 +246,24 @@ def getindata(cmd):
     argparser = argparse.ArgumentParser(description='Analysis of SEAseq data.', formatter_class=argparse.RawTextHelpFormatter)
     argparser.add_argument('cmd')
     argparser.add_argument(	'--debug',		dest='debug', 			action='store_true', 			required=False,	default=False,	help='Debug (run as regular single process python script).')
-    argparser.add_argument('-path',	dest='path',	metavar='path',		type=str,required=True,	default=False,	help='Set the analysis path.')
+    argparser.add_argument('-path',	dest='path',	metavar='<path>',		type=str,required=True,	default=False,	help='Set the analysis path.')
 
-    #argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='Skip the first N read pairs in files (default 0).')
-    #argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
-    #argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to start (default 1).')
     #argparser.add_argument(	'-o',			dest='outfile',	metavar='outfile',			type=str,	required=True,	default=False,	help='Print output to outfile.')
     #argparser.add_argument(	'-l',			dest='logfile',	metavar='logfile',			type=str,	required=False,	default=False,	help='Print log messages to logfile (default stderr).')
-    #argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
-    #argparser.add_argument(	'-hm',			dest='handlemm',metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in handle sequence (default 0)')
 
     if cmd == 'init': pass
     elif cmd == 'addfqs':
 	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='Indata "fastq"-file read1.')
 	argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='Indata "fastq"-file read2.')
-    elif cmd == 'clusterbarcodes':pass
+    elif cmd == 'clusterbarcodes':
+	argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to run in parallel (default 1).')
+	argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='Skip the first N read pairs in files (default 0).')
+	argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
+	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
+	argparser.add_argument(	'-hm',			dest='handlemm',metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in handle sequence (default 0)')
+	argparser.add_argument(	'-bm',			dest='bcmm',	metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in barcode sequence during clustering (default 0)')
+        argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED: tests from 10 to 1000')
+        argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=100,	help='Number of top barcodes (with most reads) to use as seeds in clustering(default 100)')
     elif cmd == 'sortreads':pass
 
     import sys
@@ -249,7 +278,9 @@ def getindata(cmd):
 	assert indata.reads1 != indata.reads2, 'Error: read 1 and read 2 cannot be same file!\n'
 	indata.outfile = indata.path + '/' + 'addfqs.out.txt'
 	indata.logfile = indata.path + '/' + 'addfqs.log.txt'
-    elif cmd == 'clusterbarcodes':pass
+    elif cmd == 'clusterbarcodes':
+	indata.outfile = indata.path + '/' + 'clusterBarcodes.out.txt'
+	indata.logfile = indata.path + '/' + 'clusterBarcodes.log.txt'    
     elif cmd == 'sortreads':pass
 
     
@@ -259,21 +290,7 @@ def getindata(cmd):
     #if indata.logfile: indata.logfile = open(indata.logfile, 'w',1)
     #else: indata.logfile = sys.stderr
     
-    # get the readcount
-    #indata.logfile.write('Getting readcount ... ')
-    #indata.numreads=bufcount(indata.reads1.name)/4
-    ##indata.numreads=10000
-    #indata.logfile.write(str(indata.numreads)+' read pairs in fastq files.\n');
-    #
-    ## calculate the number of reads to process
-    #indata.reads2process = indata.numreads
-    #if indata.skip: indata.reads2process -= indata.skip
-    #if indata.stop: indata.reads2process = indata.stop
-    #if indata.n:    indata.reads2process = indata.n
-   
     return indata
-
-
 
 #####
 #check if run or imported // call main() or not
