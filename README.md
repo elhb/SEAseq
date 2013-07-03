@@ -1,17 +1,17 @@
-# Readme for the SEAseq scripts collection
-This is a set of script for analysis of SEAseq data in fastq files
+##Readme for the SEAseq scripts collection
+This is a set of script for analysis of SEAseq data in fastq files.
 
-##Example usage:
+###Example usage:
 
-### initiate the analysis folder
+Initiate the analysis folder:
 `script/SEAseq init -path tasks/testing`
 
-### add some fastq files to be analyzed
+Add some fastq files to be analyzed:
 `script/SEAseq addfqs -path tasks/testing/ -r1 data/20130205_BC1DF7ACXX_HiSeq2000Spikein/P412_102_index12/130205_BC1DF7ACXX/4_130205_BC1DF7ACXX_P412_102_index12_1.fastq -r2 data/20130205_BC1DF7ACXX_HiSeq2000Spikein/P412_102_index12/130205_BC1DF7ACXX/4_130205_BC1DF7ACXX_P412_102_index12_2.fastq` 
 `script/SEAseq addfqs -path tasks/testing/ -r1 data/20130205_BC1DF7ACXX_HiSeq2000Spikein/P412_101_index10/130205_BC1DF7ACXX/4_130205_BC1DF7ACXX_P412_101_index10_1.fastq -r2 data/20130205_BC1DF7ACXX_HiSeq2000Spikein/P412_101_index10/130205_BC1DF7ACXX/4_130205_BC1DF7ACXX_P412_101_index10_2.fastq`
 
-### cluster the barcode sequences in the reads files
+Cluster the barcode sequences in the reads files:
 `script/SEAseq clusterbarcodes -path tasks/testing/ -hm 4 -bm 4 -p 8`
 
-### sort the reads to clusters
+Sort the reads to clusters:
 `script/SEAseq sortreads -path tasks/testing/ -p 8 -stop 14869300`
