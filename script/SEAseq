@@ -71,11 +71,11 @@ def sortreads(indata):
     
     # get the readcount
     indata.logfile.write('Getting readcount ...\n')
-    indata.numreads = 1000
-#    for filename in indata.config['infiles']['r1']:
-#	tmp = bufcount(filename)/4
-#	indata.logfile.write(filename+' -> '+str(tmp) +' reads.\n')
-#	indata.numreads += tmp
+    indata.numreads = 0
+    for filename in indata.config['infiles']['r1']:
+	tmp = bufcount(filename)/4
+	indata.logfile.write(filename+' -> '+str(tmp) +' reads.\n')
+	indata.numreads += tmp
     indata.logfile.write(str(indata.numreads)+' read pairs in fastq files.\n');
     # calculate the number of reads to process
     indata.reads2process = indata.numreads
@@ -186,26 +186,6 @@ def sortreads(indata):
     indata.logfile.write('Reads sorted into cluster tempfiles\n')
     indata.logfile.write('Part1: Sorting reads to clusters END\n')
     return 0
-
-def temporary_shit():
-    #open bedfile
-    bedfile = open(sys.argv[1],'r')
-    
-    c.execute('CREATE TABLE chromosomes(id text, length int)')
-    
-    # add each bedfile line to db
-    for line in bedfile:
-	[chrom, start, end, info] = line.rstrip().split('\t')
-	[ID,length,span] = info.split(',')
-
-    bedfile.close
-    
-    #close the connection
-
-
-
-
-
 
 def foreachread_cluster(tmp):
 
