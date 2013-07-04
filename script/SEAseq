@@ -7,6 +7,7 @@
 import os
 from SEAseqLib.mainLibrary import *
 MASTER = os.getpid()
+version = 'ALPHA 1'
 
 def main():
     import sys
@@ -19,7 +20,7 @@ def main():
     elif not cmd: return 1
     else:	sys.stdout.write(
 				    '\nProgram: SEAseq\n'
-				    +'Version: ALPHA\n'
+				    +'Version: '+version+'\n'
 				    +'For analysis of SEAseq data.\n\n'
 				    +'Usage:\tSEAseq <command> -path <analysis folder> [options]\n\n'
 				    +'Commands:\n'
@@ -78,6 +79,7 @@ def sortreads(indata):
     import time
     import sys
     indata.logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
+    indata.logfile.write('Version: '+version+'\n')
     indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
     indata.logfile.write('Master process id='+str(MASTER)+'\n')
 
@@ -216,6 +218,7 @@ def clusterbarcodes(indata):
     import time
     import sys
     indata.logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
+    indata.logfile.write('Version: '+version+'\n')
     indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
     indata.logfile.write('Master process id='+str(MASTER)+'\n')
 
@@ -281,6 +284,7 @@ def addfqs(indata):
     import time
     import sys
     indata.logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
+    indata.logfile.write('Version: '+version+'\n')
     indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
     indata.logfile.write('Master process id='+str(MASTER)+'\n')
 
@@ -342,6 +346,7 @@ def init(indata):
 
     import time
     indata.logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
+    indata.logfile.write('Version: '+version+'\n')
     indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
     indata.logfile.write('Master process id='+str(MASTER)+'\n')
     indata.logfile.write(tmp_log)
