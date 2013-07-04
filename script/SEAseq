@@ -55,6 +55,21 @@ def foreachread_sort(tmp):
     
     return pair
 
+def getreadcount(indata):
+    indata.logfile.write('Getting readcounts ...\n')
+    indata.numreads = 0
+    for filename in indata.config['infiles']['r1']:
+	tmp = bufcount(filename)/4
+	indata.logfile.write(filename+' -> '+str(tmp) +' reads.\n')
+	indata.numreads += tmp
+    indata.logfile.write(str(indata.numreads)+' read pairs in fastq files.\n');
+    # calculate the number of reads to process
+    indata.reads2process = indata.numreads
+    if indata.skip: indata.reads2process -= indata.skip
+    if indata.stop: indata.reads2process = indata.stop
+    if indata.n:    indata.reads2process = indata.n
+    return indata
+
 def sortreads(indata):
 
     indata.outfile = initiate_file(indata.outfile, indata, mode='a')
@@ -70,18 +85,7 @@ def sortreads(indata):
     indata = readConfig(indata)
     
     # get the readcount
-    indata.logfile.write('Getting readcount ...\n')
-    indata.numreads = 0
-    for filename in indata.config['infiles']['r1']:
-	tmp = bufcount(filename)/4
-	indata.logfile.write(filename+' -> '+str(tmp) +' reads.\n')
-	indata.numreads += tmp
-    indata.logfile.write(str(indata.numreads)+' read pairs in fastq files.\n');
-    # calculate the number of reads to process
-    indata.reads2process = indata.numreads
-    if indata.skip: indata.reads2process -= indata.skip
-    if indata.stop: indata.reads2process = indata.stop
-    if indata.n:    indata.reads2process = indata.n
+    indata = getreadcount(indata)
 
     indata.logfile.write('\nLoading clustering data ...\n')
     summary = SEAseqSummary()
@@ -219,18 +223,7 @@ def clusterbarcodes(indata):
     indata = readConfig(indata)
     
     # get the readcount
-    indata.logfile.write('Getting readcount ...\n')
-    indata.numreads = 0
-    for filename in indata.config['infiles']['r1']:
-	tmp = bufcount(filename)/4
-	indata.logfile.write(filename+' -> '+str(tmp) +' reads.\n')
-	indata.numreads += tmp
-    indata.logfile.write(str(indata.numreads)+' read pairs in fastq files.\n');
-    # calculate the number of reads to process
-    indata.reads2process = indata.numreads
-    if indata.skip: indata.reads2process -= indata.skip
-    if indata.stop: indata.reads2process = indata.stop
-    if indata.n:    indata.reads2process = indata.n
+    indata = getreadcount(indata)
 
     indata.logfile.write('Part1: identifying barcode sequences in reads.\n')
     #deciding if to run multiprocessing or single process for debugging
