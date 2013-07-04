@@ -129,9 +129,9 @@ def getPairs(indata):
 	for file1, file2 in zip(indata.config['infiles']['r1'],indata.config['infiles']['r2']):
 	
 		#check if files are gzipped
-		if file1.split('.')[-1] in ['gz','gzip']: file1 = gzip.open(file1.name)
+		if file1.split('.')[-1] in ['gz','gzip']: file1 = gzip.open(file1)
 		else: file1 = open(file1,'r')
-		if file2.split('.')[-1] in ['gz','gzip']: file2 = gzip.open(file2.name)
+		if file2.split('.')[-1] in ['gz','gzip']: file2 = gzip.open(file2)
 		else: file2 = open(file2,'r')
 
 		# itarate through fastq files and return readpairs

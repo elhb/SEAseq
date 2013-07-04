@@ -7,7 +7,7 @@
 import os
 from SEAseqLib.mainLibrary import *
 MASTER = os.getpid()
-version = 'ALPHA 1'
+version = 'ALPHA 1.1'
 
 def main():
     import sys
