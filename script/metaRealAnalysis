@@ -1,7 +1,7 @@
 #! /usr/bin/env python2.7
 #! /bin/env python
 
-from tnt.lib import *
+from SEAseqLib.mainLibrary import *
 import os
 import time
 
@@ -12,6 +12,7 @@ def main():
 #--------------------------MAIN PROGRAM-----------------------------
     import gc
     indata = getindata()
+    indata.config = {'infiles':{'r1':[indata.reads1.name],'r2':[indata.reads2.name]}}
     
     indata.logfile.write('Starting.\n')
     indata.logfile.write('Running script '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'.\n')
@@ -556,7 +557,7 @@ def getindata():
     # get the readcount
     indata.logfile.write('Getting readcount ... ')
     indata.numreads=bufcount(indata.reads1.name)/4
-    #indata.numreads=10000
+    #indata.numreads=24010111
     indata.logfile.write(str(indata.numreads)+' read pairs in fastq files.\n');
 
     # calculate the number of reads to process

@@ -28,4 +28,5 @@ script/progressbar.py
 seaseq.bp10-45.txt
 tasks/
 data/*
+nondevel_script/*
 *.pyc

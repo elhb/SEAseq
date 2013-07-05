@@ -116,7 +116,7 @@ def getPairs(indata):
 		while len(readNumbersToPrint) < indata.n: readNumbersToPrint[random.randint(indata.skip+1,numreads)] = True
 		tempo = readNumbersToPrint.keys()
 		tempo.sort()
-		readNumbersToPrint = tempo 
+		readNumbersToPrint = tempo
 		indata.logfile.write('done.\n')
 	
 	# set the counters to initial values
@@ -136,17 +136,29 @@ def getPairs(indata):
 
 		# itarate through fastq files and return readpairs
 		for r1line in file1:
-			r2line = file2.readline()
+			r2line = file2.readline() #get line from  read2 file
 			
 			tmp+=1 # increment linecount
+			
+			#random speedup
+			if indata.n and counter != readNumbersToPrint[0]:
+				#print tmp
+				if tmp == 4: tmp = 0;continue
+				elif tmp != 1: continue
+				#elif tmp == 1:
+					#counter+=1 # increase entry counter
+					#print '\t',counter,readNumbersToPrint[0]
+					#continue
+				
 			
 			# skip or stop if option is set on indata
 			if indata.skip and tmp < (4*indata.skip) and skip: continue
 			elif indata.skip and tmp == (4*indata.skip) and skip: skip=False; tmp =0;continue
 			if indata.stop and counter == indata.stop: break
-	
+
 			# depending on line number (within entry) do ...	
 			if tmp == 1: #header check match between files
+				counter+=1 # increase entry counter
 				header=r1line
 				if r1line.split(" ")[0] != r2line.split(" ")[0]: indata.logfile.write('Error mismatching headers!');raise ValueError #os.kill(MASTER,1);sys.exit(1);#REALLYNOTOPTIMAL
 			elif tmp == 2: # sequence check that its DNA and save sequences till later
@@ -162,17 +174,15 @@ def getPairs(indata):
 						if r1line[0] != r2line[0] or r1line[0] != '+': indata.logfile.write('Error Format not fastq!');raise ValueError#os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
 			elif tmp == 4: # quality values and end of entry, reset counter and yeild readpair
 					tmp=0 # reset line counter
-					counter+=1 # increase entry counter
 					r1qual = r1line.rstrip() #get qual strings
 					r2qual = r2line.rstrip()
 					
 					#yield readpair
 					if not indata.n: yield [readpair(header.rstrip(), read(header.rstrip(),r1seq,r1qual), read(header.rstrip(),r2seq,r2qual)),indata]
-					else:
-						if counter == readNumbersToPrint[0]:
-							yield [readpair(header.rstrip(), read(header.rstrip(),r1seq,r1qual), read(header.rstrip(),r2seq,r2qual)),indata]
-							readNumbersToPrint = readNumbersToPrint[1:]
-							if len(readNumbersToPrint) == 0: break
+					elif counter == readNumbersToPrint[0]:
+						yield [readpair(header.rstrip(), read(header.rstrip(),r1seq,r1qual), read(header.rstrip(),r2seq,r2qual)),indata]
+						readNumbersToPrint = readNumbersToPrint[1:]
+						if len(readNumbersToPrint) == 0: break
 
 class readpair():
     """ object representing an illumina cluster """
