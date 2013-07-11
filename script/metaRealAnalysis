@@ -173,7 +173,7 @@ def foreachcluster(tmp):
 	seqs.sort()
 	for read in seqs:
 	    #if len(reads[1][read]) > 1:
-		output += '>'+str(len(reads[1][read]))+'st.rand='+str(random.randint(0,999999))+'.p1='+str(reads[1][read][0].p1)+'.p2= '+str(reads[1][read][0].p2)
+		output += '>'+str(len(reads[1][read]))+'st.rand='+str(random.randint(0,999999))+'.p1='+str(reads[1][read][0].p1)+'.p2= '+str(reads[1][read][0].p2)+'.'+str(cid)
 		output += '\n'+read+'\n'
 	    #print reads[1][read]
 	#for read in reads[2]:
