@@ -28,13 +28,15 @@ def main():
 				    +'\taddfqs'		+' '.join(['' for i in range(20-len('addfqs'))])		+'Add fastq files to be analysed\n'
 				    +'\tclusterbarcodes'+' '.join(['' for i in range(20-len('clusterbarcodes'))])	+'cluster reads according to barcode sequence\n'
 				    +'\tsortreads'	+' '.join(['' for i in range(20-len('sortreads'))])		+'links barcode cluster information to each read pair\n'
-				    +'\thelp'		+' '.join(['' for i in range(20-len('help'))])		+'print this help message and exit\n'
+				    +'\tmeta'		+' '.join(['' for i in range(20-len('meta'))])			+'metagenomics amplicon analysis, EXPRIMENTAL!\n'
+				    +'\thelp'		+' '.join(['' for i in range(20-len('help'))])			+'print this help message and exit\n'
 				    )
 
     if cmd == 'init':			init(indata)
     elif cmd == 'addfqs':		addfqs(indata)
     elif cmd == 'clusterbarcodes':	clusterbarcodes(indata)
     elif cmd == 'sortreads':		sortreads(indata)
+    elif cmd == 'meta':			meta(indata)
     elif cmd[0] in ['H','h']:		pass
     elif cmd == None:			pass
     else: sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n')
@@ -323,7 +325,7 @@ def sortreads(indata):
 			    +pair.r2.seq+'\n')
 
 	if indata.sortfmt == 'fq':
-            indata.logfile.write('\nWriting to sorted byCid-fq-files ...\n')
+            indata.logfile.write('\nWriting to fastq files sorted by cluster id ...\n')
 	    progress = Progress(clustercount, logfile=indata.logfile, unit = 'cluster')
 	    with progress:
 		for cid,cluster in out_dict.iteritems():
@@ -341,6 +343,92 @@ def sortreads(indata):
     indata.logfile.write('Reads sorted into cluster tempfiles\n')
     indata.logfile.write('Part1: Sorting reads to clusters END\n----------\n')
     return 0
+
+def meta(indata):
+    
+    indata.outfile = initiate_file(indata.outfile, indata, mode='a')
+    indata.logfile = initiate_file(indata.logfile, indata, mode='a')
+
+    import time
+    import sys
+    import multiprocessing as mp
+    
+    indata.logfile.write('----------------.\n')
+    indata.logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
+    indata.logfile.write('Version: '+version+'\n')
+    indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
+    indata.logfile.write('Master process id='+str(MASTER)+'\n')
+
+    indata.logfile.write('Get infiles from config-file.\n')
+    indata = readConfig(indata)
+    
+    man = mp.Manager()
+    clusterq = man.Queue()
+    
+    # Run subprocess that get read pars and adds clusters to queue last add a END
+    reader = mp.Process(target=getClustersAndPairs,args=(indata,clusterq))
+    reader.start()
+    
+    # need a generator that yields clusters from queue until it finds a cluster = END
+    for pairs in clusteriterator(clusterq): pass
+    
+    # make a worker pool that works with the clusters returned from the generator
+    
+    # for each cluster:
+	# remove reads containing illumina adapter sequences
+	# cut the N15 and C-handle
+	# idetify if read primers are 16S, ITS, MIX or unknown
+	# get consensus sequences for each class of primer combos
+	# identify the species corresponding to each consensus
+	# create cluster output/summary
+	
+    reader.join()
+	
+    # create a nice run summary
+
+def clusteriterator(clusterq):
+    while True:
+	pairs = clusterq.get()
+	if pairs == 'END': break
+	yield pairs
+    
+def getClustersAndPairs(indata,clusterq):
+    
+    import os
+    indata.logfile.write('Reader initiated pid='+str(os.getpid())+'.\n')
+
+    currentcluster = 0
+    pairs = []
+    indata.config['infiles']['r1'] = [indata.path+'/sortedReads/sorted.reads.1.fq']
+    indata.config['infiles']['r2'] = [indata.path+'/sortedReads/sorted.reads.2.fq']
+    for tmp in getPairs(indata):
+
+	pair, indata = tmp
+	del tmp
+	
+	# convert to SEAseq readpair
+	pair = SEAseqpair(pair.header, pair.r1, pair.r2)
+	
+	#C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
+	#pair.identify(C_HANDLE, indata)
+	#pair.getN15()
+	
+	pair.cid = int(pair.header.split(':')[-1].split('_')[1])
+	
+	if pair.cid == currentcluster:
+	    pairs.append(pair)
+	elif pair.cid == currentcluster+1:
+	    clusterq.put([currentcluster,pairs])
+	    currentcluster = pair.cid
+	    pairs = [pair]
+	else:
+	    clusterq.put([currentcluster,pairs])
+	    currentcluster = pair.cid
+	    pairs = [pair]
+
+    clusterq.put('END')
+    indata.logfile.write('Reader exiting.\n')
+
 
 def getreadcount(indata):
     indata.logfile.write('Getting readcounts ...\n')
@@ -406,7 +494,7 @@ def getindata(cmd):
         argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=100,	help='Number of top barcodes (with most reads) to use as seeds in clustering(default 100)')
     elif cmd == 'sortreads':
         argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq]',			type=str,	required=False,	default='fq',	help='Format to output reads to fa=fasta or fq=fastq(default fastq)')
-    if cmd == 'sortreads' or cmd == 'clusterbarcodes':
+    if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta':
 	argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to run in parallel (default 1).')
 	argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='Skip the first N read pairs in files (default 0).')
 	argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
@@ -433,6 +521,9 @@ def getindata(cmd):
     elif cmd == 'sortreads':
 	indata.outfile = indata.path + '/' + 'sortReads.out.txt'
 	indata.logfile = indata.path + '/' + 'sortReads.log.txt'    
+    elif cmd == 'meta':
+	indata.outfile = indata.path + '/' + 'meta.out.txt'
+	indata.logfile = indata.path + '/' + 'meta.log.txt'    
 
     return indata
 
