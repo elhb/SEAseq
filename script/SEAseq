@@ -306,16 +306,6 @@ def sortreads(indata):
 	    f2 = open(indata.path+'/sortedReads/sorted.reads.2.fq','w')
 	elif indata.sortfmt == 'fa':
 	    f1 = open(indata.path+'/sortedReads/sorted.reads.fa','w')
-    	elif indata.sortfmt == 'db':
-	    import sqlite3
-	    db = indata.path+'/sortedReads/sortedreads.db'
-	    import os
-	    if os.path.exists(db):
-		indata.logfile.write('Overwriting excisting database at '+indata.path+'/sortedReads/sortedreads.db.\n')
-		os.remove(db)
-	    conn = sqlite3.connect(db)
-	    c = conn.cursor()
-	    c.execute('CREATE TABLE clusters(id text, readcount int)')
 	for pair in results:
 	    progress.update()
 	    if pair.cid:
@@ -331,26 +321,6 @@ def sortreads(indata):
 			    +pair.r1.seq+'\n'+
 			    '>' + '_'.join(pair.r2.header.split(' ')) + '_r2_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
 			    +pair.r2.seq+'\n')
-		elif indata.sortfmt == 'db':
-		    #print '###->',pair.cid
-		    try: ## add line
-			c.execute('INSERT INTO c'+str(pair.cid)+' VALUES ("'+pair.r1.header+'","'+pair.r1.seq+'","'+pair.r1.qual+'","'+pair.r2.seq+'","'+pair.r2.qual+'","'+str(None)+ '")')
-			c.execute('UPDATE clusters SET readcount =  readcount + 1 WHERE id = "c'+str(pair.cid)+'"')
-		    except sqlite3.OperationalError as inst: ## Create table
-			#print inst
-			c.execute("INSERT INTO clusters VALUES ('c"+str(pair.cid)+"',1)")
-			c.execute('CREATE TABLE c'+str(pair.cid)+'(header text, r1_seq text, r1_qual text, r2_seq text, r2_qual text, illuminaAdapter text)')
-			c.execute('INSERT INTO c'+str(pair.cid)+' VALUES ("'+pair.r1.header+'","'+pair.r1.seq+'","'+pair.r1.qual+'","'+pair.r2.seq+'","'+pair.r2.qual+'","'+str(None)+ '")')
-	if indata.sortfmt == 'db':conn.commit() ## Save (commit) the changes
-
-	## test to fetch
-	#clusters = []
-	#for tmp in c.execute('SELECT id, readcount FROM clusters WHERE clusters.readcount >= 1'):
-	#    clusters.append(tmp)
-	#for tmp in clusters:
-	#    print tmp[0], tmp[1]
-	#    for row in c.execute('SELECT * FROM '+tmp[0]+''):
-	#	print str(row)[:300]
 
 	if indata.sortfmt == 'fq':
             indata.logfile.write('\nWriting to sorted byCid-fq-files ...\n')
@@ -363,10 +333,8 @@ def sortreads(indata):
 			    f2.write(cluster[2][i])
 
 	#close connections
-	if  indata.sortfmt in ['fa','fq']:	f1.close()
+	if indata.sortfmt in ['fa','fq']:	f1.close()
 	if indata.sortfmt == 'fq':		f2.close()
-	if indata.sortfmt == 'db':		conn.close();
-
 
     if not indata.debug:WorkerPool.close()
     if not indata.debug:WorkerPool.join()
@@ -437,7 +405,7 @@ def getindata(cmd):
 	argparser.add_argument(	'-bm',			dest='bcmm',	metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in barcode sequence during clustering (default 0)')
         argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=100,	help='Number of top barcodes (with most reads) to use as seeds in clustering(default 100)')
     elif cmd == 'sortreads':
-        argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq/db]',			type=str,	required=False,	default='fq',	help='Format to output reads to fa=fasta, fq=fastq or db=SQLite (default fastq)')
+        argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq]',			type=str,	required=False,	default='fq',	help='Format to output reads to fa=fasta or fq=fastq(default fastq)')
     if cmd == 'sortreads' or cmd == 'clusterbarcodes':
 	argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to run in parallel (default 1).')
 	argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='Skip the first N read pairs in files (default 0).')
