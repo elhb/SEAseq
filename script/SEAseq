@@ -7,7 +7,7 @@
 import os
 from SEAseqLib.mainLibrary import *
 MASTER = os.getpid()
-version = 'ALPHA 1.1'
+version = 'ALPHA 1.2'
 
 def main():
     import sys
@@ -27,7 +27,7 @@ def main():
 				    +'\tinit'		+' '.join(['' for i in range(20-len('init'))])			+'Initiate a new anlysis\n'
 				    +'\taddfqs'		+' '.join(['' for i in range(20-len('addfqs'))])		+'Add fastq files to be analysed\n'
 				    +'\tclusterbarcodes'+' '.join(['' for i in range(20-len('clusterbarcodes'))])	+'cluster reads according to barcode sequence\n'
-				    +'\tsortreads'	+' '.join(['' for i in range(20-len('sortreads'))])		+'sort reads to barcode clusters\n'
+				    +'\tsortreads'	+' '.join(['' for i in range(20-len('sortreads'))])		+'links barcode cluster information to each read pair\n'
 				    +'\thelp'		+' '.join(['' for i in range(20-len('help'))])		+'print this help message and exit\n'
 				    )
 
@@ -39,39 +39,56 @@ def main():
     elif cmd == None:			pass
     else: sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n')
 
-def foreachread_sort(tmp):
+def init(indata):
+    
+    import os
+    import sys
+    tmp_log = ''
 
-    # unpack info
-    pair, indata = tmp
-    del tmp
+    if os.path.exists(indata.path+'/'+'config'):
+	sys.stderr.write('This analysis has already been initiated try another command.\n')
+	return
     
-    # convert to SEAseq readpair
-    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
-    
-    C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
-    pair.identify(C_HANDLE, indata)
-    pair.getN15()
-    
-    pair.get_cid(indata)
-    
-    return pair
+    try:
+	os.mkdir(indata.path)
+	tmp_log += 'Folder '+indata.path+' created sucessfully.\n'
+    except OSError as inst:
+	if inst[0] != 17: print inst; return
+	_continue = ''
+	while not _continue or _continue[0] not in ['Y','y', 'N','n']:
+	    _continue = raw_input('WARNING: the folder '+indata.path+' already excists. Continue anyway? (yes/no) ')
+	tmp_log += 'WARNING: the folder '+indata.path+' already excists. Continue anyway? (yes/no) '+_continue+'\nUsing already exsisting folder ...\n'
+	if _continue[0] in ['Y','y']: pass
+	elif _continue[0] in ['N','n']: return
+	else:
+	    sys.stderr.write('Error 1\n.'); return 1
 
-def getreadcount(indata):
-    indata.logfile.write('Getting readcounts ...\n')
-    indata.numreads = 0
-    for filename in indata.config['infiles']['r1']:
-	tmp = bufcount(filename)/4
-	indata.logfile.write(filename+' -> '+str(tmp) +' reads.\n')
-	indata.numreads += tmp
-    indata.logfile.write(str(indata.numreads)+' read pairs in fastq files.\n');
-    # calculate the number of reads to process
-    indata.reads2process = indata.numreads
-    if indata.skip: indata.reads2process -= indata.skip
-    if indata.stop: indata.reads2process = indata.stop
-    if indata.n:    indata.reads2process = indata.n
-    return indata
+    indata.outfile = initiate_file(indata.outfile, indata)
+    indata.logfile = initiate_file(indata.logfile, indata)
 
-def sortreads(indata):
+    import time
+    indata.logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
+    indata.logfile.write('Version: '+version+'\n')
+    indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
+    indata.logfile.write('Master process id='+str(MASTER)+'\n')
+    indata.logfile.write(tmp_log)
+
+    indata.logfile.write('Creating config file:\n')
+    indata.config = initiate_file(indata.path+'/'+'config', indata)
+
+    abspath = os.path.abspath(indata.path)
+    infiles = {'r1':[],'r2':[]}
+
+    indata.logfile.write('Writing settings to config file ...\n')
+    indata.config.write(
+	'# Absolute path:\n'+abspath+'\n'+
+	'# Infiles dictionary:\n'+str(infiles)+'\n'
+	)
+
+    indata.logfile.write('Analysis '+abspath+' sucesfully initiated.\n')
+    return 0
+
+def addfqs(indata):
 
     indata.outfile = initiate_file(indata.outfile, indata, mode='a')
     indata.logfile = initiate_file(indata.logfile, indata, mode='a')
@@ -83,114 +100,34 @@ def sortreads(indata):
     indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
     indata.logfile.write('Master process id='+str(MASTER)+'\n')
 
-    indata.logfile.write('Get infiles from config-file.\n')
-    indata = readConfig(indata)
-    
-    # get the readcount
-    indata = getreadcount(indata)
+    indata.logfile.write('Reading current config ...\n')
+    indata.config = initiate_file(indata.path+'/'+'config',indata , mode='r')
+    before = ''
+    after = ''
+    for line in indata.config:
+	if line.rstrip() == '# Infiles dictionary:':
+	    infiles = eval(indata.config.next())
+	    after = '\n'
+	elif not after: before += line
+	elif after:after += line
+    indata.config.close()
 
-    indata.logfile.write('\nLoading clustering data ...\n')
-    summary = SEAseqSummary()
-    summary.loadclusters(indata.path+'/clusters.tempfile')
-    cid_by_bc = {}
-    progress = Progress(len(summary.clusters),verb='minimal', logfile=indata.logfile)
-    with progress:
-	for cluster_id, infodist in summary.clusters.iteritems():
-	    progress.update()
-	    if int(infodist['total']) >= indata.mrc:
-		for barcode in infodist['barcodes']:
-		    cid_by_bc[barcode] = cluster_id
-	    else: pass#print 'low read cluster'
-    summary.clusters.clear()
-    del summary.clusters;del cluster_id; del infodist; # delete summary object to save memory, this does not reduce memory usage why?!?
-    indata.cid_by_bc = cid_by_bc
-
+    indata.logfile.write('Adding filenames to config file.\n')
     import os
-    try: os.makedirs(indata.path+'/sortedReads')
-    except OSError:pass
-    #try: os.makedirs(indata.path+'/sortedReads/barcodes')
-    #except OSError:pass
-
-    if indata.debug: #single process // serial
-	results=[] # create holder for processed reads
-	indata.logfile.write('Part1: Sorting reads to clusters ...\n')
-	indata.logfile.write('Running in debug mode sorting reads to clusters ...\n')
-	progress = Progress(indata.reads2process, logfile=indata.logfile) # creates a progress "bar" thingy
-	#itarate through reads and do the "magicFunction"
-	with progress:
-	    for tmp in getPairs(indata):
-		progress.update()
-		results.append(foreachread_sort(tmp))
-	indata.logfile.write('sort finished, start writing to files ... \n')
-    else: # multiple processes in parallel
-	import multiprocessing
-	#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
-	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
-	results = WorkerPool.imap_unordered(foreachread_sort,getPairs(indata),chunksize=1000)
-
-    if not indata.debug: indata.logfile.write('Part1: Sorting reads to cluster '+str(indata.cpus)+' processes  ...\n')
-    progress = Progress(indata.reads2process, logfile=indata.logfile)
-    with progress:
-	if indata.sortfmt == 'fq':
-	    f1 = open(indata.path+'/sortedReads/sorted.reads.1.fq','w')
-	    f2 = open(indata.path+'/sortedReads/sorted.reads.2.fq','w')
-	elif indata.sortfmt == 'fa':
-	    f1 = open(indata.path+'/sortedReads/sorted.reads.fa','w')
-    	elif indata.sortfmt == 'db':
-	    import sqlite3
-	    db = indata.path+'/sortedReads/sortedreads.db'
-	    import os
-	    if os.path.exists(db):
-		indata.logfile.write('Overwriting excisting database at '+indata.path+'/sortedReads/sortedreads.db.\n')
-		os.remove(db)
-	    conn = sqlite3.connect(db)
-	    c = conn.cursor()
-	    c.execute('CREATE TABLE clusters(id text, readcount int)')
-	for pair in results:
-	    progress.update()
-	    if pair.cid:
-		if indata.sortfmt == 'fq':
-		    f1.write('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
-			    +pair.r1.seq+'\n+\n'
-			    +pair.r1.qual+'\n')
-		    f2.write('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
-			    +pair.r2.seq+'\n+\n'
-			    +pair.r2.qual+'\n')
-		elif indata.sortfmt == 'fa':
-		    f1.write('>' + '_'.join(pair.r1.header.split(' ')) + '_r1_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
-			    +pair.r1.seq+'\n'+
-			    '>' + '_'.join(pair.r2.header.split(' ')) + '_r2_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
-			    +pair.r2.seq+'\n')
-		elif indata.sortfmt == 'db':
-		    #print '###->',pair.cid
-		    try: ## add line
-			c.execute('INSERT INTO c'+str(pair.cid)+' VALUES ("'+pair.r1.header+'","'+pair.r1.seq+'","'+pair.r1.qual+'","'+pair.r2.seq+'","'+pair.r2.qual+'","'+str(None)+ '")')
-			c.execute('UPDATE clusters SET readcount =  readcount + 1 WHERE id = "c'+str(pair.cid)+'"')
-		    except sqlite3.OperationalError as inst: ## Create table
-			#print inst
-			c.execute("INSERT INTO clusters VALUES ('c"+str(pair.cid)+"',1)")
-			c.execute('CREATE TABLE c'+str(pair.cid)+'(header text, r1_seq text, r1_qual text, r2_seq text, r2_qual text, illuminaAdapter text)')
-			c.execute('INSERT INTO c'+str(pair.cid)+' VALUES ("'+pair.r1.header+'","'+pair.r1.seq+'","'+pair.r1.qual+'","'+pair.r2.seq+'","'+pair.r2.qual+'","'+str(None)+ '")')
-	if indata.sortfmt == 'db':conn.commit() ## Save (commit) the changes
-
-	## test to fetch
-	#clusters = []
-	#for tmp in c.execute('SELECT id, readcount FROM clusters WHERE clusters.readcount >= 1'):
-	#    clusters.append(tmp)
-	#for tmp in clusters:
-	#    print tmp[0], tmp[1]
-	#    for row in c.execute('SELECT * FROM '+tmp[0]+''):
-	#	print str(row)[:300]
-
-	#close connections
-	if  indata.sortfmt in ['fa','fq']:	f1.close()
-	if indata.sortfmt == 'fq':		f2.close()
-	if indata.sortfmt == 'db':		conn.close();
-
-    if not indata.debug:WorkerPool.close()
-    if not indata.debug:WorkerPool.join()
-    indata.logfile.write('Reads sorted into cluster tempfiles\n')
-    indata.logfile.write('Part1: Sorting reads to clusters END\n')
+    import sys
+    r1 = os.path.abspath(indata.reads1.name)
+    r2 = os.path.abspath(indata.reads2.name)
+    if r1 in infiles['r1'] + infiles['r2'] or r2 in infiles['r1'] + infiles['r2']:
+	sys.stderr.write('ERROR:\nat least one of the files:\n'+r1+'\n'+r2+'\nare already in the config file.\n');
+	indata.logfile.write('ERROR:\nat least one of the files:\n'+r1+'\n'+r2+'\nare already in the config file.\nExiting withiout changes.\n');
+	return 1
+    infiles['r1'].append(r1)
+    infiles['r2'].append(r2)
+    indata.config = initiate_file(indata.path+'/'+'config', indata, mode='ow')
+    indata.config.write(before+'# Infiles dictionary:\n'+str(infiles)+after)
+    indata.config.close()
+    indata.logfile.write('Files '+r1+' and '+r2+' sucessfully added to infiles dist in config.\n\n')
+    indata.logfile.close()
     return 0
 
 def foreachread_cluster(tmp):
@@ -266,17 +203,24 @@ def clusterbarcodes(indata):
     indata.logfile.write('Part2: Clustering barcodes END\n')
     return summary
 
-def readConfig(indata):
-    indata.logfile.write('Reading config-file ...\n')
-    indata.config = initiate_file(indata.path+'/'+'config',indata , mode='r')
-    for line in indata.config:
-	if	line.rstrip() == '# Absolute path:':	    	abspath = indata.config.next().rstrip()
-	elif	line.rstrip() == '# Infiles dictionary:':	infiles = eval(indata.config.next())
-    indata.config.close()
-    indata.config = {'abspath':abspath,'infiles':infiles}
-    return indata
+def foreachread_sort(tmp):
 
-def addfqs(indata):
+    # unpack info
+    pair, indata = tmp
+    del tmp
+    
+    # convert to SEAseq readpair
+    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
+    
+    C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
+    pair.identify(C_HANDLE, indata)
+    pair.getN15()
+    
+    pair.get_cid(indata)
+    
+    return pair
+
+def sortreads(indata):
 
     indata.outfile = initiate_file(indata.outfile, indata, mode='a')
     indata.logfile = initiate_file(indata.logfile, indata, mode='a')
@@ -288,83 +232,185 @@ def addfqs(indata):
     indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
     indata.logfile.write('Master process id='+str(MASTER)+'\n')
 
-    indata.logfile.write('Reading current config ...\n')
+    indata.logfile.write('Get infiles from config-file.\n')
+    indata = readConfig(indata)
+    
+    # get the readcount
+    indata = getreadcount(indata)
+
+    indata.logfile.write('\nLoading clustering data ...\n')
+    summary = SEAseqSummary()
+    summary.loadclusters(indata.path+'/clusters.tempfile')
+    import multiprocessing
+    man = multiprocessing.Manager()
+    indata.cid_by_bc = man.dict()
+    clustercount = len(summary.clusters)
+    progress = Progress(len(summary.clusters),verb='minimal', logfile=indata.logfile)
+    with progress:
+	for cluster_id, infodist in summary.clusters.iteritems():
+	    progress.update()
+	    if int(infodist['total']) >= indata.mrc:
+		for barcode in infodist['barcodes']:
+		    indata.cid_by_bc[barcode] = cluster_id
+	    else: pass#print 'low read cluster'
+    summary.clusters.clear()
+    del summary.clusters;del cluster_id; del infodist; # delete summary object to save memory, this does not reduce memory usage why?!?
+    
+    import os
+    try: os.makedirs(indata.path+'/sortedReads')
+    except OSError:pass
+    #try: os.makedirs(indata.path+'/sortedReads/barcodes')
+    #except OSError:pass
+
+    if indata.debug: #single process // serial
+	results=[] # create holder for processed reads
+	indata.logfile.write('Part1: Sorting reads to clusters ...\n')
+	indata.logfile.write('Running in debug mode sorting reads to clusters ...\n')
+	progress = Progress(indata.reads2process, logfile=indata.logfile) # creates a progress "bar" thingy
+	#itarate through reads and do the "magicFunction"
+	with progress:
+	    for tmp in getPairs(indata):
+		progress.update()
+		results.append(foreachread_sort(tmp))
+	indata.logfile.write('sort finished, start writing to files ... \n')
+    else: # multiple processes in parallel
+	import multiprocessing
+	#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
+	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
+	results = WorkerPool.imap_unordered(foreachread_sort,getPairs(indata),chunksize=1000)
+
+#### will test sorting ###
+    tmp = 0
+    list_dict = {}
+    while tmp < clustercount+10000:
+	list_dict[tmp] = [ [i+tmp,[],[]] for i in xrange(10000)]
+	tmp += 10000
+    list_dict[0][0] = [0,None,None]
+### ###
+
+    if not indata.debug: indata.logfile.write('Part1: Sorting reads to cluster '+str(indata.cpus)+' processes  ...\n')
+    progress = Progress(indata.reads2process, logfile=indata.logfile)
+    with progress:
+	if indata.sortfmt == 'fq':
+	    f1 = open(indata.path+'/sortedReads/sorted.reads.1.fq','w')
+	    f2 = open(indata.path+'/sortedReads/sorted.reads.2.fq','w')
+	elif indata.sortfmt == 'fa':
+	    f1 = open(indata.path+'/sortedReads/sorted.reads.fa','w')
+    	elif indata.sortfmt == 'db':
+	    import sqlite3
+	    db = indata.path+'/sortedReads/sortedreads.db'
+	    import os
+	    if os.path.exists(db):
+		indata.logfile.write('Overwriting excisting database at '+indata.path+'/sortedReads/sortedreads.db.\n')
+		os.remove(db)
+	    conn = sqlite3.connect(db)
+	    c = conn.cursor()
+	    c.execute('CREATE TABLE clusters(id text, readcount int)')
+	for pair in results:
+	    progress.update()
+	    if pair.cid:
+		###
+		tmp = 0
+		while pair.cid >= tmp+10000: tmp += 10000
+		list_dict[tmp][pair.cid-tmp][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+			    +pair.r1.seq+'\n+\n'
+			    +pair.r1.qual+'\n')
+		list_dict[tmp][pair.cid-tmp][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+			    +pair.r2.seq+'\n+\n'
+			    +pair.r2.qual+'\n')
+		###
+		if indata.sortfmt == 'fq':pass
+		#    f1.write('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+		#	    +pair.r1.seq+'\n+\n'
+		#	    +pair.r1.qual+'\n')
+		#    f2.write('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+		#	    +pair.r2.seq+'\n+\n'
+		#	    +pair.r2.qual+'\n')
+		elif indata.sortfmt == 'fa':
+		    f1.write('>' + '_'.join(pair.r1.header.split(' ')) + '_r1_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+			    +pair.r1.seq+'\n'+
+			    '>' + '_'.join(pair.r2.header.split(' ')) + '_r2_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+			    +pair.r2.seq+'\n')
+		elif indata.sortfmt == 'db':
+		    #print '###->',pair.cid
+		    try: ## add line
+			c.execute('INSERT INTO c'+str(pair.cid)+' VALUES ("'+pair.r1.header+'","'+pair.r1.seq+'","'+pair.r1.qual+'","'+pair.r2.seq+'","'+pair.r2.qual+'","'+str(None)+ '")')
+			c.execute('UPDATE clusters SET readcount =  readcount + 1 WHERE id = "c'+str(pair.cid)+'"')
+		    except sqlite3.OperationalError as inst: ## Create table
+			#print inst
+			c.execute("INSERT INTO clusters VALUES ('c"+str(pair.cid)+"',1)")
+			c.execute('CREATE TABLE c'+str(pair.cid)+'(header text, r1_seq text, r1_qual text, r2_seq text, r2_qual text, illuminaAdapter text)')
+			c.execute('INSERT INTO c'+str(pair.cid)+' VALUES ("'+pair.r1.header+'","'+pair.r1.seq+'","'+pair.r1.qual+'","'+pair.r2.seq+'","'+pair.r2.qual+'","'+str(None)+ '")')
+	if indata.sortfmt == 'db':conn.commit() ## Save (commit) the changes
+
+
+
+	## test to fetch
+	#clusters = []
+	#for tmp in c.execute('SELECT id, readcount FROM clusters WHERE clusters.readcount >= 1'):
+	#    clusters.append(tmp)
+	#for tmp in clusters:
+	#    print tmp[0], tmp[1]
+	#    for row in c.execute('SELECT * FROM '+tmp[0]+''):
+	#	print str(row)[:300]
+
+	#close connections
+	if  indata.sortfmt in ['fa','fq']:	f1.close()
+	if indata.sortfmt == 'fq':		f2.close()
+	if indata.sortfmt == 'db':		conn.close();
+	
+	### ###
+	if indata.sortfmt == 'fq':
+	    f1 = open(indata.path+'/sortedReads/byCid.reads.1.fq','w')
+	    f2 = open(indata.path+'/sortedReads/byCid.reads.2.fq','w')
+	    chunkNames = list_dict.keys()
+	    chunkNames.sort()
+	    for chunkName in chunkNames:
+		chunk = list_dict[chunkName]
+		for cluster in chunk:
+		    #print cluster[0],
+		    if cluster[0] == 0 and chunkName == 0: print 0;continue
+		    #print len(cluster[1])
+		    for i in xrange(len(cluster[1])):
+			f1.write(cluster[1][i])
+			f2.write(cluster[2][i])
+	    f1.close()
+	    f2.close()
+	    
+	### ###
+
+
+    if not indata.debug:WorkerPool.close()
+    if not indata.debug:WorkerPool.join()
+    indata.logfile.write('Reads sorted into cluster tempfiles\n')
+    indata.logfile.write('Part1: Sorting reads to clusters END\n')
+    return 0
+
+def getreadcount(indata):
+    indata.logfile.write('Getting readcounts ...\n')
+    indata.numreads = 0
+    for filename in indata.config['infiles']['r1']:
+	if not indata.skipreadcounting: tmp = bufcount(filename)/4
+	else: tmp = 30000000
+	indata.logfile.write(filename+' -> '+str(tmp) +' reads.\n')
+	indata.numreads += tmp
+    indata.logfile.write(str(indata.numreads)+' read pairs in fastq files.\n');
+    # calculate the number of reads to process
+    indata.reads2process = indata.numreads
+    if indata.skip: indata.reads2process -= indata.skip
+    if indata.stop: indata.reads2process = indata.stop
+    if indata.n:    indata.reads2process = indata.n
+    return indata
+
+def readConfig(indata):
+    indata.logfile.write('Reading config-file ...\n')
     indata.config = initiate_file(indata.path+'/'+'config',indata , mode='r')
-    before = ''
-    after = ''
     for line in indata.config:
-	if line.rstrip() == '# Infiles dictionary:':
-	    infiles = eval(indata.config.next())
-	    after = '\n'
-	elif not after: before += line
-	elif after:after += line
+	if	line.rstrip() == '# Absolute path:':	    	abspath = indata.config.next().rstrip()
+	elif	line.rstrip() == '# Infiles dictionary:':	infiles = eval(indata.config.next())
     indata.config.close()
-
-    indata.logfile.write('Adding filenames to config file.\n')
-    import os
-    import sys
-    r1 = os.path.abspath(indata.reads1.name)
-    r2 = os.path.abspath(indata.reads2.name)
-    if r1 in infiles['r1'] + infiles['r2'] or r2 in infiles['r1'] + infiles['r2']:
-	sys.stderr.write('ERROR:\nat least one of the files:\n'+r1+'\n'+r2+'\nare already in the config file.\n');
-	indata.logfile.write('ERROR:\nat least one of the files:\n'+r1+'\n'+r2+'\nare already in the config file.\nExiting withiout changes.\n');
-	return 1
-    infiles['r1'].append(r1)
-    infiles['r2'].append(r2)
-    indata.config = initiate_file(indata.path+'/'+'config', indata, mode='ow')
-    indata.config.write(before+'# Infiles dictionary:\n'+str(infiles)+after)
-    indata.config.close()
-    indata.logfile.write('Files '+r1+' and '+r2+' sucessfully added to infiles dist in config.\n\n')
-    indata.logfile.close()
-    return 0
-
-def init(indata):
-    
-    import os
-    import sys
-    tmp_log = ''
-
-    if os.path.exists(indata.path+'/'+'config'):
-	sys.stderr.write('This analysis has already been initiated try another command.\n')
-	return
-    
-    try:
-	os.mkdir(indata.path)
-	tmp_log += 'Folder '+indata.path+' created sucessfully.\n'
-    except OSError:
-	_continue = ''
-	while not _continue or _continue[0] not in ['Y','y', 'N','n']:
-	    _continue = raw_input('WARNING: the folder '+indata.path+' already excists. Continue anyway? (yes/no) ')
-	tmp_log += 'WARNING: the folder '+indata.path+' already excists. Continue anyway? (yes/no) '+_continue+'\nUsing already exsisting folder ...\n'
-	if _continue[0] in ['Y','y']: pass
-	elif _continue[0] in ['N','n']: return
-	else:
-	    sys.stderr.write('Error 1\n.'); return 1
-
-    indata.outfile = initiate_file(indata.outfile, indata)
-    indata.logfile = initiate_file(indata.logfile, indata)
-
-    import time
-    indata.logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
-    indata.logfile.write('Version: '+version+'\n')
-    indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
-    indata.logfile.write('Master process id='+str(MASTER)+'\n')
-    indata.logfile.write(tmp_log)
-
-    indata.logfile.write('Creating config file:\n')
-    indata.config = initiate_file(indata.path+'/'+'config', indata)
-
-    abspath = os.path.abspath(indata.path)
-    infiles = {'r1':[],'r2':[]}
-
-    indata.logfile.write('Writing settings to config file ...\n')
-    indata.config.write(
-	'# Absolute path:\n'+abspath+'\n'+
-	'# Infiles dictionary:\n'+str(infiles)+'\n'
-	)
-
-    indata.logfile.write('Analysis '+abspath+' sucesfully initiated.\n')
-    return 0
+    indata.config = {'abspath':abspath,'infiles':infiles}
+    return indata
 
 def initiate_file(filename, indata, mode='w'):
     import os
@@ -392,8 +438,9 @@ def getindata(cmd):
     import argparse
     argparser = argparse.ArgumentParser(description='Analysis of SEAseq data.', formatter_class=argparse.RawTextHelpFormatter)
     argparser.add_argument('cmd')
-    argparser.add_argument(	'--debug',		dest='debug', 			action='store_true', 			required=False,	default=False,	help='Debug (run as regular single process python script).')
-    argparser.add_argument('-path',	dest='path',	metavar='<path>',		type=str,required=True,	default=False,	help='Set the analysis path.')
+    argparser.add_argument('--debug',	dest='debug', 	action='store_true', 			required=False,	default=False,	help='Debug (run as regular single process python script).')
+    argparser.add_argument('-path',	dest='path',	metavar='<path>',	type=str,	required=True,	default=False,	help='Set the analysis path.')
+    argparser.add_argument('--src',	dest='skipreadcounting', 	action='store_true', 			required=False,	default=False,	help='Skip read counting (for speeding up debug runs, sets readcount to 30M/infile).')
     if cmd == 'init': pass
     elif cmd == 'addfqs':
 	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='Indata "fastq"-file read1.')

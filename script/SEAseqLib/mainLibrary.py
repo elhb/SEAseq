@@ -587,8 +587,8 @@ class SEAseqSummary():
 			clusters[cc] ={'total':0,'barcodes':{},'highest':[0,'XXXXXXXXXXXXXX']}
 			line = line.rstrip().split('\t')
 			for bc in line:
+				if bc not in clusters[cc]['barcodes']: clusters[cc]['total']+=self.barcodes[bc]
 				clusters[cc]['barcodes'][bc]=self.barcodes[bc]
-				clusters[cc]['total']+=self.barcodes[bc]
 				if self.barcodes[bc] > clusters[cc]['highest'][0]: clusters[cc]['highest']=[self.barcodes[bc],bc]
 		indata.logfile.write('almost done ... ')
 		del dnaclust_out
