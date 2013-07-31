@@ -274,6 +274,12 @@ def sortreads(indata):
     except OSError:pass
     #try: os.makedirs(indata.path+'/sortedReads/barcodes')
     #except OSError:pass
+
+    indata.logfile.write('Allocating sorting memory  ...')
+    out_dict = {}
+    for i in xrange(clustercount+1):
+	out_dict[i] = [i, [],[]]
+    indata.logfile.write(' done.\n')
     
     if indata.debug: #single process // serial
 	results=[] # create holder for processed reads
@@ -291,21 +297,6 @@ def sortreads(indata):
 	#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
 	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
 	results = WorkerPool.imap_unordered(foreachread_sort,getPairs(indata),chunksize=1000)
-
-#### will test sorting ###
-#    tmp = 0
-#    list_dict = {}
-#    chunksize = 100000
-#    while tmp < clustercount+chunksize:
-#	list_dict[tmp] = [ [i+tmp,[],[]] for i in xrange(chunksize)]
-#	tmp += chunksize
-#    list_dict[0][0] = [0,None,None]
-    indata.logfile.write('Allocating sorting memory  ...')
-    out_dict = {}
-    for i in xrange(clustercount+1):
-	out_dict[i] = [i, [],[]]
-    indata.logfile.write(' done.\n')
-### ###
 
     if not indata.debug: indata.logfile.write('Part1: Sorting reads to cluster '+str(indata.cpus)+' processes  ...\n')
     progress = Progress(indata.reads2process, logfile=indata.logfile)
@@ -328,29 +319,13 @@ def sortreads(indata):
 	for pair in results:
 	    progress.update()
 	    if pair.cid:
-		###
-		tmp = 0
-		#while pair.cid >= tmp+chunksize: tmp += chunksize
-		#list_dict[tmp][pair.cid-tmp][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
-		#	    +pair.r1.seq+'\n+\n'
-		#	    +pair.r1.qual+'\n')
-		#list_dict[tmp][pair.cid-tmp][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
-		#	    +pair.r2.seq+'\n+\n'
-		#	    +pair.r2.qual+'\n')
-		out_dict[pair.cid][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
-			    +pair.r1.seq+'\n+\n'
-			    +pair.r1.qual+'\n')
-		out_dict[pair.cid][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
-			    +pair.r2.seq+'\n+\n'
-			    +pair.r2.qual+'\n')
-		###
-		if indata.sortfmt == 'fq':pass
-		#    f1.write('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
-		#	    +pair.r1.seq+'\n+\n'
-		#	    +pair.r1.qual+'\n')
-		#    f2.write('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
-		#	    +pair.r2.seq+'\n+\n'
-		#	    +pair.r2.qual+'\n')
+		if indata.sortfmt == 'fq':
+		    out_dict[pair.cid][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+				+pair.r1.seq+'\n+\n'
+				+pair.r1.qual+'\n')
+		    out_dict[pair.cid][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+				+pair.r2.seq+'\n+\n'
+				+pair.r2.qual+'\n')
 		elif indata.sortfmt == 'fa':
 		    f1.write('>' + '_'.join(pair.r1.header.split(' ')) + '_r1_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
 			    +pair.r1.seq+'\n'+
@@ -368,8 +343,6 @@ def sortreads(indata):
 			c.execute('INSERT INTO c'+str(pair.cid)+' VALUES ("'+pair.r1.header+'","'+pair.r1.seq+'","'+pair.r1.qual+'","'+pair.r2.seq+'","'+pair.r2.qual+'","'+str(None)+ '")')
 	if indata.sortfmt == 'db':conn.commit() ## Save (commit) the changes
 
-
-
 	## test to fetch
 	#clusters = []
 	#for tmp in c.execute('SELECT id, readcount FROM clusters WHERE clusters.readcount >= 1'):
@@ -379,35 +352,20 @@ def sortreads(indata):
 	#    for row in c.execute('SELECT * FROM '+tmp[0]+''):
 	#	print str(row)[:300]
 
+	if indata.sortfmt == 'fq':
+            indata.logfile.write('\nWriting to sorted byCid-fq-files ...\n')
+	    progress = Progress(clustercount, logfile=indata.logfile, unit = 'cluster')
+	    with progress:
+		for cid,cluster in out_dict.iteritems():
+			if cluster[0] <= clustercount: progress.update()
+			for i in xrange(len(cluster[1])):
+			    f1.write(cluster[1][i])
+			    f2.write(cluster[2][i])
+
 	#close connections
 	if  indata.sortfmt in ['fa','fq']:	f1.close()
 	if indata.sortfmt == 'fq':		f2.close()
 	if indata.sortfmt == 'db':		conn.close();
-	
-	### ###
-	if indata.sortfmt == 'fq':
-            indata.logfile.write('Writing to sorted byCid-fq-files ...\n')
-	    f1 = open(indata.path+'/sortedReads/byCid.reads.1.fq','w')
-	    f2 = open(indata.path+'/sortedReads/byCid.reads.2.fq','w')
-	    #chunkNames = list_dict.keys()
-	    #chunkNames.sort()
-	    progress = Progress(clustercount, logfile=indata.logfile, unit = 'cluster')
-	    with progress:
-		#for chunkName in chunkNames:
-		#    chunk = list_dict[chunkName]
-		#    for cluster in chunk:
-		for cid,cluster in out_dict.iteritems():
-			if cluster[0] <= clustercount: progress.update()
-			#print cluster[0],
-#			if cluster[0] == 0 and chunkName == 0: print 0;continue
-			#print len(cluster[1])
-			for i in xrange(len(cluster[1])):
-			    f1.write(cluster[1][i])
-			    f2.write(cluster[2][i])
-	    f1.close()
-	    f2.close()
-	    
-	### ###
 
 
     if not indata.debug:WorkerPool.close()
