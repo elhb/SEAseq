@@ -200,7 +200,7 @@ def clusterbarcodes(indata):
     f = open(indata.path+'/clusters.tempfile','w')
     f.write(str(summary.clusters))
     f.close()
-    indata.logfile.write('Part2: Clustering barcodes END\n')
+    indata.logfile.write('Part2: Clustering barcodes END\n----------\n')
     return summary
 
 def foreachread_sort(tmp):
@@ -220,6 +220,27 @@ def foreachread_sort(tmp):
     
     return pair
 
+def load_clusters(indata,queue):
+    import multiprocessing
+    import os
+    indata.logfile.write('\nLoading clustering data ...\n')
+    indata.logfile.write( 'Loader pid='+str(os.getpid())+'\n')
+    summary = SEAseqSummary()
+    summary.loadclusters(indata.path+'/clusters.tempfile')
+    clustercount = len(summary.clusters)
+    indata.logfile.write('Data Loaded, reformatting ...\n')
+    progress = Progress(len(summary.clusters), logfile=indata.logfile, unit = 'cluster')
+    with progress:
+	for cluster_id, infodist in summary.clusters.iteritems():
+	    progress.update()
+	    if int(infodist['total']) >= indata.mrc:
+		for barcode in infodist['barcodes']:
+		    indata.cid_by_bc[barcode] = cluster_id
+	    else: pass#print 'low read cluster'
+    summary.clusters.clear()
+    queue.put(clustercount)
+    indata.logfile.write('Done returning to master process.\n')
+
 def sortreads(indata):
 
     indata.outfile = initiate_file(indata.outfile, indata, mode='a')
@@ -227,6 +248,8 @@ def sortreads(indata):
 
     import time
     import sys
+    import multiprocessing
+    
     indata.logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
     indata.logfile.write('Version: '+version+'\n')
     indata.logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
@@ -238,30 +261,20 @@ def sortreads(indata):
     # get the readcount
     indata = getreadcount(indata)
 
-    indata.logfile.write('\nLoading clustering data ...\n')
-    summary = SEAseqSummary()
-    summary.loadclusters(indata.path+'/clusters.tempfile')
-    import multiprocessing
     man = multiprocessing.Manager()
     indata.cid_by_bc = man.dict()
-    clustercount = len(summary.clusters)
-    progress = Progress(len(summary.clusters),verb='minimal', logfile=indata.logfile)
-    with progress:
-	for cluster_id, infodist in summary.clusters.iteritems():
-	    progress.update()
-	    if int(infodist['total']) >= indata.mrc:
-		for barcode in infodist['barcodes']:
-		    indata.cid_by_bc[barcode] = cluster_id
-	    else: pass#print 'low read cluster'
-    summary.clusters.clear()
-    del summary.clusters;del cluster_id; del infodist; # delete summary object to save memory, this does not reduce memory usage why?!?
+    queue = multiprocessing.Queue()
+    p = multiprocessing.Process(target=load_clusters,args=(indata,queue))
+    p.start()
+    clustercount = queue.get()
+    p.join()
     
     import os
     try: os.makedirs(indata.path+'/sortedReads')
     except OSError:pass
     #try: os.makedirs(indata.path+'/sortedReads/barcodes')
     #except OSError:pass
-
+    
     if indata.debug: #single process // serial
 	results=[] # create holder for processed reads
 	indata.logfile.write('Part1: Sorting reads to clusters ...\n')
@@ -280,12 +293,18 @@ def sortreads(indata):
 	results = WorkerPool.imap_unordered(foreachread_sort,getPairs(indata),chunksize=1000)
 
 #### will test sorting ###
-    tmp = 0
-    list_dict = {}
-    while tmp < clustercount+10000:
-	list_dict[tmp] = [ [i+tmp,[],[]] for i in xrange(10000)]
-	tmp += 10000
-    list_dict[0][0] = [0,None,None]
+#    tmp = 0
+#    list_dict = {}
+#    chunksize = 100000
+#    while tmp < clustercount+chunksize:
+#	list_dict[tmp] = [ [i+tmp,[],[]] for i in xrange(chunksize)]
+#	tmp += chunksize
+#    list_dict[0][0] = [0,None,None]
+    indata.logfile.write('Allocating sorting memory  ...')
+    out_dict = {}
+    for i in xrange(clustercount+1):
+	out_dict[i] = [i, [],[]]
+    indata.logfile.write(' done.\n')
 ### ###
 
     if not indata.debug: indata.logfile.write('Part1: Sorting reads to cluster '+str(indata.cpus)+' processes  ...\n')
@@ -311,11 +330,17 @@ def sortreads(indata):
 	    if pair.cid:
 		###
 		tmp = 0
-		while pair.cid >= tmp+10000: tmp += 10000
-		list_dict[tmp][pair.cid-tmp][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+		#while pair.cid >= tmp+chunksize: tmp += chunksize
+		#list_dict[tmp][pair.cid-tmp][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+		#	    +pair.r1.seq+'\n+\n'
+		#	    +pair.r1.qual+'\n')
+		#list_dict[tmp][pair.cid-tmp][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+		#	    +pair.r2.seq+'\n+\n'
+		#	    +pair.r2.qual+'\n')
+		out_dict[pair.cid][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
 			    +pair.r1.seq+'\n+\n'
 			    +pair.r1.qual+'\n')
-		list_dict[tmp][pair.cid-tmp][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+		out_dict[pair.cid][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
 			    +pair.r2.seq+'\n+\n'
 			    +pair.r2.qual+'\n')
 		###
@@ -361,19 +386,24 @@ def sortreads(indata):
 	
 	### ###
 	if indata.sortfmt == 'fq':
+            indata.logfile.write('Writing to sorted byCid-fq-files ...\n')
 	    f1 = open(indata.path+'/sortedReads/byCid.reads.1.fq','w')
 	    f2 = open(indata.path+'/sortedReads/byCid.reads.2.fq','w')
-	    chunkNames = list_dict.keys()
-	    chunkNames.sort()
-	    for chunkName in chunkNames:
-		chunk = list_dict[chunkName]
-		for cluster in chunk:
-		    #print cluster[0],
-		    if cluster[0] == 0 and chunkName == 0: print 0;continue
-		    #print len(cluster[1])
-		    for i in xrange(len(cluster[1])):
-			f1.write(cluster[1][i])
-			f2.write(cluster[2][i])
+	    #chunkNames = list_dict.keys()
+	    #chunkNames.sort()
+	    progress = Progress(clustercount, logfile=indata.logfile, unit = 'cluster')
+	    with progress:
+		#for chunkName in chunkNames:
+		#    chunk = list_dict[chunkName]
+		#    for cluster in chunk:
+		for cid,cluster in out_dict.iteritems():
+			if cluster[0] <= clustercount: progress.update()
+			#print cluster[0],
+#			if cluster[0] == 0 and chunkName == 0: print 0;continue
+			#print len(cluster[1])
+			for i in xrange(len(cluster[1])):
+			    f1.write(cluster[1][i])
+			    f2.write(cluster[2][i])
 	    f1.close()
 	    f2.close()
 	    
@@ -383,7 +413,7 @@ def sortreads(indata):
     if not indata.debug:WorkerPool.close()
     if not indata.debug:WorkerPool.join()
     indata.logfile.write('Reads sorted into cluster tempfiles\n')
-    indata.logfile.write('Part1: Sorting reads to clusters END\n')
+    indata.logfile.write('Part1: Sorting reads to clusters END\n----------\n')
     return 0
 
 def getreadcount(indata):
