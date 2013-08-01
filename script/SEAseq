@@ -361,6 +361,7 @@ def meta(indata):
 
     indata.logfile.write('Get infiles from config-file.\n')
     indata = readConfig(indata)
+    clustercount = 8000#should be loaded from config
     
     man = mp.Manager()
     clusterq = man.Queue()
@@ -370,10 +371,39 @@ def meta(indata):
     reader.start()
     
     # need a generator that yields clusters from queue until it finds a cluster = END
-    for pairs in clusteriterator(clusterq): pass
+    #for cluster_pairs in clusteriterator(clusterq): pass
     
     # make a worker pool that works with the clusters returned from the generator
-    
+    if indata.debug: #single process // serial
+	indata.logfile.write('Running in debug mode sorting reads to clusters ...\n')
+	results=[] # create holder for processed reads
+	progress = Progress(clustercount, logfile=indata.logfile) # creates a progress "bar" thingy
+	with progress:
+	    for cluster_pairs in clusteriterator(clusterq):
+		progress.update()
+		foreachcluster_meta(cluster_pairs)
+	indata.logfile.write('finished, making summary ... \n')
+    else: # multiple processes in parallel
+	import multiprocessing
+	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
+	results = WorkerPool.imap_unordered(foreachcluster_meta,clusteriterator(clusterq),chunksize=10)
+
+    if not indata.debug: indata.logfile.write('Part1: Per cluster action '+str(indata.cpus)+' processes  ...\n')
+    progress = Progress(clustercount, logfile=indata.logfile, unit='cluster')
+    with progress:
+	for cluster in results:
+	    progress.update()
+	    if cluster:print cluster
+
+    reader.join()
+	
+    # create a nice run summary
+
+def foreachcluster_meta(cluster_pairs):
+    if cluster_pairs[0] == 0: return
+    indata = cluster_pairs[2]
+    cid = cluster_pairs[1][0].cid
+
     # for each cluster:
 	# remove reads containing illumina adapter sequences
 	# cut the N15 and C-handle
@@ -381,10 +411,62 @@ def meta(indata):
 	# get consensus sequences for each class of primer combos
 	# identify the species corresponding to each consensus
 	# create cluster output/summary
-	
-    reader.join()
-	
-    # create a nice run summary
+    
+    adaptercount = 0
+    
+    output = ''
+    if len(cluster_pairs[1])>=0:
+	output =  '\nCluster number '+str(cluster_pairs[1][0].cid)+' -> '+str(len(cluster_pairs[1]))+' pairs.\n'
+	reads = {1:{},2:{}}
+
+	output += 'PAIRS:\n'
+	import re
+	for pair in cluster_pairs[1]:
+		
+	    # convert to SEAseq readpair
+	    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
+	    
+	    output += pair.header +'\t'
+	    
+	    C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
+	    pair.identify(C_HANDLE, indata)
+	    pair.getN15()
+	    pair.identifyIllumina(indata)
+	    
+	    if (pair.r1.illuminaadapter or pair.r2.illuminaadapter): adaptercount +=1; output+='ADAPTER\n'; continue
+	    
+	    pair.p1 = None
+	    p1_16S = re.match( 'GTG.CAGC.GCCGCGGTAA',    pair.r1.seq[pair.handle_end:])
+	    p1_ITS = re.match( 'GG.CTTGTAC.CAC.GCCCGTC', pair.r1.seq[pair.handle_end:])
+	    if	 p1_16S: output += '16S\t'; pair.p1 = '16S'
+	    elif p1_ITS: output += 'ITS\t'; pair.p1 = 'ITS'
+	    else:	 output += '???\t'; pair.p1 = '???'
+	    
+	    pair.p2 = None
+	    p2_16S = re.match( 'ACA..TCAC..CACGAGCTGACGAC',pair.r2.seq)
+	    p2_ITS = re.match( 'CTC..A.TGCC..GGCATCCACC',  pair.r2.seq)
+	    if 	 p2_16S: output += '16S\t'; pair.p2 = '16S'
+	    elif p2_ITS: output += 'ITS\t'; pair.p2 = 'ITS'
+	    else:	 output += '???\t'; pair.p2 = '???'
+	    
+	    output += pair.r1.seq +' '+ pair.r2.seq+'\n'
+
+	    try:		reads[1][pair.r1.seq[pair.handle_end:]+'-(N)n-'+pair.r2.revcomp().seq].append(pair)
+	    except KeyError:	reads[1][pair.r1.seq[pair.handle_end:]+'-(N)n-'+pair.r2.revcomp().seq]=[pair]
+	    
+	import random
+	output += 'R1 Groups:\n'
+	seqs = reads[1].keys()
+	seqs.sort()
+	for read in seqs:
+	    #if len(reads[1][read]) > 1:
+		output += '>'+str(len(reads[1][read]))+'st.rand='+str(random.randint(0,999999))+'.p1='+str(reads[1][read][0].p1)+'.p2= '+str(reads[1][read][0].p2)+'.'+str(cid)
+		output += '\n'+read+'\n'
+
+	output += str(adaptercount)+' illumina adapters\n'
+
+    return output#str(cluster_pairs[1][0].cid)+' has '+str(len(cluster_pairs[1]))+' read pairs'
+
 
 def clusteriterator(clusterq):
     while True:
@@ -418,11 +500,11 @@ def getClustersAndPairs(indata,clusterq):
 	if pair.cid == currentcluster:
 	    pairs.append(pair)
 	elif pair.cid == currentcluster+1:
-	    clusterq.put([currentcluster,pairs])
+	    clusterq.put([currentcluster,pairs,indata])
 	    currentcluster = pair.cid
 	    pairs = [pair]
 	else:
-	    clusterq.put([currentcluster,pairs])
+	    clusterq.put([currentcluster,pairs,indata])
 	    currentcluster = pair.cid
 	    pairs = [pair]
 
