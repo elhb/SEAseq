@@ -95,38 +95,33 @@ class sequence():
 class read(sequence):
     "Represents one of several reads from a DNA fragment"
 
-def getPairs(indata):
+def getPairs(config):
 	""" yield one readpair at a time from indata
 	"""
 	import re
 	import gzip	
 
-	# generate selftest read set
-	if indata.selftest:
-		raise NotImplementedError
-		return
-
 	# choose random reads to analyze from fastq files
-	if indata.n:
+	if config.random:
 		import random
-		numreads=indata.numreads
-		if indata.stop: numreads = indata.stop
-		indata.logfile.write('Choosing '+str(indata.n)+' random pairs to analyze ... ')
+		numreads=config.randomumreads
+		if config.stop: numreads = config.stop
+		config.logfile.write('Choosing '+str(config.random)+' random pairs to analyze ... ')
 		readNumbersToPrint = {}
-		while len(readNumbersToPrint) < indata.n: readNumbersToPrint[random.randint(indata.skip+1,numreads)] = True
+		while len(readNumbersToPrint) < config.random: readNumbersToPrint[random.randint(config.skip+1,numreads)] = True
 		tempo = readNumbersToPrint.keys()
 		tempo.sort()
 		readNumbersToPrint = tempo
-		indata.logfile.write('done.\n')
+		config.logfile.write('done.\n')
 	
 	# set the counters to initial values
 	counter = 0
 	tmp=0
 	header="NA"
-	if indata.skip: skip =True
+	if config.skip: skip =True
 
 	# unpack infiles
-	for file1, file2 in zip(indata.config['infiles']['r1'],indata.config['infiles']['r2']):
+	for file1, file2 in zip(config.infiles['r1'],config.infiles['r2']):
 	
 		#check if files are gzipped
 		if file1.split('.')[-1] in ['gz','gzip']: file1 = gzip.open(file1)
@@ -141,7 +136,7 @@ def getPairs(indata):
 			tmp+=1 # increment linecount
 			
 			#random speedup
-			if indata.n and counter != readNumbersToPrint[0]:
+			if config.random and counter != readNumbersToPrint[0]:
 				#print tmp
 				if tmp == 4: tmp = 0;continue
 				elif tmp != 1: continue
@@ -151,36 +146,36 @@ def getPairs(indata):
 					#continue
 				
 			
-			# skip or stop if option is set on indata
-			if indata.skip and tmp < (4*indata.skip) and skip: continue
-			elif indata.skip and tmp == (4*indata.skip) and skip: skip=False; tmp =0;continue
-			if indata.stop and counter == indata.stop: break
+			# skip or stop if option is set on config
+			if config.skip and tmp < (4*config.skip) and skip: continue
+			elif config.skip and tmp == (4*config.skip) and skip: skip=False; tmp =0;continue
+			if config.stop and counter == config.stop: break
 
 			# depending on line number (within entry) do ...	
 			if tmp == 1: #header check match between files
 				counter+=1 # increase entry counter
 				header=r1line
-				if r1line.split(" ")[0] != r2line.split(" ")[0]: indata.logfile.write('Error mismatching headers!');raise ValueError #os.kill(MASTER,1);sys.exit(1);#REALLYNOTOPTIMAL
+				if r1line.split(" ")[0] != r2line.split(" ")[0]: config.logfile.write('Error mismatching headers!');raise ValueError #os.kill(MASTER,1);sys.exit(1);#REALLYNOTOPTIMAL
 			elif tmp == 2: # sequence check that its DNA and save sequences till later
 				if counter == 1:
-					indata.logfile.write('Checking data type of read 1 in pair 1 ... ')
+					config.logfile.write('Checking data type of read 1 in pair 1 ... ')
 					match = re.match("^[AGTCN]+$",r1line.rstrip())
-					if match: indata.logfile.write('this is DNA data.\n')
-					else: indata.logfile.write(' this is not a DNA sequence ('+r1line.rstrip()+') could something be wrong with your indata file?.\n\n');raise ValueError#os.kill(MASTER);sys.exit();#REALLYNOTOPTIMAL
+					if match: config.logfile.write('this is DNA data.\n')
+					else: config.logfile.write(' this is not a DNA sequence ('+r1line.rstrip()+') could something be wrong with your fastq file?.\n\n');raise ValueError#os.kill(MASTER);sys.exit();#REALLYNOTOPTIMAL
 				r1seq = r1line.rstrip()
 				r2seq = r2line.rstrip()
 			elif tmp == 3: # "+"-line do some format check
 					if counter in {1:True,67:True,438:True,9675:True,53678:True,864513:True,1337354:True,317955:True,1226844:True,20389:True,118261:True}:
-						if r1line[0] != r2line[0] or r1line[0] != '+': indata.logfile.write('Error Format not fastq!');raise ValueError#os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
+						if r1line[0] != r2line[0] or r1line[0] != '+': config.logfile.write('Error Format not fastq!');raise ValueError#os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
 			elif tmp == 4: # quality values and end of entry, reset counter and yeild readpair
 					tmp=0 # reset line counter
 					r1qual = r1line.rstrip() #get qual strings
 					r2qual = r2line.rstrip()
 					
 					#yield readpair
-					if not indata.n: yield [readpair(header.rstrip(), read(header.rstrip(),r1seq,r1qual), read(header.rstrip(),r2seq,r2qual)),indata]
+					if not config.random: yield [readpair(header.rstrip(), read(header.rstrip(),r1seq,r1qual), read(header.rstrip(),r2seq,r2qual)),config]
 					elif counter == readNumbersToPrint[0]:
-						yield [readpair(header.rstrip(), read(header.rstrip(),r1seq,r1qual), read(header.rstrip(),r2seq,r2qual)),indata]
+						yield [readpair(header.rstrip(), read(header.rstrip(),r1seq,r1qual), read(header.rstrip(),r2seq,r2qual)),config]
 						readNumbersToPrint = readNumbersToPrint[1:]
 						if len(readNumbersToPrint) == 0: break
 
@@ -193,7 +188,7 @@ class readpair():
 		self.r2 = r2 #second read
 		self.threads = []
 
-    def identifythreads(self,indata):
+    def identifythreads(self,config):
 		import re
 		# a thread should look like this:
 		# gagctgctgcaccatattcctgaac GACCATCACTTAAATCAGGTCCTCC NNNNNNNNNNN AGAGTCAAGTTATTTAAAAAATCTGGCC gctctgaaggcggtgtatgacatgg
@@ -213,14 +208,14 @@ class readpair():
 		if exthandle and tjhandle:
 			thread = tntthread(self.r1.seq[exthandle.end():tjhandle.start()])
 			self.threads.append(thread)
-		elif indata.handlemm: # do some kind of fuzzy matching to allow for missmatches
+		elif config.chandlemissmatch: # do some kind of fuzzy matching to allow for missmatches
 			if not exthandle: 
 				mindist = [10000,-1]
 				for i in range(len(self.r1.seq)):
 					if i+len(exthandle_seq) <= len(self.r1.seq): dist = matchfunk(exthandle_seq,self.r1.seq[i:i+len(exthandle_seq)])
 					else: dist = 1000
 					if dist < mindist[0]: mindist =[dist,i]
-				if mindist[0] < indata.handlemm: exthandle_end = i+len(exthandle_seq)
+				if mindist[0] < config.chandlemissmatch: exthandle_end = i+len(exthandle_seq)
 				else: exthandle_end = None
 			else: exthandle_end = exthandle.end()
 			if not tjhandle: 
@@ -229,7 +224,7 @@ class readpair():
 					if i+len(tjhandle_seq) <= len(self.r1.seq): dist = matchfunk(tjhandle_seq,self.r1.seq[i:i+len(tjhandle_seq)])
 					else: dist = 1000
 					if dist < mindist[0]: mindist =[dist,i]
-				if mindist[0] < indata.handlemm: tjhandle_start = i
+				if mindist[0] < config.chandlemissmatch: tjhandle_start = i
 				else: tjhandle_start = None
 			else: tjhandle_start = tjhandle.start()
 			if tjhandle_start and exthandle_end:
@@ -244,14 +239,14 @@ class readpair():
 		if exthandle and tjhandle:
 			thread = tntthread(revcomp(self.r2.seq[tjhandle.end():exthandle.start()]))
 			self.threads.append(thread)
-		elif indata.handlemm: #### do some kind of fuzzy matching to allow for missmatches
+		elif config.chandlemissmatch: #### do some kind of fuzzy matching to allow for missmatches
 			if not exthandle: 
 				mindist = [10000,-1]
 				for i in range(len(self.r2.seq)):
 					if i+len(exthandle_seq) <= len(self.r2.seq): dist = matchfunk(exthandle_seq,revcomp(self.r2.seq)[i:i+len(exthandle_seq)])
 					else: dist = 1000
 					if dist < mindist[0]: mindist =[dist,i]
-				if mindist[0] < indata.handlemm: exthandle_end = i+len(exthandle_seq)
+				if mindist[0] < config.chandlemissmatch: exthandle_end = i+len(exthandle_seq)
 				else: exthandle_end = None
 			else: exthandle_end = exthandle.end()
 			if not tjhandle: 
@@ -260,7 +255,7 @@ class readpair():
 					if i+len(tjhandle_seq) <= len(self.r2.seq): dist = matchfunk(tjhandle_seq,revcomp(self.r2.seq)[i:i+len(tjhandle_seq)])
 					else: dist = 1000
 					if dist < mindist[0]: mindist =[dist,i]
-				if mindist[0] < indata.handlemm: tjhandle_start = i
+				if mindist[0] < config.chandlemissmatch: tjhandle_start = i
 				else: tjhandle_start = None
 			else: tjhandle_start = tjhandle.start()
 			if tjhandle_start and exthandle_end:
@@ -273,7 +268,7 @@ class tntthread(sequence):
 	def __init__(self,seq):
 		self.seq = seq
 
-	def identifyspecific(self,indata,extbyseq,ext_primers,tjbyseq,tj_primers):
+	def identifyspecific(self,config,extbyseq,ext_primers,tjbyseq,tj_primers):
 		import re
 		self.extprimer = None
 		self.tjprimer = None
@@ -292,20 +287,20 @@ class tntthread(sequence):
 		
 		matchfunk = levenshtein
 		
-		if not self.tjprimer and indata.primeredit:
+		if not self.tjprimer and config.primeredit:
 			minedit = [300, 'NA']
 			for primer_id, seq in tj_primers.iteritems():
 				dist = matchfunk(seq,self.seq[-len(seq)::])
 				if dist < minedit[0]: minedit = [dist, primer_id]
-				if minedit[0] <= indata.primeredit: break
-			if minedit[0] <= indata.primeredit: self.tjprimer = primer_id
-		if not self.extprimer and indata.primeredit:
+				if minedit[0] <= config.primeredit: break
+			if minedit[0] <= config.primeredit: self.tjprimer = primer_id
+		if not self.extprimer and config.primeredit:
 			minedit = [300, 'NA']
 			for primer_id, seq in ext_primers.iteritems():
 				dist = matchfunk(seq,self.seq[:len(seq)])
 				if dist < minedit[0]: minedit = [dist, primer_id]
-				if minedit[0] <= indata.primeredit: break
-			if minedit[0] <= indata.primeredit: self.extprimer = primer_id
+				if minedit[0] <= config.primeredit: break
+			if minedit[0] <= config.primeredit: self.extprimer = primer_id
 		
 		#if not self.extprimer:
 		#	mm=3
@@ -440,30 +435,27 @@ class SEAseqpair(readpair):
 		else: self.n15 = None
 		return 0
 
-    
-	def identify(self, handle, indata):
-		[handle_start, handle_end] = self.matchHandle(handle, indata, self.r1)
+	def identify(self, handle, config):
+		[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
 		self.handle_start = handle_start
 		self.handle_end   = handle_end
 		return 0
 
-	def identifyIllumina(self, indata):
+	def identifyIllumina(self, config):
 		handle = sequence('illuminaUniversal','AGATCGGAAGAGC','AGATCGGAAGAGC')
-		indata.handlemm = 2
+		config.chandlemissmatch = 2
 		#handle = sequence('illumina','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC')
-		#indata.handlemm = 5
-		[handle_start, handle_end] = self.matchHandle(handle, indata, self.r1)
+		[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
 		if handle_start: self.r1.illuminaadapter = True
 		else: self.r1.illuminaadapter = False
 		
 		#handle = sequence('illumina','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT')
-		#indata.handlemm = 5
-		[handle_start, handle_end] = self.matchHandle(handle, indata, self.r2)
+		[handle_start, handle_end] = self.matchHandle(handle, config, self.r2)
 		if handle_start: self.r2.illuminaadapter = True
 		else: self.r2.illuminaadapter = False
 		return 0
 
-	def matchHandle(self, handle, indata, read, matchfunk=hamming_distance):
+	def matchHandle(self, handle, config, read, matchfunk=hamming_distance):
 		
 		import re
 		#matchfunk = hamming_distance
@@ -476,7 +468,7 @@ class SEAseqpair(readpair):
 		    handle_start = perfect_match.start()
 		    handle_end = perfect_match.end()
 		
-		elif indata.handlemm:
+		elif config.chandlemissmatch:
 			mindist = [10000,-1]
 			for i in range(len(read.seq)):
 			    
@@ -486,7 +478,7 @@ class SEAseqpair(readpair):
 				
 				if dist < mindist[0]: mindist =[dist,i]
 
-			if mindist[0] < indata.handlemm:
+			if mindist[0] < config.chandlemissmatch:
 				handle_start = i
 				handle_end = i+len(handle.seq)
 			else:
@@ -495,9 +487,9 @@ class SEAseqpair(readpair):
 
 		return [handle_start, handle_end]
 
-	def get_cid(self,indata):
+	def get_cid(self,config):
 		if self.n15 and self.n15.len == 15:
-			try: self.cid = indata.cid_by_bc[self.n15.seq]
+			try: self.cid = config.cid_by_bc[self.n15.seq]
 			except KeyError: self.cid = False
 		else: self.cid = None
 
@@ -533,14 +525,14 @@ class SEAseqSummary():
 		#print len(self.clusters)
 		return
 
-	def reducebarcodes(self,indata):
+	def reducebarcodes(self,config):
 		""" Find most common barcodes in well ( > 10% ??), then try to place other barcodes to this cluster
 		"""
 		
-		indata.logfile.write( '\n' )
+		config.logfile.write( '\n' )
 		
-		indata.minperc = 0
-		maxdist = indata.bcmm
+		config.minperc = 0
+		maxdist = config.barcodemissmatch
 		matchfunc = hamming_distance
 
 		percentages={}
@@ -552,32 +544,33 @@ class SEAseqSummary():
 		perc = percentages.keys()
 		perc.sort(reverse=True)
 		#print perc
-		while len(highest) < indata.seed:
+		while len(highest) < config.numberofseeds:
 			try:
 				for bc in percentages[perc[0]]: highest.append(bc)
 			except IndexError: pass
 			perc=perc[1:]
-		tempfile = open(indata.path+'/seed_bcs.fa','w')
-		for bc in highest: tempfile.write('>'+bc+'\n'+bc+'\n')
+		tempfile = open(config.path+'/predetermined_cluster_centers.fa','w')
+		for bc in highest: tempfile.write('>'+bc+' '+str(self.barcodes[bc])+' readpairs\n'+bc+'\n')
 		tempfile.close()
 
-		tempfile = open(indata.path+'/raw_bcs.fa','w')
-		for bc in self.barcodes: tempfile.write('>'+bc+'\n'+bc+'\n')
+		tempfile = open(config.path+'/raw_barcode_sequences.fa','w')
+		for bc in self.barcodes: tempfile.write('>'+bc+' '+str(self.barcodes[bc])+' readpairs\n'+bc+'\n')
 		tempfile.close()
 		del percentages
 
 		import subprocess
 		from cStringIO import StringIO
 		import time
+		import multiprocessing
 		tempo = time.time()
-		indata.logfile.write('starting '+' '.join(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file',indata.path+'/raw_bcs.fa','-t',str(indata.cpus),'--predetermined-cluster-centers',indata.path+'/seed_bcs.fa'])+'\n')
-		dnaclust =               subprocess.Popen(['dnaclust','--similarity',str(1-(float(indata.bcmm)/15)),'--input-file',indata.path+'/raw_bcs.fa','-t',str(indata.cpus),'--predetermined-cluster-centers',indata.path+'/seed_bcs.fa'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		config.logfile.write('starting '+' '.join(['dnaclust','--similarity',str(1-(float(config.barcodemissmatch)/15)),'--input-file',config.path+'/raw_barcode_sequences.fa','-t',str(multiprocessing.cpu_count()),'--predetermined-cluster-centers',config.path+'/predetermined_cluster_centers.fa'])+'\n')
+		dnaclust =               subprocess.Popen(['dnaclust','--similarity',str(1-(float(config.barcodemissmatch)/15)),'--input-file',config.path+'/raw_barcode_sequences.fa','-t',str(multiprocessing.cpu_count()),'--predetermined-cluster-centers',config.path+'/predetermined_cluster_centers.fa'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		dnaclust_out, errdata = dnaclust.communicate()
 		if dnaclust.returncode != 0:
 			print 'dnaclust view Error code', dnaclust.returncode, errdata
 			sys.exit()
 		dnaclust_out = StringIO(dnaclust_out)
-		indata.logfile.write('dnaclust done after '+str(round(time.time()-tempo,2))+'s, parsing result ... ')
+		config.logfile.write('dnaclust done after '+str(round(time.time()-tempo,2))+'s, parsing result ... ')
 		del dnaclust
 
 		clusters={}
@@ -590,7 +583,7 @@ class SEAseqSummary():
 				if bc not in clusters[cc]['barcodes']: clusters[cc]['total']+=self.barcodes[bc]
 				clusters[cc]['barcodes'][bc]=self.barcodes[bc]
 				if self.barcodes[bc] > clusters[cc]['highest'][0]: clusters[cc]['highest']=[self.barcodes[bc],bc]
-		indata.logfile.write('almost done ... ')
+		config.logfile.write('almost done ... ')
 		del dnaclust_out
 
 		counter = 0
@@ -602,8 +595,8 @@ class SEAseqSummary():
 				counter+=1
 				#print cc,clusters[cc]['total'],clusters[cc]['highest'][1],clusters[cc]['highest'][0]
 
-		indata.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n\n')
-		indata.outfile.write(str( cc)+' clusters whereof '+str(counter)+' has more than one read\n\n')
+		config.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n\n')
+		config.outfile.write(str( cc)+' clusters whereof '+str(counter)+' has more than one read\n\n')
 
 		temp_x=reads_in_clusters.keys()
 		temp_x.sort()
@@ -619,8 +612,8 @@ class SEAseqSummary():
 		for scale in [[0,5000,0,20],[0,1000,0,20]]:
 			plt.figure()
 			plt.axis(scale)
-			plt.xlabel('Total Number of Reads per Barcode Cluster')
-			plt.ylabel('Number of Clusters')
+			#plt.xlabel('Total Number of Reads per Barcode Cluster')
+			#plt.ylabel('Number of Clusters')
 			#pos = np.arange(len(x))
 			#width = 1.0     # gives histogram aspect to the bar diagram
 			#ax = plt.axes()
@@ -630,17 +623,17 @@ class SEAseqSummary():
 			##plt.show()
 			##plt.savefig(pp,format='pdf',bbox_inches=0)
 			plt.plot(x,y)
-			plt.suptitle('Diststibution', fontsize=12)
-			plt.savefig(indata.path+'/clustering.x_'+str(scale[0])+'-'+str(scale[1])+'.y_'+str(scale[2])+'-'+str(scale[3])+'.pdf')
+			plt.suptitle('Y is Total Number of Clusters with X Reads Pairs per Barcode Cluster.', fontsize=12)
+			plt.savefig(config.path+'/read_pairs_per_barcode_cluster.x_scale_'+str(scale[0])+'-'+str(scale[1])+'.y_scale_'+str(scale[2])+'-'+str(scale[3])+'.pdf')
 			plt.close()
-		indata.logfile.write( 'done\n')
+		config.logfile.write( 'done\n')
 
 		self.clusters = clusters
 		del clusters
 
 		return
 
-def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="reference/4amplicons/4amplicons.fasta"):
+def classify_cluser(config,infile="temporary.cluster.files/1.reads",database="reference/4amplicons/4amplicons.fasta"):
 
 	#database="../reference/4amplicons/4amplicons.fasta"
 	
@@ -650,9 +643,9 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 	import time
 	
 	#setting up blast
-	database=indata.blastdb
-	if indata.blastsetting == 'strict':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, out=infile+'.'+indata.blastid+'.blastout')
-	elif indata.blastsetting == 'sloppy':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn', out=infile+'.'+indata.blastid+'.blastout')
+	database=config.blastdb
+	if config.blastsetting == 'strict':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, out=infile+'.'+config.blastid+'.blastout')
+	elif config.blastsetting == 'sloppy':cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn', out=infile+'.'+config.blastid+'.blastout')
 	
 	#Blasting all reads in cluster 
 	blast_handle = cline.__call__()
@@ -660,26 +653,26 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 #	blast_handle = StringIO(blast_handle[0])
 #	blast_handle.seek(0)
 
-	f = open(infile+'.'+indata.blastid+'.blastout')
+	f = open(infile+'.'+config.blastid+'.blastout')
 	records = NCBIXML.parse(f)
 
 	results = {'total':0}
 	records_counter = 0
 	#checking blast results
-	if indata.printblast:o=''
+	if config.printblast:o=''
 	for blast_record in records:
 		records_counter +=1
 
 		#print blast_record.query+'\t',
-#		if indata.printblast: f.write(blast_record.query+'\n')
+#		if config.printblast: f.write(blast_record.query+'\n')
 		readnumber = int(blast_record.query.split('_r')[1].split('_')[0])
 		if readnumber == 1: r1_header = blast_record.query
 		elif readnumber == 2 and records_counter%2 == 0: r2_header = blast_record.query
-		else: indata.logfile.write('Warning: readnumber is funky!\n')
+		else: config.logfile.write('Warning: readnumber is funky!\n')
 		
-		if indata.printblast:o+=blast_record.query+'\n'
+		if config.printblast:o+=blast_record.query+'\n'
 		if blast_record.alignments:
-			if indata.printblast:
+			if config.printblast:
 				alignment = blast_record.alignments[0]
 				for hsp in alignment.hsps:
 					o+='\t'+ '****Alignment****'+'\n'
@@ -700,7 +693,7 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 				r2_header = blast_record.query
 				r2_subj_name = blast_record.alignments[0].title.split(' ')[1]
 				if len(blast_record.alignments[0].hsps[0].query) <= 40: r2_subj_name = 'No Hits'
-			else: indata.logfile.write('Warning: readnumber is funky!\n')
+			else: config.logfile.write('Warning: readnumber is funky!\n')
 		else:
 			if readnumber == 1: r1_subj_name = 'No Hits'
 			elif readnumber == 2: r2_subj_name = 'No Hits'
@@ -716,26 +709,26 @@ def classify_cluser(indata,infile="temporary.cluster.files/1.reads",database="re
 				
 				if r1_subj_name == r2_subj_name:
 					hit = r1_subj_name
-					if indata.printblast: o+='## Read Pair Agree!\n'
+					if config.printblast: o+='## Read Pair Agree!\n'
 				else:
 					hit = 'Pair Disagree'
-					if indata.printblast: o+='## Read Pair Disagree!\n'
+					if config.printblast: o+='## Read Pair Disagree!\n'
 				try: results[cluster_id][hit]+=1
 				except KeyError:results[cluster_id][hit]=1
 				
-				if indata.printblast:results[cluster_id]['output'] += o+'\n\n'; o=''
+				if config.printblast:results[cluster_id]['output'] += o+'\n\n'; o=''
 			
-			else: indata.logfile.write('WARNING: read pair headers missmatch!\n')
-		if indata.printblast:o+='\n'+'\n'
-	if indata.printblast:pass
-		#f2= open(indata.path+'/blastReport.txt','a')
+			else: config.logfile.write('WARNING: read pair headers missmatch!\n')
+		if config.printblast:o+='\n'+'\n'
+	if config.printblast:pass
+		#f2= open(config.path+'/blastReport.txt','a')
 		#f2.write(o+'\n\n');
 		#f2.close()
 	f.close()
 	
 	import os
 	os.remove(infile)
-	os.remove(infile+'.'+indata.blastid+'.blastout')
+	os.remove(infile+'.'+config.blastid+'.blastout')
 	
 	return results
 
