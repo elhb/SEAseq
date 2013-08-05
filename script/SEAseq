@@ -132,8 +132,6 @@ def foreachread_cluster(tmp):
     pair.identify(C_HANDLE, config)
     pair.getN15()
     
-    #if indata.cid_by_bc: pair.get_cid(indata)
-    
     return pair
 
 def clusterbarcodes(indata):
@@ -221,7 +219,7 @@ def load_clusters(config,queue):
     summary.loadclusters(config.clusters_file)
     clustercount = len(summary.clusters)
     config.logfile.write('Data Loaded, reformatting ...\n')
-    progress = Progress(len(summary.clusters), logfile=config.logfile, unit = 'cluster')
+    progress = Progress(len(summary.clusters), logfile=config.logfile, unit = 'cluster', mem = True)
     with progress:
 	for cluster_id, infodist in summary.clusters.iteritems():
 	    progress.update()
@@ -260,9 +258,7 @@ def sortreads(indata):
     #except OSError:pass
 
     config.logfile.write('Allocating sorting memory  ...')
-    out_dict = {}
-    for i in xrange(clustercount+1):
-	out_dict[i] = [i, [],[]]
+    out_list = [[i, [],[]] for i in xrange(clustercount+1)]
     config.logfile.write(' done.\n')
     
     if indata.debug: #single process // serial
@@ -283,7 +279,7 @@ def sortreads(indata):
 	results = WorkerPool.imap_unordered(foreachread_sort,getPairs(config),chunksize=1000)
 
     if not indata.debug: config.logfile.write('Sorting reads to cluster '+str(indata.cpus)+' processes  ...\n')
-    progress = Progress(config.reads2process, logfile=config.logfile)
+    progress = Progress(config.reads2process, logfile=config.logfile, mem = True)
     with progress:
 	if config.sortformat == 'fq':
 	    f1 = open(config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq','w')
@@ -294,10 +290,10 @@ def sortreads(indata):
 	    progress.update()
 	    if pair.cid:
 		if config.sortformat == 'fq':
-		    out_dict[pair.cid][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+		    out_list[pair.cid][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
 				+pair.r1.seq+'\n+\n'
 				+pair.r1.qual+'\n')
-		    out_dict[pair.cid][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+		    out_list[pair.cid][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
 				+pair.r2.seq+'\n+\n'
 				+pair.r2.qual+'\n')
 		elif config.sortformat == 'fa':
@@ -310,8 +306,8 @@ def sortreads(indata):
             config.logfile.write('\nWriting to fastq files sorted by cluster id ...\n')
 	    progress = Progress(clustercount, logfile=config.logfile, unit = 'cluster', mem=True)
 	    with progress:
-		for cid,cluster in out_dict.iteritems():
-			if cluster[0] <= clustercount: progress.update()
+		for cluster in out_list:
+			progress.update()
 			for i in xrange(len(cluster[1])):
 			    f1.write(cluster[1][i])
 			    f2.write(cluster[2][i])
@@ -322,7 +318,7 @@ def sortreads(indata):
 
     if not indata.debug:WorkerPool.close()
     if not indata.debug:WorkerPool.join()
-    config.logfile.write('Reads sorted into sortedReads\/sorted_by_barcode_cluster.1.fq\n')
+    config.logfile.write('Reads sorted into sortedReads/sorted_by_barcode_cluster.1.fq\n')
     config.logfile.write('Part1: Sorting reads to clusters END\n----------\n')
     return 0
 
