@@ -4,7 +4,7 @@ def lib_main(): pass
 
 class Progress():
 
-	def __init__(self,total, verb='full', logfile=sys.stderr, unit='read'):
+	def __init__(self,total, verb='full', logfile=sys.stderr, unit='read' ,mem=False):
 		import time
 		self.total = total
 		self.current = 0
@@ -16,6 +16,7 @@ class Progress():
 		if verb == 'full': self.printint = 5
 		elif verb == 'minimal':self.printint = 5
 		self.unit = unit
+		self.mem = mem
 
 	def __enter__(self):
 		if self.type == 'minimal': self.logfile.write('0%                 50%                 100%\n')
@@ -31,9 +32,11 @@ class Progress():
 				'#Progress => '+str(self.percentage)+'%, '+
 				str( round((self.current-self.lcurrent)/(time.time()-self.ltime),2) )+' '+self.unit+'s/second, '+
 				time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+
-				', left: '+str(self.stf/60/60)+'h '+str(self.stf/60%60)+'min '+str(self.stf%60)+'s'+
-				'\n'
-				)
+				', left: '+str(self.stf/60/60)+'h '+str(self.stf/60%60)+'min '+str(self.stf%60)+'s')
+			if self.mem:
+				import resource
+				self.logfile.write(', using '+str((resource.getrusage(resource.RUSAGE_SELF).ru_maxrss+resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)/1024)+' ('+str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024)+') MB.\n')
+			else:	self.logfile.write('\n')
 			if self.type == 'minimal': self.logfile.write('..')
 			self.ltime = time.time()
 			self.lcurrent = self.current
@@ -570,7 +573,8 @@ class SEAseqSummary():
 			print 'dnaclust view Error code', dnaclust.returncode, errdata
 			sys.exit()
 		dnaclust_out = StringIO(dnaclust_out)
-		config.logfile.write('dnaclust done after '+str(round(time.time()-tempo,2))+'s, parsing result ... ')
+		seconds = round(time.time()-tempo,2)
+		config.logfile.write('dnaclust done after '+str(seconds/60/60)+'h '+str(seconds/60%60)+'min '+str(seconds%60)+'s, parsing result ... ')
 		del dnaclust
 
 		clusters={}

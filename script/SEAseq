@@ -268,21 +268,21 @@ def sortreads(indata):
     if indata.debug: #single process // serial
 	results=[] # create holder for processed reads
 	config.logfile.write('Part1: Sorting reads to clusters ...\n')
-	config.logfile.write('Running in debug mode sorting reads to clusters ...\n')
-	progress = Progress(config.reads2process, logfile=config.logfile) # creates a progress "bar" thingy
+	config.logfile.write('Running in debug mode processing reads ...\n')
+	progress = Progress(config.reads2process, logfile=config.logfile, mem=True) # creates a progress "bar" thingy
 	#itarate through reads and do the "magicFunction"
 	with progress:
 	    for tmp in getPairs(config):
 		progress.update()
 		results.append(foreachread_sort(tmp))
-	config.logfile.write('sort finished, start writing to files ... \n')
+	config.logfile.write('finished, now sorting reads to clusters in memory ... \n')
     else: # multiple processes in parallel
 	import multiprocessing
 	#create worker pool that iterates through the reads and does the "magicFunction" and sends results to "results"
 	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
 	results = WorkerPool.imap_unordered(foreachread_sort,getPairs(config),chunksize=1000)
 
-    if not indata.debug: config.logfile.write('Part1: Sorting reads to cluster '+str(indata.cpus)+' processes  ...\n')
+    if not indata.debug: config.logfile.write('Sorting reads to cluster '+str(indata.cpus)+' processes  ...\n')
     progress = Progress(config.reads2process, logfile=config.logfile)
     with progress:
 	if config.sortformat == 'fq':
@@ -308,7 +308,7 @@ def sortreads(indata):
 
 	if config.sortformat == 'fq':
             config.logfile.write('\nWriting to fastq files sorted by cluster id ...\n')
-	    progress = Progress(clustercount, logfile=config.logfile, unit = 'cluster')
+	    progress = Progress(clustercount, logfile=config.logfile, unit = 'cluster', mem=True)
 	    with progress:
 		for cid,cluster in out_dict.iteritems():
 			if cluster[0] <= clustercount: progress.update()
