@@ -258,7 +258,11 @@ def sortreads(indata):
     #except OSError:pass
 
     config.logfile.write('Allocating sorting memory  ...')
-    out_list = [[i, [],[]] for i in xrange(clustercount+1)]
+    #out_list = [[i, [],[]] for i in xrange(clustercount+1)]
+    tmp = 0
+    chunksize = 5000
+    chunk_list = [[[cluster+chunk*chunksize,[],[]] for cluster in xrange(chunksize)] for chunk in xrange(config.clustercount/chunksize+1)]
+#    chunk_list[0][0] = [0,None,None]
     config.logfile.write(' done.\n')
     
     if indata.debug: #single process // serial
@@ -290,10 +294,12 @@ def sortreads(indata):
 	    progress.update()
 	    if pair.cid:
 		if config.sortformat == 'fq':
-		    out_list[pair.cid][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+		    chunk_list[pair.cid/chunksize][pair.cid%chunksize][1].append(
+				'_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
 				+pair.r1.seq+'\n+\n'
 				+pair.r1.qual+'\n')
-		    out_list[pair.cid][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
+		    chunk_list[pair.cid/chunksize][pair.cid%chunksize][2].append(
+				'_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'
 				+pair.r2.seq+'\n+\n'
 				+pair.r2.qual+'\n')
 		elif config.sortformat == 'fa':
@@ -306,11 +312,12 @@ def sortreads(indata):
             config.logfile.write('\nWriting to fastq files sorted by cluster id ...\n')
 	    progress = Progress(clustercount, logfile=config.logfile, unit = 'cluster', mem=True)
 	    with progress:
-		for cluster in out_list:
-			progress.update()
-			for i in xrange(len(cluster[1])):
-			    f1.write(cluster[1][i])
-			    f2.write(cluster[2][i])
+		for chunk in chunk_list:
+		    for cluster in chunk:
+			    if cluster[0] <= config.clustercount: progress.update()
+			    for i in xrange(len(cluster[1])):
+				f1.write(cluster[1][i])
+				f2.write(cluster[2][i])	
 
 	#close connections
 	if config.sortformat in ['fa','fq']:	f1.close()
