@@ -29,6 +29,7 @@ def main():
 				    +'\tclusterbarcodes'+' '.join(['' for i in range(20-len('clusterbarcodes'))])	+'cluster reads according to barcode sequence\n'
 				    +'\tsortreads'	+' '.join(['' for i in range(20-len('sortreads'))])		+'links barcode cluster information to each read pair\n'
 				    +'\tmeta'		+' '.join(['' for i in range(20-len('meta'))])			+'metagenomics amplicon analysis, EXPRIMENTAL!\n'
+				    +'\tsbatch'		+' '.join(['' for i in range(20-len('sbatch'))])		+'creates sbatch files for uppmaxruns\n'
 				    +'\thelp'		+' '.join(['' for i in range(20-len('help'))])			+'print this help message and exit\n'
 				    )
 
@@ -37,9 +38,79 @@ def main():
     elif cmd == 'clusterbarcodes':	clusterbarcodes(indata)
     elif cmd == 'sortreads':		sortreads(indata)
     elif cmd == 'meta':			meta(indata)
+    elif cmd == 'sbatch':		sbatch(indata)
     elif cmd[0] in ['H','h']:		pass
     elif cmd == None:			pass
     else: sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n')
+
+def sbatch(indata):
+    config = Configuration(indata.path, indata.cmd)
+    config.openconnections()
+    writelogheader(config.logfile)
+
+    #settings
+    config.logfile.write('Get infiles from config-file.\n')
+    config.load()
+    config.getreads2process()
+    
+    
+    import os
+    import sys
+
+    f = open(config.path +'/sbatch.cluster','w')
+    f.write(
+	'#! /bin/bash -l'+'\n'+
+	'#SBATCH -A b2011011'+'\n'+
+	'#SBATCH -n 8 -p node'+'\n'+
+	'#SBATCH -t 24:00:00'+'\n'+
+	'#SBATCH -J clustering_'+config.path+'\n'+
+	'#SBATCH -e '+config.abspath+'/stderr.cluster.sbatch.txt'+'\n'+
+	'#SBATCH -o '+config.abspath+'/stdout.cluster.sbatch.txt'+'\n'+
+	'#SBATCH --mail-type=All'+'\n'+
+	'#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
+	'echo "$(date) Running on: $(hostname)"'+'\n'+
+	'cd '+os.getcwd()+'\n'+
+	'module load python/2.7'+'\n'+
+	sys.argv[0]+' clusterbarcodes -path tasks/devel/ -bm 3 -hm 4 -seed 2000 -p 8'+'\n'
+    )
+    f.close()
+
+    f = open( config.path +'/sbatch.sortreads','w')
+    f.write(
+	'#! /bin/bash -l'+'\n'+
+	'#SBATCH -A b2011011'+'\n'+
+	'#SBATCH -n 8 -p node'+'\n'+
+	'#SBATCH -C fat'+'\n'+
+	'#SBATCH -t 24:00:00'+'\n'+
+	'#SBATCH -J clustering_'+config.path+'\n'+
+	'#SBATCH -e '+config.abspath+'/stderr.sortreads.sbatch.txt'+'\n'+
+	'#SBATCH -o '+config.abspath+'/stdout.sortreads.sbatch.txt'+'\n'+
+	'#SBATCH --mail-type=All'+'\n'+
+	'#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
+	'echo "$(date) Running on: $(hostname)"'+'\n'+
+	'cd '+os.getcwd()+'\n'+
+	'module load python/2.7'+'\n'+
+	sys.argv[0]+' sortreads -path tasks/devel/ -p8'+'\n'
+    )
+    f.close()
+    
+    f = open( config.path +'/sbatch.meta','w')
+    f.write(
+	'#! /bin/bash -l'+'\n'+
+	'#SBATCH -A b2011011'+'\n'+
+	'#SBATCH -n 8 -p devel'+'\n'+
+	'#SBATCH -t 01:00:00'+'\n'+
+	'#SBATCH -J meta_'+config.path+'\n'+
+	'#SBATCH -e '+config.abspath+'/stderr.meta.sbatch.txt'+'\n'+
+	'#SBATCH -o '+config.abspath+'/stdout.meta.sbatch.txt'+'\n'+
+	'#SBATCH --mail-type=All'+'\n'+
+	'#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
+	'echo "$(date) Running on: $(hostname)"'+'\n'+
+	'cd '+os.getcwd()+'\n'+
+	'module load python/2.7'+'\n'+
+	sys.argv[0]+' meta -path tasks/devel3/ -p8'+'\n'
+    )
+    f.close()
 
 def writelogheader(logfile):
     import sys
@@ -552,6 +623,8 @@ class Configuration():
 	self.sortreads_outfile	= self.path + '/' + 'sort.out.txt'
 	self.meta_logfile	= self.path + '/' + 'meta.log.txt'
 	self.meta_outfile	= self.path + '/' + 'meta.out.txt'
+	self.sbatch_logfile	= self.path + '/' + 'sbatch.log.txt'
+	self.sbatch_outfile	= self.path + '/' + 'sbatch.out.txt'
 	self.clusters_file	= self.path+'/barcode_clusters_dictionary'
 	self.abspath		= None # not loaded or set
 
@@ -587,6 +660,9 @@ class Configuration():
 	elif cmd == 'meta':
 	    self.logfile = self.meta_logfile
 	    self.outfile = self.meta_outfile
+	elif cmd == 'sbatch':
+	    self.logfile = self.sbatch_logfile
+	    self.outfile = self.sbatch_outfile
 
     def getreads2process(self, ):
 	
