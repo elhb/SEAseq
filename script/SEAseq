@@ -398,6 +398,8 @@ def sortreads(indata):
 def meta(indata):
 
     config = Configuration(indata.path, indata.cmd, skip=indata.skip ,stop=indata.stop ,random=indata.n)
+    import os
+    os.remove(config.outfile)
     config.openconnections()
     
     writelogheader(config.logfile)
@@ -459,11 +461,14 @@ def foreachcluster_meta(cluster_pairs):
     
     output = ''
     if len(cluster_pairs[1])>=0:
-	output =  '\nCluster number '+str(cluster_pairs[1][0].cid)+' -> '+str(len(cluster_pairs[1]))+' pairs.\n'
+	output =  '\n###--- Cluster number '+str(cluster_pairs[1][0].cid)+' -> '+str(len(cluster_pairs[1]))+' pairs. ---###\n'
 	reads = {1:{},2:{}}
 
 	output += 'PAIRS:\n'
 	import re
+	
+	f = open(config.path+'/sortedReads/temporary.'+str(cid)+'.fa','w')
+	
 	for pair in cluster_pairs[1]:
 		
 	    # convert to SEAseq readpair
@@ -494,17 +499,61 @@ def foreachcluster_meta(cluster_pairs):
 	    
 	    output += pair.r1.seq +' '+ pair.r2.seq+'\n'
 
-	    try:		reads[1][pair.r1.seq[pair.handle_end:]+'-(N)n-'+pair.r2.revcomp().seq].append(pair)
-	    except KeyError:	reads[1][pair.r1.seq[pair.handle_end:]+'-(N)n-'+pair.r2.revcomp().seq]=[pair]
+#	    try:		reads[1][pair.r1.seq[pair.handle_end:]+'-(N)n-'+pair.r2.revcomp().seq].append(pair)
+#	    except KeyError:	reads[1][pair.r1.seq[pair.handle_end:]+'-(N)n-'+pair.r2.revcomp().seq]=[pair]
 	    
-	import random
-	output += 'R1 Groups:\n'
-	seqs = reads[1].keys()
-	seqs.sort()
-	for read in seqs:
+	    f.write(
+		'>'+':'.join(pair.header.split(':')[5:-3])+'.p1='+str(pair.p1)+'.p2='+str(pair.p2)+'\n'+
+		pair.r1.seq[pair.handle_end:]+'NNNNNNNNNN'+pair.r2.revcomp().seq+'\n'
+	    )
+	f.close()
+#	import random
+#	output += 'R1 Groups:\n'
+#	seqs = reads[1].keys()
+#	seqs.sort()
+#	for read in seqs: pass
 	    #if len(reads[1][read]) > 1:
-		output += '>'+str(len(reads[1][read]))+'st.rand='+str(random.randint(0,999999))+'.p1='+str(reads[1][read][0].p1)+'.p2= '+str(reads[1][read][0].p2)+'.'+str(cid)
-		output += '\n'+read+'\n'
+		#output += '>'+str(len(reads[1][read]))+'st.rand='+str(random.randint(0,999999))+'.p1='+str(reads[1][read][0].p1)+'.p2= '+str(reads[1][read][0].p2)+'.'+str(cid)
+		#output += '\n'+read+'\n'
+
+####
+	import subprocess
+	from cStringIO import StringIO
+	import time
+	import multiprocessing
+	tempo = time.time()
+	#config.logfile.write('starting '+' '.join(['cd-hit',''])+'\n')
+	cdhit = subprocess.Popen( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cid)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cid)+'.fa','-g','1','-c','0.9'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	cdhit_out, errdata = cdhit.communicate()
+	if cdhit.returncode != 0:
+		print 'cd-hit view Error code', cdhit.returncode, errdata
+		sys.exit()
+	#cd-hit_out = StringIO(cd-hit_out)
+	#print cdhit_out
+	seconds = round(time.time()-tempo,2)
+	#config.logfile.write('cd-hit cluster '+str(cluster_pairs[1][0].cid)+' done after '+str(seconds/60/60)+'h '+str(seconds/60%60)+'min '+str(seconds%60)+'s, parsing result ... ')
+	del cdhit
+
+	ccc = subprocess.Popen( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cid)+'.fa',config.path+'/sortedReads/cluster.'+str(cid)+'.fa.consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.fa.aligned'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	ccc_out, errdata = ccc.communicate()
+	if ccc.returncode != 0:
+		print 'ccc view Error code', ccc.returncode, errdata
+		print ccc_out
+		sys.exit()
+	del ccc
+####
+	for info in [[config.path+'/sortedReads/cluster.'+str(cid)+'.fa','\nCD-HIT representative sequences:\n'], [config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr','\nClustering details:\n']]:
+	    filename , message =info
+	    f = open(filename)
+	    tmp = f.read()
+	    output += message
+	    output += tmp
+	    f.close()
+    
+	import os
+	#os.remove(config.path+'/sortedReads/cluster.'+str(cid)+'.fa')
+	#os.remove(config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr')
+	#os.remove(config.path+'/sortedReads/temporary.'+str(cid)+'.fa')
 
 	output += str(adaptercount)+' illumina adapters\n'
 
