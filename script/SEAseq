@@ -478,7 +478,7 @@ def meta(indata):
     processed = 0
     lowread = 0
     onlyjunk = 0
-    typecounter = {'ITS':0,'16S':0,'None':0,'both':0}
+    typecounter = {'ITS':0,'16S':0,'None':0,'both ITS and 16S':0}
     monoclonal = {'ITS':0,'16S':0,'None':'NA','both':{'only ITS':0,'only 16S':0,'None':0,'both':0}}
     if not indata.debug: config.logfile.write('Part1: Per cluster action '+str(indata.cpus)+' processes  ...\n')
     progress = Progress(config.clustercount, logfile=config.logfile, unit='cluster')
@@ -501,7 +501,7 @@ def meta(indata):
 
 		#print tmp[1:]		
 		if _its != None and _16s != None:
-		    typecounter['both']+=1
+		    typecounter['both ITS and 16S']+=1
 		    if _its and _16s: monoclonal['both']['both'] += 1
 		    if _its and not _16s: monoclonal['both']['only ITS'] += 1
 		    if _16s and not _its: monoclonal['both']['only 16S'] += 1
@@ -518,12 +518,11 @@ def meta(indata):
     reader.join()
     
     print processed,
-    print 'clusters processed'
-    print 'out of these were'
+    print 'clusters processed, out of these were:'
     print onlyjunk, 'clusters of only adapter sequences or faulty primers'
     print lowread, 'clusters with to few reads to be analysed'
     for name,count in typecounter.iteritems():
-	if name == 'both':
+	if name == 'both ITS and 16S':
 	    print count, name, 'whereof:'
 	    for name,count2 in monoclonal['both'].iteritems():
 		print '\t',count2,'were monoclonal for',name
@@ -551,11 +550,11 @@ def foreachcluster_meta(cluster_pairs):
     
     adaptercount = 0
     primererror = 0
-    
+    lowreadcutoff = 100
     output = ''
     output =  '\n###--- Cluster number '+str(cluster_pairs[1][0].cid)+' -> '+str(len(cluster_pairs[1]))+' pairs. ---###\n'
-    if len(cluster_pairs[1])<10:
-	output += 'Less than '+str(10)+' read pairs.\n'
+    if len(cluster_pairs[1])<lowreadcutoff:
+	output += 'Less than '+str(lowreadcutoff)+' read pairs.\n'
 	return 'LOW READ'
     else:
 	reads = {}
