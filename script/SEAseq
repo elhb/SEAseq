@@ -63,7 +63,7 @@ def sbatch(indata):
 	'#SBATCH -A b2011011'+'\n'+
 	'#SBATCH -n 8 -p node'+'\n'+
 	'#SBATCH -t 24:00:00'+'\n'+
-	'#SBATCH -J clustering_'+config.path+'\n'+
+	'#SBATCH -J clust_'+config.path+'\n'+
 	'#SBATCH -e '+config.abspath+'/stderr.cluster.sbatch.txt'+'\n'+
 	'#SBATCH -o '+config.abspath+'/stdout.cluster.sbatch.txt'+'\n'+
 	'#SBATCH --mail-type=All'+'\n'+
@@ -82,7 +82,7 @@ def sbatch(indata):
 	'#SBATCH -n 8 -p node'+'\n'+
 	'#SBATCH -C fat'+'\n'+
 	'#SBATCH -t 24:00:00'+'\n'+
-	'#SBATCH -J clustering_'+config.path+'\n'+
+	'#SBATCH -J sort_'+config.path+'\n'+
 	'#SBATCH -e '+config.abspath+'/stderr.sortreads.sbatch.txt'+'\n'+
 	'#SBATCH -o '+config.abspath+'/stdout.sortreads.sbatch.txt'+'\n'+
 	'#SBATCH --mail-type=All'+'\n'+
@@ -111,6 +111,34 @@ def sbatch(indata):
 	sys.argv[0]+' meta -path '+config.path+' -p8'+'\n'
     )
     f.close()
+    
+    send = True
+    if send:
+	import subprocess
+
+	sbatch = subprocess.Popen( ['sbatch',config.path +'/sbatch.cluster'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	sbatch_out, errdata = sbatch.communicate()
+	if sbatch.returncode != 0:
+		print 'sbatch view Error code', sbatch.returncode, errdata
+		print sbatch_out
+		sys.exit()
+	cluster_jobid = sbatch_out.split('\n')[0].split(' ')[3]
+
+	sbatch = subprocess.Popen( ['sbatch','--dependency=afterok:'+cluster_jobid,config.path +'/sbatch.sort'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	sbatch_out, errdata = sbatch.communicate()
+	if sbatch.returncode != 0:
+		print 'sbatch view Error code', sbatch.returncode, errdata
+		print sbatch_out
+		sys.exit()
+	sort_jobid = sbatch_out.split('\n')[0].split(' ')[3]
+
+	sbatch = subprocess.Popen( ['sbatch','--dependency=afterok:'+sort_jobid,config.path +'/sbatch.meta'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	sbatch_out, errdata = sbatch.communicate()
+	if sbatch.returncode != 0:
+		print 'sbatch view Error code', sbatch.returncode, errdata
+		print sbatch_out
+		sys.exit()
+
 
 def writelogheader(logfile):
     import sys

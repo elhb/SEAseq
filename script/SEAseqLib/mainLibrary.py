@@ -561,6 +561,9 @@ class SEAseqSummary():
 		tempfile.close()
 		del percentages
 
+		# alternatively we could use chdit, though homopolymers seems to be problematic
+		# cd-hit-454 -i tasks/20130805.1_index10/raw_barcode_sequences.fa -o DELETEME -c 0.85 -g 1 -T 8 -gap -6 -gap-ext -2 -AS 2
+		# cdhit-cluster-consensus DELETEME.clstr tasks/20130805.1_index10/raw_barcode_sequences.fa DELETEME.cons DELETEME.aln
 		import subprocess
 		from cStringIO import StringIO
 		import time
