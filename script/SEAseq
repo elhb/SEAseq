@@ -7,7 +7,12 @@
 import os
 from SEAseqLib.mainLibrary import *
 MASTER = os.getpid()
-version = 'ALPHA 1.2'
+version = 'ALPHA 1.3'
+
+#coloring constants:
+color = True
+if color:bs = "\033[1m";be = "\033[0;0m";PURPLE = '\033[95m';BLUE = '\033[94m';GREEN = '\033[92m';YELLOW = '\033[93m';RED = '\033[91m';ENDC = '\033[0m';BLACK = '\33['+'0;30'+'m';CYAN = '\33['+'0;36'+'m';GRAY = '\33['+'0;37'+'m';BBLUE = '\33['+'1;34'+'m';BRED = '\33['+'1;31'+'m';BGREEN = '\33['+'1;32'+'m';BCYAN = '\33['+'1;36'+'m';BPURPLE = '\33['+'1;35'+'m';BYELLOW = '\33['+'1;33'+'m';DGRAY = '\33['+'1;30'+'m'
+else:bs = '';be = '';HEADER = '';BLUE = '';GREEN = '';YELLOW = '';RED = '';ENDC = '';PURPLE='';BLACK='';CYAN='';GRAY='';BBLUE='';BRED='';BGREEN='';BCYAN='';BPURPLE='';BYELLOW='';DGRAY='';
 
 def main():
     import sys
@@ -29,7 +34,7 @@ def main():
 				    +'\tclusterbarcodes'+' '.join(['' for i in range(20-len('clusterbarcodes'))])	+'cluster reads according to barcode sequence\n'
 				    +'\tsortreads'	+' '.join(['' for i in range(20-len('sortreads'))])		+'links barcode cluster information to each read pair\n'
 				    +'\tmeta'		+' '.join(['' for i in range(20-len('meta'))])			+'metagenomics amplicon analysis, EXPRIMENTAL!\n'
-				    +'\tsbatch'		+' '.join(['' for i in range(20-len('sbatch'))])		+'creates sbatch files for uppmaxruns\n'
+				    +'\tsbatch'		+' '.join(['' for i in range(20-len('sbatch'))])		+'creates and queues sbatch files for the clusterbarcodes, sortreads and meta steps\n'
 				    +'\thelp'		+' '.join(['' for i in range(20-len('help'))])			+'print this help message and exit\n'
 				    )
 
@@ -100,7 +105,7 @@ def sbatch(indata):
     f.write(
 	'#! /bin/bash -l'+'\n'+
 	'#SBATCH -A b2011011'+'\n'+
-	'#SBATCH -n 8 -p devel'+'\n'+
+	'#SBATCH -n 8 -p node'+'\n'+
 	'#SBATCH -t 01:00:00'+'\n'+
 	'#SBATCH -J meta_'+config.path+'\n'+
 	'#SBATCH -e '+config.abspath+'/stderr.meta.sbatch.txt'+'\n'+
@@ -143,6 +148,7 @@ def sbatch(indata):
 		print 'sbatch view Error code', sbatch.returncode, errdata
 		print sbatch_out
 		sys.exit()
+	meta_jobid = sbatch_out.split('\n')[0].split(' ')[3]
 	config.logfile.write('Queued metagenomics analysis with JOBID '+meta_jobid+'.\n')
     
     config.logfile.write('Done.\n')
@@ -465,25 +471,75 @@ def meta(indata):
     else: # multiple processes in parallel
 	import multiprocessing
 	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
-	results = WorkerPool.imap_unordered(foreachcluster_meta,clusteriterator(clusterq),chunksize=10)
+	#results = WorkerPool.imap_unordered(foreachcluster_meta,clusteriterator(clusterq),chunksize=10)
+	results = WorkerPool.imap(foreachcluster_meta,clusteriterator(clusterq),chunksize=10)
 
+    nonecount = 0
+    processed = 0
+    lowread = 0
+    onlyjunk = 0
+    typecounter = {'ITS':0,'16S':0,'None':0,'both':0}
+    monoclonal = {'ITS':0,'16S':0,'None':'NA','both':{'only ITS':0,'only 16S':0,'None':0,'both':0}}
     if not indata.debug: config.logfile.write('Part1: Per cluster action '+str(indata.cpus)+' processes  ...\n')
     progress = Progress(config.clustercount, logfile=config.logfile, unit='cluster')
     with progress:
-	for cluster in results:
+	for tmp in results:
 	    progress.update()
-	    if cluster:config.outfile.write( cluster )
+	    if tmp == 'INITIAL':
+		nonecount+=1
+		if nonecount > 1: print 'Error!!! to many none clusters!!'; raise ValueError
+	    elif tmp == 'LOW READ':
+		processed += 1
+		lowread += 1
+	    elif tmp == 'ONLY JUNK':
+		processed += 1
+		onlyjunk += 1
+	    else:
+		[output, _its, _16s] = tmp
+		config.outfile.write( output )
+		processed += 1
+
+		#print tmp[1:]		
+		if _its != None and _16s != None:
+		    typecounter['both']+=1
+		    if _its and _16s: monoclonal['both']['both'] += 1
+		    if _its and not _16s: monoclonal['both']['only ITS'] += 1
+		    if _16s and not _its: monoclonal['both']['only 16S'] += 1
+		    if not _16s and not _its: monoclonal['both']['None'] += 1
+		elif _its != None:
+		    typecounter['ITS']+=1
+		    if _its: monoclonal['ITS'] += 1
+		elif _16s != None:
+		    typecounter['16S']+=1
+		    if _16s: monoclonal['16S'] += 1
+		else:
+		    typecounter['None']+=1
 
     reader.join()
+    
+    print processed,
+    print 'clusters processed'
+    print 'out of these were'
+    print onlyjunk, 'clusters of only adapter sequences or faulty primers'
+    print lowread, 'clusters with to few reads to be analysed'
+    for name,count in typecounter.iteritems():
+	if name == 'both':
+	    print count, name, 'whereof:'
+	    for name,count2 in monoclonal['both'].iteritems():
+		print '\t',count2,'were monoclonal for',name
+	    continue
+	print count, name, 'whereof', monoclonal[name],'were monoclonal'
+	
 	
     # create a nice run summary
     config.logfile.write('Done.\n')
     return 0
 
 def foreachcluster_meta(cluster_pairs):
-    if cluster_pairs[0] == 0: return
+    if cluster_pairs[0] == 0: return 'INITIAL'
     config = cluster_pairs[2]
     cid = cluster_pairs[1][0].cid
+    verb = 0
 
     # for each cluster:
 	# remove reads containing illumina adapter sequences
@@ -494,72 +550,99 @@ def foreachcluster_meta(cluster_pairs):
 	# create cluster output/summary
     
     adaptercount = 0
+    primererror = 0
     
     output = ''
-    if len(cluster_pairs[1])>=0:
-	output =  '\n###--- Cluster number '+str(cluster_pairs[1][0].cid)+' -> '+str(len(cluster_pairs[1]))+' pairs. ---###\n'
-	reads = {1:{},2:{}}
+    output =  '\n###--- Cluster number '+str(cluster_pairs[1][0].cid)+' -> '+str(len(cluster_pairs[1]))+' pairs. ---###\n'
+    if len(cluster_pairs[1])<10:
+	output += 'Less than '+str(10)+' read pairs.\n'
+	return 'LOW READ'
+    else:
+	reads = {}
 
-	output += 'PAIRS:\n'
+	if verb >0: output += 'PAIRS:\n'
 	import re
 	
 	f = open(config.path+'/sortedReads/temporary.'+str(cid)+'.fa','w')
-	
+	tmpcounter = 0
+	int2header = {}
 	for pair in cluster_pairs[1]:
 		
 	    # convert to SEAseq readpair
 	    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
 	    
-	    output += pair.header +'\t'
+	    tmpcounter += 1
+	    if verb >0: output += str(tmpcounter)+'\t'+pair.header +'\t'
 	    
 	    C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
 	    pair.identify(C_HANDLE, config)
 	    pair.getN15()
 	    pair.identifyIllumina(config)
 	    
-	    if (pair.r1.illuminaadapter or pair.r2.illuminaadapter): adaptercount +=1; output+='ADAPTER\n'; continue
+	    if (pair.r1.illuminaadapter or pair.r2.illuminaadapter):
+		adaptercount +=1;
+		if verb >0: output+='ADAPTER\n';
+		continue
 	    
 	    pair.p1 = None
 	    p1_16S = re.match( 'GTG.CAGC.GCCGCGGTAA',    pair.r1.seq[pair.handle_end:])
 	    p1_ITS = re.match( 'GG.CTTGTAC.CAC.GCCCGTC', pair.r1.seq[pair.handle_end:])
-	    if	 p1_16S: output += '16S\t'; pair.p1 = '16S'
-	    elif p1_ITS: output += 'ITS\t'; pair.p1 = 'ITS'
-	    else:	 output += '???\t'; pair.p1 = '???'
+	    if	 p1_16S:
+		if verb >0: output += '16S\t';
+		pair.p1 = '16S'
+	    elif p1_ITS:
+		if verb >0: output += 'ITS\t';
+		pair.p1 = 'ITS'
+	    else:
+		if verb >0: output += '???\t';
+		pair.p1 = '???'
 	    
 	    pair.p2 = None
 	    p2_16S = re.match( 'ACA..TCAC..CACGAGCTGACGAC',pair.r2.seq)
 	    p2_ITS = re.match( 'CTC..A.TGCC..GGCATCCACC',  pair.r2.seq)
-	    if 	 p2_16S: output += '16S\t'; pair.p2 = '16S'
-	    elif p2_ITS: output += 'ITS\t'; pair.p2 = 'ITS'
-	    else:	 output += '???\t'; pair.p2 = '???'
+	    if 	 p2_16S:
+		if verb >0: output += '16S\t';
+		pair.p2 = '16S'
+	    elif p2_ITS:
+		if verb >0: output += 'ITS\t';
+		pair.p2 = 'ITS'
+	    else:
+		if verb >0: output += '???\t';
+		pair.p2 = '???'
 	    
-	    output += pair.r1.seq +' '+ pair.r2.seq+'\n'
+	    if pair.p1 == '???' or pair.p1 != pair.p2:
+		primererror+=1;
+		if verb >0: output+='PRIMER ERROR\n';
+		continue 
+	    #16S_fwd primer	GTGBCAGCMGCCGCGGTAA	19	6
+	    #ITS_fwd primer	GGBCTTGTACWCACYGCCCGTC	22	6
+	    #16S_rev primer	ACAHYTCACRRCACGAGCTGACGAC	25	24
+	    #ITS_rev primer	CTCYDANTGCCSRGGCATCCACC	23	384
 
-#	    try:		reads[1][pair.r1.seq[pair.handle_end:]+'-(N)n-'+pair.r2.revcomp().seq].append(pair)
-#	    except KeyError:	reads[1][pair.r1.seq[pair.handle_end:]+'-(N)n-'+pair.r2.revcomp().seq]=[pair]
+	    #output +='\n'
+	    if verb >0: output += pair.r1.seq +' '+ pair.r2.seq+'\n'
 	    
+	    if   pair.p1 == '16S': tem_seq = pair.r1.seq[pair.handle_end:][20:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-26]
+	    elif pair.p1 == 'ITS': tem_seq = pair.r1.seq[pair.handle_end:][23:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-24]
+
+	    int2header[tmpcounter] = pair.header
+	    reads[pair.header] = pair
 	    f.write(
-		'>'+':'.join(pair.header.split(':')[5:-3])+'.p1='+str(pair.p1)+'.p2='+str(pair.p2)+'\n'+
-		pair.r1.seq[pair.handle_end:]+'NNNNNNNNNN'+pair.r2.revcomp().seq+'\n'
+		#'>'+':'.join(pair.header.split(':')[5:-3])+'.p1='+str(pair.p1)+'.p2='+str(pair.p2)+'\n'+
+		'>'+str(tmpcounter)+'\n'+
+		tem_seq +'\n'
 	    )
 	f.close()
-#	import random
-#	output += 'R1 Groups:\n'
-#	seqs = reads[1].keys()
-#	seqs.sort()
-#	for read in seqs: pass
-	    #if len(reads[1][read]) > 1:
-		#output += '>'+str(len(reads[1][read]))+'st.rand='+str(random.randint(0,999999))+'.p1='+str(reads[1][read][0].p1)+'.p2= '+str(reads[1][read][0].p2)+'.'+str(cid)
-		#output += '\n'+read+'\n'
+	
+	if adaptercount+primererror == len(cluster_pairs[1]): output+='All adapter and/or primer error.\n'; return 'ONLY JUNK'
 
-####
 	import subprocess
 	from cStringIO import StringIO
 	import time
 	import multiprocessing
 	tempo = time.time()
 	#config.logfile.write('starting '+' '.join(['cd-hit',''])+'\n')
-	cdhit = subprocess.Popen( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cid)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cid)+'.fa','-g','1','-c','0.9'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	cdhit = subprocess.Popen( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cid)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cid)+'.fa','-g','1','-c','0.97'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	cdhit_out, errdata = cdhit.communicate()
 	if cdhit.returncode != 0:
 		print 'cd-hit view Error code', cdhit.returncode, errdata
@@ -568,32 +651,140 @@ def foreachcluster_meta(cluster_pairs):
 	#print cdhit_out
 	seconds = round(time.time()-tempo,2)
 	#config.logfile.write('cd-hit cluster '+str(cluster_pairs[1][0].cid)+' done after '+str(seconds/60/60)+'h '+str(seconds/60%60)+'min '+str(seconds%60)+'s, parsing result ... ')
-	del cdhit
 
-	ccc = subprocess.Popen( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cid)+'.fa',config.path+'/sortedReads/cluster.'+str(cid)+'.fa.consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.fa.aligned'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	ccc = subprocess.Popen( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cid)+'.fa',config.path+'/sortedReads/cluster.'+str(cid)+'.consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.aligned'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	ccc_out, errdata = ccc.communicate()
 	if ccc.returncode != 0:
 		print 'ccc view Error code', ccc.returncode, errdata
 		print ccc_out
 		sys.exit()
-	del ccc
-####
-	for info in [[config.path+'/sortedReads/cluster.'+str(cid)+'.fa','\nCD-HIT representative sequences:\n'], [config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr','\nClustering details:\n']]:
-	    filename , message =info
-	    f = open(filename)
-	    tmp = f.read()
-	    output += message
-	    output += tmp
-	    f.close()
+
+	if verb >1: 
+	    for info in [
+		[config.path+'/sortedReads/cluster.'+str(cid)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
+		[config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr','\nClustering details:\n'],
+		[config.path+'/sortedReads/cluster.'+str(cid)+'.aligned','\nAlignment details:\n']
+		]:
+		filename , message =info
+		f = open(filename)
+		tmp = f.read()
+		output += message
+		output += tmp
+		f.close()
+	
+	# get alignments from file
+	f = open(config.path+'/sortedReads/cluster.'+str(cid)+'.aligned')
+	data = f.read()
+	f.close()
+	consensuses = {}
+	for cluster_aln in data.split('===========================================\n'):
+	    for part in cluster_aln.split('\n\n'):
+		for line in part.split('\n'):
+		    line=line.rstrip()
+		    if not line: continue
+		    elif line[0] == 'A':
+			#print '### HERE: '+line
+			consensusid=line.split(' ')[-1].split(':')[0];
+			consensuses[consensusid] = {}
+			continue
+		    read_id = line.split(':  +  ')[0].rstrip()
+		    try: seq = line.split(':  +  ')[1]
+		    except: print line+'<- Problematic'
+		    if read_id == 'Consensus': seq = seq.split(' ')[0]
+		    try:		consensuses[consensusid][read_id][0] += seq
+		    except KeyError:	consensuses[consensusid][read_id] = [seq,'NotSet']
+
+#	get identity from file
+	f = open(config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr')
+	data = f.read()
+	f.close()
+	for consensus_identities in data.split('>Cluster '):
+		consensusid = consensus_identities.split('\n')[0]
+		if consensusid not in consensuses: consensuses[consensusid] = {}
+		for line in consensus_identities.split('\n')[1:]:
+		    line=line.rstrip()
+		    if not line: continue
+		    read_id     = line.split('>')[1].split('.')[0]
+		    identity = line.split('/')[-1]
+		    try:		consensuses[consensusid][read_id][1] = identity
+		    except KeyError:	consensuses[consensusid][read_id] = ['SEQUENCE NOT LOADED',identity]
+
+	##load singelton consensus sequences
+	f = open(config.path+'/sortedReads/cluster.'+str(cid)+'.consensus.fasta')
+	data = f.read()
+	f.close()
+	for consensus_identities in data.split('>')[1:]:
+		if consensus_identities[0] == 'c': continue
+		consensusid = consensus_identities.split(' ')[0].split('_')[-1]
+		read_id     = consensus_identities.split(' ')[1].split('\n')[0]
+		if consensusid not in consensuses: consensuses[consensusid] = {}
+		if 'Consensus' not in consensuses[consensusid]: consensuses[consensusid]['Consensus'] = ['', 'NotSet']
+		elif consensuses[consensusid][read_id][0] == 'SEQUENCE NOT LOADED': consensuses[consensusid][read_id][0] = ''
+		for line in consensus_identities.split('\n')[1:]:
+		    line=line.rstrip()
+		    consensuses[consensusid][read_id][0] += line
+		    consensuses[consensusid]['Consensus'][0] += line
+
+	#make output for alnignments
+	if verb >0: output += '\n'
+	types = {}
+	for consensusid in consensuses:
+	    if  not consensusid: continue
+	    primerpairs = []
+	    if 'Consensus' in consensuses[consensusid]:
+		if verb >0: output += 'Consensus number '+consensusid+' from '+str(len(consensuses[consensusid])-1)+' read pairs'
+		if verb >0: output += ':\t\t\t'+consensuses[consensusid]['Consensus'][0]+'\n'
+	    for read_id, tmp in consensuses[consensusid].iteritems():
+		[seq, identity] = tmp
+		if identity[-1] == '*': identity = 'SEED'
+	        if read_id == 'Consensus': continue#output +=read_id+'\t'+seq+'\n'
+	        else:
+		    if verb >0: output += int2header[int(read_id)].split('_')[0]+'\t'+identity+'\t'+reads[int2header[int(read_id)]].p1+'\t'+seq
+		    if verb >0: output += '\n'
+		    primerpairs.append(reads[int2header[int(read_id)]].p1)
+	    if   primerpairs and primerpairs.count(primerpairs[0]) == len(primerpairs):
+		if verb >0: output += 'consensus is '+primerpairs[0]
+	    elif primerpairs and primerpairs.count(primerpairs[0]) != len(primerpairs):
+		if verb >0: output += 'WARNING: mixed consensus clustering!'
+	    try:
+		types[primerpairs[0]][consensusid]={'sequence':consensuses[consensusid]['Consensus'][0], 'support':len(consensuses[consensusid])-1}
+		types[primerpairs[0]]['total']+=len(consensuses[consensusid])-1
+	    except KeyError:
+		types[primerpairs[0]] = {consensusid:{'sequence':consensuses[consensusid]['Consensus'][0], 'support':len(consensuses[consensusid])-1}}
+		types[primerpairs[0]]['total']=len(consensuses[consensusid])-1
+	    if verb >0: output += '\n\n'
+
+	# make cluster summary
+	output += 'There are '+str(adaptercount)+' illumina adapter reads.\n'
+	output += 'There are '+str(primererror)+' primer missmatch reads.\n'
+	output += 'There are '+str(len(types))+' type(s) of amplicon(s) in cluster:\n'
+	for cons_type, consensuses in types.iteritems():
+	    types[cons_type]['mono'] = False
+	    output += '\t'+cons_type+' '+str(consensuses['total'])+' reads in total.\n'
+	    for consensus, data in consensuses.iteritems():
+		if consensus == 'total' or consensus == 'mono':continue
+		percentage = round(100*float(data['support'])/consensuses['total'],2)
+		output += '\t\tConsensus '+consensus+' supported by '+str(percentage)+'% of readpop ('+str(data['support'])+' reads)\t'+data['sequence']+'\n'
+		if percentage >= 95.0: types[cons_type]['mono'] = True
+	output += '\n'
     
 	import os
-	#os.remove(config.path+'/sortedReads/cluster.'+str(cid)+'.fa')
-	#os.remove(config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr')
-	#os.remove(config.path+'/sortedReads/temporary.'+str(cid)+'.fa')
+	os.remove(config.path+'/sortedReads/temporary.'+str(cid)+'.fa')
+	os.remove(config.path+'/sortedReads/cluster.'+str(cid)+'.fa')
+	os.remove(config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr')
+	os.remove(config.path+'/sortedReads/cluster.'+str(cid)+'.consensus.fasta')
+	os.remove(config.path+'/sortedReads/cluster.'+str(cid)+'.aligned')
 
-	output += str(adaptercount)+' illumina adapters\n'
+	_its = None
+	_16s = None
+	if 'ITS' in types:
+	    _its = types['ITS']['mono']
+	    if _its: output+='Cluster is monoclonal for ITS.\n'
+	if '16S' in types:
+	    _16s = types['16S']['mono']
+	    if _16s:output+='Cluster is monoclonal for 16S.\n'
 
-    return output#str(cluster_pairs[1][0].cid)+' has '+str(len(cluster_pairs[1]))+' read pairs'
+	return [output, _its,_16s]#str(cluster_pairs[1][0].cid)+' has '+str(len(cluster_pairs[1]))+' read pairs'
 
 def clusteriterator(clusterq):  # a generator that yields clusters from queue until it finds a cluster = END
     while True:
