@@ -57,6 +57,8 @@ def sbatch(indata):
     import os
     import sys
 
+    config.logfile.write('Creating sbatch scripts.\n')
+    
     f = open(config.path +'/sbatch.cluster','w')
     f.write(
 	'#! /bin/bash -l'+'\n'+
@@ -114,6 +116,7 @@ def sbatch(indata):
     
     send = True
     if send:
+	config.logfile.write('Placing scripts in jobqueue.\n')
 	import subprocess
 
 	sbatch = subprocess.Popen( ['sbatch',config.path +'/sbatch.cluster'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
@@ -123,6 +126,7 @@ def sbatch(indata):
 		print sbatch_out
 		sys.exit()
 	cluster_jobid = sbatch_out.split('\n')[0].split(' ')[3]
+	config.logfile.write('Queued barcode clustering with JOBID '+cluster_jobid+'.\n')
 
 	sbatch = subprocess.Popen( ['sbatch','--dependency=afterok:'+cluster_jobid,config.path +'/sbatch.sortreads'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	sbatch_out, errdata = sbatch.communicate()
@@ -131,6 +135,7 @@ def sbatch(indata):
 		print sbatch_out
 		sys.exit()
 	sort_jobid = sbatch_out.split('\n')[0].split(' ')[3]
+	config.logfile.write('Queued sorting of reads with JOBID '+sort_jobid+'.\n')
 
 	sbatch = subprocess.Popen( ['sbatch','--dependency=afterok:'+sort_jobid,config.path +'/sbatch.meta'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	sbatch_out, errdata = sbatch.communicate()
@@ -138,7 +143,10 @@ def sbatch(indata):
 		print 'sbatch view Error code', sbatch.returncode, errdata
 		print sbatch_out
 		sys.exit()
-
+	config.logfile.write('Queued metagenomics analysis with JOBID '+meta_jobid+'.\n')
+    
+    config.logfile.write('Done.\n')
+    return 0
 
 def writelogheader(logfile):
     import sys
