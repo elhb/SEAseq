@@ -574,7 +574,7 @@ class SEAseqSummary():
 			sys.exit()
 		dnaclust_out = StringIO(dnaclust_out)
 		seconds = round(time.time()-tempo,2)
-		config.logfile.write('dnaclust done after '+str(seconds/60/60)+'h '+str(seconds/60%60)+'min '+str(seconds%60)+'s, parsing result ... ')
+		config.logfile.write('dnaclust done after '+str(int(seconds/60/60))+'h '+str(int(seconds/60%60))+'min '+str(int(round(seconds%60)))+'s, parsing result ... ')
 		del dnaclust
 
 		clusters={}

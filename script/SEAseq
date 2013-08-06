@@ -71,7 +71,7 @@ def sbatch(indata):
 	'echo "$(date) Running on: $(hostname)"'+'\n'+
 	'cd '+os.getcwd()+'\n'+
 	'module load python/2.7'+'\n'+
-	sys.argv[0]+' clusterbarcodes -path tasks/devel/ -bm 3 -hm 4 -seed 2000 -p 8'+'\n'
+	sys.argv[0]+' clusterbarcodes -path '+config.path+' -bm 3 -hm 4 -seed 2000 -p 8'+'\n'
     )
     f.close()
 
@@ -90,7 +90,7 @@ def sbatch(indata):
 	'echo "$(date) Running on: $(hostname)"'+'\n'+
 	'cd '+os.getcwd()+'\n'+
 	'module load python/2.7'+'\n'+
-	sys.argv[0]+' sortreads -path tasks/devel/ -p8'+'\n'
+	sys.argv[0]+' sortreads -path '+config.path+' -p8'+'\n'
     )
     f.close()
     
@@ -108,7 +108,7 @@ def sbatch(indata):
 	'echo "$(date) Running on: $(hostname)"'+'\n'+
 	'cd '+os.getcwd()+'\n'+
 	'module load python/2.7'+'\n'+
-	sys.argv[0]+' meta -path tasks/devel3/ -p8'+'\n'
+	sys.argv[0]+' meta -path '+config.path+' -p8'+'\n'
     )
     f.close()
 
