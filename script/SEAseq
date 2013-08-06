@@ -124,7 +124,7 @@ def sbatch(indata):
 		sys.exit()
 	cluster_jobid = sbatch_out.split('\n')[0].split(' ')[3]
 
-	sbatch = subprocess.Popen( ['sbatch','--dependency=afterok:'+cluster_jobid,config.path +'/sbatch.sort'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	sbatch = subprocess.Popen( ['sbatch','--dependency=afterok:'+cluster_jobid,config.path +'/sbatch.sortreads'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	sbatch_out, errdata = sbatch.communicate()
 	if sbatch.returncode != 0:
 		print 'sbatch view Error code', sbatch.returncode, errdata
