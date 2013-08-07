@@ -106,7 +106,7 @@ def sbatch(indata):
 	'#! /bin/bash -l'+'\n'+
 	'#SBATCH -A b2011011'+'\n'+
 	'#SBATCH -n 8 -p node'+'\n'+
-	'#SBATCH -t 01:00:00'+'\n'+
+	'#SBATCH -t 10:00:00'+'\n'+
 	'#SBATCH -J meta_'+config.path+'\n'+
 	'#SBATCH -e '+config.abspath+'/stderr.meta.sbatch.txt'+'\n'+
 	'#SBATCH -o '+config.abspath+'/stdout.meta.sbatch.txt'+'\n'+
@@ -119,7 +119,7 @@ def sbatch(indata):
     )
     f.close()
     
-    send = True
+    send = False
     if send:
 	config.logfile.write('Placing scripts in jobqueue.\n')
 	import subprocess
@@ -441,7 +441,7 @@ def meta(indata):
 
     config = Configuration(indata.path, indata.cmd, skip=indata.skip ,stop=indata.stop ,random=indata.n)
     import os
-    os.remove(config.outfile)
+    if os.path.exists(config.outfile): os.remove(config.outfile)
     config.openconnections()
     
     writelogheader(config.logfile)
@@ -453,7 +453,7 @@ def meta(indata):
     
     import multiprocessing as mp
     man = mp.Manager()
-    clusterq = man.Queue()
+    clusterq = man.Queue(1000)
     # Run subprocess that get read pars and adds clusters to queue last add a END
     reader = mp.Process(target=getClustersAndPairs,args=(config,clusterq))
     reader.start()
@@ -559,7 +559,7 @@ def foreachcluster_meta(cluster_pairs):
     else:
 	reads = {}
 
-	if verb >0: output += 'PAIRS:\n'
+	if verb >1: output += 'PAIRS:\n'
 	import re
 	
 	f = open(config.path+'/sortedReads/temporary.'+str(cid)+'.fa','w')
@@ -571,59 +571,88 @@ def foreachcluster_meta(cluster_pairs):
 	    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
 	    
 	    tmpcounter += 1
-	    if verb >0: output += str(tmpcounter)+'\t'+pair.header +'\t'
+	    #if verb >1: output += str(tmpcounter)+'\t'+pair.header +'\t'
+	    if verb >1: output += str(tmpcounter)+'\t'
 	    
+	    #identify subparts of read
 	    C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
 	    pair.identify(C_HANDLE, config)
 	    pair.getN15()
 	    pair.identifyIllumina(config)
 	    
+	    #match adaptersequence
 	    if (pair.r1.illuminaadapter or pair.r2.illuminaadapter):
 		adaptercount +=1;
-		if verb >0: output+='ADAPTER\n';
+		if verb >1: output+='ADAPTER\n';
 		continue
 	    
+	    #determine fwd primer
 	    pair.p1 = None
 	    p1_16S = re.match( 'GTG.CAGC.GCCGCGGTAA',    pair.r1.seq[pair.handle_end:])
 	    p1_ITS = re.match( 'GG.CTTGTAC.CAC.GCCCGTC', pair.r1.seq[pair.handle_end:])
 	    if	 p1_16S:
-		if verb >0: output += '16S\t';
+		if verb >1: output += '16S\t';
 		pair.p1 = '16S'
 	    elif p1_ITS:
-		if verb >0: output += 'ITS\t';
+		if verb >1: output += 'ITS\t';
 		pair.p1 = 'ITS'
 	    else:
-		if verb >0: output += '???\t';
+		if verb >1: output += '???\t';
 		pair.p1 = '???'
 	    
+	    #determine reverse primer
 	    pair.p2 = None
 	    p2_16S = re.match( 'ACA..TCAC..CACGAGCTGACGAC',pair.r2.seq)
 	    p2_ITS = re.match( 'CTC..A.TGCC..GGCATCCACC',  pair.r2.seq)
 	    if 	 p2_16S:
-		if verb >0: output += '16S\t';
+		if verb >1: output += '16S\t';
 		pair.p2 = '16S'
 	    elif p2_ITS:
-		if verb >0: output += 'ITS\t';
+		if verb >1: output += 'ITS\t';
 		pair.p2 = 'ITS'
 	    else:
-		if verb >0: output += '???\t';
+		if verb >1: output += '???\t';
 		pair.p2 = '???'
 	    
+	    # check that primers match
 	    if pair.p1 == '???' or pair.p1 != pair.p2:
 		primererror+=1;
-		if verb >0: output+='PRIMER ERROR\n';
+		if verb >1: output+='PRIMER ERROR\n';
 		continue 
+
+	    #look for unexpected primer sequences
+	    if pair.p1 == '16S':
+	        fwd16S_in_r2  = re.search( 'GTG.CAGC.GCCGCGGTAA',      pair.r2.seq) #16 fwd in read 2
+		rev16S_in_r1  = re.search( 'ACA..TCAC..CACGAGCTGACGAC',pair.r1.seq[pair.handle_end:]) #16 rev in read1
+		fwdITS_in_any = re.search( 'GG.CTTGTAC.CAC.GCCCGTC',   pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its fwd in any read
+		revITS_in_any = re.search( 'CTC..A.TGCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its rev in any read
+		if fwd16S_in_r2 or rev16S_in_r1 or fwdITS_in_any or revITS_in_any:
+		    primererror+=1;
+		    if verb >1: output+='PRIMER ERROR\n';
+		    print 'Happened'
+		    continue
+	    elif pair.p1 == 'ITS':
+	        fwd16S_in_any = re.search( 'GTG.CAGC.GCCGCGGTAA',      pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) 
+		rev16S_in_any = re.search( 'ACA..TCAC..CACGAGCTGACGAC',pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) 
+		fwdITS_in_r2  = re.search( 'GG.CTTGTAC.CAC.GCCCGTC',   pair.r2.seq) 
+		revITS_in_r1  = re.search( 'CTC..A.TGCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:]) 
+		if fwd16S_in_any or rev16S_in_any or fwdITS_in_r2 or revITS_in_r1:
+		    primererror+=1;
+		    if verb >1: output+='PRIMER ERROR\n';
+		    print 'Happened'
+		    continue
+
 	    #16S_fwd primer	GTGBCAGCMGCCGCGGTAA	19	6
 	    #ITS_fwd primer	GGBCTTGTACWCACYGCCCGTC	22	6
 	    #16S_rev primer	ACAHYTCACRRCACGAGCTGACGAC	25	24
 	    #ITS_rev primer	CTCYDANTGCCSRGGCATCCACC	23	384
 
 	    #output +='\n'
-	    if verb >0: output += pair.r1.seq +' '+ pair.r2.seq+'\n'
+	    if verb >1: output += pair.r1.seq +' '+ pair.r2.seq+'\n'
 	    
+	    # prepare for clustering
 	    if   pair.p1 == '16S': tem_seq = pair.r1.seq[pair.handle_end:][20:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-26]
 	    elif pair.p1 == 'ITS': tem_seq = pair.r1.seq[pair.handle_end:][23:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-24]
-
 	    int2header[tmpcounter] = pair.header
 	    reads[pair.header] = pair
 	    f.write(
@@ -633,8 +662,10 @@ def foreachcluster_meta(cluster_pairs):
 	    )
 	f.close()
 	
+	#check that there is data to work with
 	if adaptercount+primererror == len(cluster_pairs[1]): output+='All adapter and/or primer error.\n'; return 'ONLY JUNK'
 
+	#cluster reads
 	import subprocess
 	from cStringIO import StringIO
 	import time
@@ -651,6 +682,7 @@ def foreachcluster_meta(cluster_pairs):
 	seconds = round(time.time()-tempo,2)
 	#config.logfile.write('cd-hit cluster '+str(cluster_pairs[1][0].cid)+' done after '+str(seconds/60/60)+'h '+str(seconds/60%60)+'min '+str(seconds%60)+'s, parsing result ... ')
 
+	#build consensus
 	ccc = subprocess.Popen( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cid)+'.fa',config.path+'/sortedReads/cluster.'+str(cid)+'.consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.aligned'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	ccc_out, errdata = ccc.communicate()
 	if ccc.returncode != 0:
@@ -658,7 +690,8 @@ def foreachcluster_meta(cluster_pairs):
 		print ccc_out
 		sys.exit()
 
-	if verb >1: 
+	# output info
+	if verb >5: 
 	    for info in [
 		[config.path+'/sortedReads/cluster.'+str(cid)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
 		[config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr','\nClustering details:\n'],
@@ -681,14 +714,14 @@ def foreachcluster_meta(cluster_pairs):
 		for line in part.split('\n'):
 		    line=line.rstrip()
 		    if not line: continue
-		    elif line[0] == 'A':
+		    if line[0] == 'A':
 			#print '### HERE: '+line
 			consensusid=line.split(' ')[-1].split(':')[0];
 			consensuses[consensusid] = {}
 			continue
 		    read_id = line.split(':  +  ')[0].rstrip()
 		    try: seq = line.split(':  +  ')[1]
-		    except: print line+'<- Problematic'
+		    except: print line+'<- Problematic';raise ValueError
 		    if read_id == 'Consensus': seq = seq.split(' ')[0]
 		    try:		consensuses[consensusid][read_id][0] += seq
 		    except KeyError:	consensuses[consensusid][read_id] = [seq,'NotSet']
@@ -718,53 +751,72 @@ def foreachcluster_meta(cluster_pairs):
 		read_id     = consensus_identities.split(' ')[1].split('\n')[0]
 		if consensusid not in consensuses: consensuses[consensusid] = {}
 		if 'Consensus' not in consensuses[consensusid]: consensuses[consensusid]['Consensus'] = ['', 'NotSet']
-		elif consensuses[consensusid][read_id][0] == 'SEQUENCE NOT LOADED': consensuses[consensusid][read_id][0] = ''
+		if consensuses[consensusid][read_id][0] == 'SEQUENCE NOT LOADED': consensuses[consensusid][read_id][0] = ''
 		for line in consensus_identities.split('\n')[1:]:
 		    line=line.rstrip()
 		    consensuses[consensusid][read_id][0] += line
 		    consensuses[consensusid]['Consensus'][0] += line
 
 	#make output for alnignments
-	if verb >0: output += '\n'
+	if verb >2: output += '\n'
 	types = {}
 	for consensusid in consensuses:
 	    if  not consensusid: continue
 	    primerpairs = []
 	    if 'Consensus' in consensuses[consensusid]:
-		if verb >0: output += 'Consensus number '+consensusid+' from '+str(len(consensuses[consensusid])-1)+' read pairs'
-		if verb >0: output += ':\t\t\t'+consensuses[consensusid]['Consensus'][0]+'\n'
+		if verb >2: output += 'Consensus number '+consensusid+' from '+str(len(consensuses[consensusid])-1)+' read pairs'
+		if verb >2: output += ':\t\t\t'+consensuses[consensusid]['Consensus'][0]+'\n'
 	    for read_id, tmp in consensuses[consensusid].iteritems():
 		[seq, identity] = tmp
 		if identity[-1] == '*': identity = 'SEED'
 	        if read_id == 'Consensus': continue#output +=read_id+'\t'+seq+'\n'
 	        else:
-		    if verb >0: output += int2header[int(read_id)].split('_')[0]+'\t'+identity+'\t'+reads[int2header[int(read_id)]].p1+'\t'+seq
-		    if verb >0: output += '\n'
+		    #if verb >2: output += str(read_id)+'\t'+int2header[int(read_id)].split('_')[0]+'   \t'+identity+'\t'+reads[int2header[int(read_id)]].p1+'\t'+seq
+		    if verb >2: output += 'Read pair id = '+str(read_id)+'    \t'+identity+'\t'+reads[int2header[int(read_id)]].p1+'\t'+seq
+		    if verb >2: output += '\n'
 		    primerpairs.append(reads[int2header[int(read_id)]].p1)
 	    if   primerpairs and primerpairs.count(primerpairs[0]) == len(primerpairs):
-		if verb >0: output += 'consensus is '+primerpairs[0]
+		if verb >2: output += 'consensus is '+primerpairs[0]
 	    elif primerpairs and primerpairs.count(primerpairs[0]) != len(primerpairs):
-		if verb >0: output += 'WARNING: mixed consensus clustering!'
+		if verb >2: output += 'WARNING: mixed consensus clustering!'
 	    try:
 		types[primerpairs[0]][consensusid]={'sequence':consensuses[consensusid]['Consensus'][0], 'support':len(consensuses[consensusid])-1}
 		types[primerpairs[0]]['total']+=len(consensuses[consensusid])-1
 	    except KeyError:
 		types[primerpairs[0]] = {consensusid:{'sequence':consensuses[consensusid]['Consensus'][0], 'support':len(consensuses[consensusid])-1}}
 		types[primerpairs[0]]['total']=len(consensuses[consensusid])-1
-	    if verb >0: output += '\n\n'
+	    if verb >2: output += '\n\n'
+
+	#remove less than 5% (should I remove singletons aswell?)
+	tmp = {}
+	typecounter={}
+	for cons_type, consensuses in types.iteritems():
+	    tmp[cons_type] = {}
+	    tmp[cons_type]['mono'] = False
+	    types[cons_type]['mono'] = False
+	    for consensus, data in consensuses.iteritems():
+		if consensus == 'total' or consensus == 'mono': tmp[cons_type][consensus] = data;continue
+		#print cons_type,consensus,data, consensuses['total']
+		percentage = round(100*float(data['support'])/consensuses['total'],2)
+		if percentage >= 5.0 and data['support'] > 1:
+		    tmp[cons_type][consensus] = data
+		    typecounter[cons_type] = True
+	types = tmp
 
 	# make cluster summary
 	output += 'There are '+str(adaptercount)+' illumina adapter reads.\n'
 	output += 'There are '+str(primererror)+' primer missmatch reads.\n'
 	output += 'There are '+str(len(types))+' type(s) of amplicon(s) in cluster:\n'
+	output += str(len(typecounter))+' amplicon(s) have enough data (>=1 cons with >= 5% support and > 1 read):\n'
 	for cons_type, consensuses in types.iteritems():
 	    types[cons_type]['mono'] = False
 	    output += '\t'+cons_type+' '+str(consensuses['total'])+' reads in total.\n'
 	    for consensus, data in consensuses.iteritems():
 		if consensus == 'total' or consensus == 'mono':continue
 		percentage = round(100*float(data['support'])/consensuses['total'],2)
-		output += '\t\tConsensus '+consensus+' supported by '+str(percentage)+'% of readpop ('+str(data['support'])+' reads)\t'+data['sequence']+'\n'
-		if percentage >= 95.0: types[cons_type]['mono'] = True
+		output += '\t\tConsensus '+consensus+' supported by '+str(percentage)+'% of readpop ('+str(data['support'])+' reads)\t'+data['sequence'].replace('-','')+'\n'
+		#if percentage >= 95.0: types[cons_type]['mono'] = True
+		if len(consensuses)-2 == 1: types[cons_type]['mono'] = True
 	output += '\n'
     
 	import os
@@ -776,10 +828,10 @@ def foreachcluster_meta(cluster_pairs):
 
 	_its = None
 	_16s = None
-	if 'ITS' in types:
+	if 'ITS' in typecounter:
 	    _its = types['ITS']['mono']
 	    if _its: output+='Cluster is monoclonal for ITS.\n'
-	if '16S' in types:
+	if '16S' in typecounter:
 	    _16s = types['16S']['mono']
 	    if _16s:output+='Cluster is monoclonal for 16S.\n'
 
@@ -794,6 +846,7 @@ def clusteriterator(clusterq):  # a generator that yields clusters from queue un
 def getClustersAndPairs(config,clusterq):
     
     import os
+    import time
     config.logfile.write('Reader initiated pid='+str(os.getpid())+'.\n')
 
     currentcluster = 0
@@ -817,10 +870,12 @@ def getClustersAndPairs(config,clusterq):
 	if pair.cid == currentcluster:
 	    pairs.append(pair)
 	elif pair.cid == currentcluster+1:
+	    while clusterq.qsize() > 160 or clusterq.full(): time.sleep(1); #config.logfile.write('waiting for queue ...\n')
 	    clusterq.put([currentcluster,pairs,config])
 	    currentcluster = pair.cid
 	    pairs = [pair]
 	else:
+	    while clusterq.qsize() > 160 or clusterq.full(): time.sleep(1); #config.logfile.write('waiting for queue ...\n')
 	    clusterq.put([currentcluster,pairs,config])
 	    currentcluster = pair.cid
 	    pairs = [pair]
