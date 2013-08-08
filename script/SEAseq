@@ -66,79 +66,136 @@ def metagraph(indata):
     config.load()
     
     if indata.graphs == 'all': indata.graphs = 'abcdefghijklmnopqrstuvxyz';
-    indata.graphs = indata.graphs.split()
+    indata.graphs = list(indata.graphs)
     
+    config.logfile.write('Loading data ... \n')
     f = open(config.path+'/meta.statstable','r')
     data = f.read()
     f.close()
     header = data.split('\n')[0].split('\t')
     data = data.split('\n')[1:]
     tmp = {}
+    incomplete = False
     for cluster in data:
 	cluster = cluster.split('\t')
 	cid = cluster[0]
 	#assert len(cluster) == len(header), '\nhead='+ str(header) +'\nclust='+ str(cluster)+'\n'
 	if len(cluster) == len(header): tmp[cid] = {}
 	else:
+	    incomplete = True
 	    print 'Warning errounus row in stat table.'
+	    config.logfile.write('Warning errounus row in stat table, you are creating graphs for a incomplete dataset, SEAseq meta is probably still running.\n')
 	    continue
 	for i in xrange(len(header)):
 	    name = header[i]
 	    value = cluster[i]
 	    tmp[cid][name] = eval(value)
+	    #try: tmp[cid][name] = eval(value)
+	    #except TypeError: print cid,name,value
     data = tmp
-    
+    config.logfile.write('Loaded.\n')
+
+    config.logfile.write('Setting scale and update intervall ... \n')
     xscale = [int(i) for i in indata.xscale.split('-')]
     yscale = [int(i) for i in indata.yscale.split('-')]
     
     #['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support']
-
-    config.logfile.write('Making graphs ... \n')
     
-    x_range = range(xscale[0],xscale[1]+1)
-    if not indata.highres: x_range = range(xscale[0],xscale[1]+1, xscale[1]/200)
-    
-    if True:#'c' in indata.graphs:
+   
+    if not indata.highres:
+	step = xscale[1]/200
+	if indata.step:
+	    step = indata.step
+	step = max([step,1])
+	x_range = range(xscale[0],xscale[1]+1, step)
+	config.logfile.write('Updates y every '+str(step)+'th x value (x = '+', '.join([	str(i) for i in x_range[ : min( [ 5,len(x_range) ] ) ]	])+' ... '+str(xscale[1])+').\n')
+    else:
+	x_range = range(xscale[0],xscale[1]+1)
+	config.logfile.write('Highres: updates y every x value (step = 1).\n')
 
-	graph_info = {'good':{},'total':{}}
+
+    config.logfile.write('Using a total of '+str(len(data))+' clusters.\n')
+    
+    graph_info = {'good':{},'total':{}}
+    for x_current in x_range:
+	for rc_type in ['total','good']:
+	    graph_info[rc_type][ x_current ] = {'all':0,'16s':0,'its':0,'both':0,'None':0,'16s_mono':0,'its_mono':0,'both_mono':0,'both_16s_mono':0,'both_its_mono':0}
+
+    config.logfile.write('Counting clusters ... \n')
+    for cid in data:
 	for x_current in x_range:
-	    for rc_type in ['total','good']:
-		graph_info[rc_type][ x_current ] = {'all':0,'16s':0,'its':0,'both':0,'None':0,'16s_mono':0,'its_mono':0,'both_mono':0,'both_16s_mono':0,'both_its_mono':0}
-	    for cid in data:
-		for tmp in [	['total',data[cid]['number of reads in total']],    ['good',data[cid]['number of reads in total']-data[cid]['number of adaper reads']-data[cid]['number of strange primers']]    ]:
-		    [rc_type, comp_value] = tmp
-		
-		    if comp_value > x_current:
-			graph_info[rc_type][ x_current ]['all'] += 1
+	    breaker = []
+	    compare_pairs = [	['total',data[cid]['number of reads in total']],    ['good',data[cid]['number of reads in total']-data[cid]['number of adaper reads']-data[cid]['number of strange primers']]    ]
+	    for tmp in compare_pairs:
+		[rc_type, comp_value] = tmp
+	    
+		if comp_value > x_current:
+		    graph_info[rc_type][ x_current ]['all'] += 1
 
-			if data[cid]['16s'] and not data[cid]['its']:
-			    graph_info[rc_type][ x_current ]['16s'] += 1
-			    if data[cid]['16s monoclonal']: graph_info[rc_type][ x_current ]['16s_mono'] += 1
+		    if data[cid]['16s'] and not data[cid]['its']:
+			graph_info[rc_type][ x_current ]['16s'] += 1
+			if data[cid]['16s monoclonal']: graph_info[rc_type][ x_current ]['16s_mono'] += 1
+		    
+		    if data[cid]['its'] and not data[cid]['16s']:
+			graph_info[rc_type][ x_current ]['its'] += 1
+			if data[cid]['its monoclonal']: graph_info[rc_type][ x_current ]['its_mono'] += 1
 			
-			if data[cid]['its'] and not data[cid]['16s']:
-			    graph_info[rc_type][ x_current ]['its'] += 1
-			    if data[cid]['its monoclonal']: graph_info[rc_type][ x_current ]['its_mono'] += 1
-			    
-			if data[cid]['16s'] and data[cid]['its']:
-			    graph_info[rc_type][ x_current ]['both'] += 1
-			    if data[cid]['16s monoclonal'] and data[cid]['its monoclonal']: graph_info[rc_type][ x_current ]['both_mono'] += 1
-			    if not data[cid]['16s monoclonal'] and data[cid]['its monoclonal']: graph_info[rc_type][ x_current ]['both_16s_mono'] += 1
-			    if data[cid]['16s monoclonal'] and not data[cid]['its monoclonal']: graph_info[rc_type][ x_current ]['both_its_mono'] += 1
+		    if data[cid]['16s'] and data[cid]['its']:
+			graph_info[rc_type][ x_current ]['both'] += 1
+			if data[cid]['16s monoclonal'] and data[cid]['its monoclonal']: graph_info[rc_type][ x_current ]['both_mono'] += 1
+			if not data[cid]['16s monoclonal'] and data[cid]['its monoclonal']: graph_info[rc_type][ x_current ]['both_its_mono'] += 1
+			if data[cid]['16s monoclonal'] and not data[cid]['its monoclonal']: graph_info[rc_type][ x_current ]['both_16s_mono'] += 1
 
-			if not data[cid]['16s'] and not data[cid]['its']:
-			    graph_info[rc_type][ x_current ]['None'] += 1
+		    if not data[cid]['16s'] and not data[cid]['its']:
+			graph_info[rc_type][ x_current ]['None'] += 1
+		else: breaker.append(True)
+	    if len(breaker) == len(compare_pairs): break
 
-	for x_current in x_range:
-	    for rc_type in ['total','good']:
+    config.logfile.write('Calculating percentages ... \n')
+    for rc_type in ['total','good']:
+	f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.values' ,'w' )
+	f.write(
+	    'x'			+'\t'+ 
+	    'all'			+'\t'+ 
+	    'None'			+'\t'+ 
+	    '16s'			+'\t'+ 
+	    '16s_mono'		+'\t'+ 
+	    '16s_mono %'		+'\t'+ 
+	    'its'			+'\t'+ 
+	    'its_mono'		+'\t'+ 
+	    'its_mono %'		+'\t'+ 
+	    'both'			+'\t'+ 
+	    'both_mono'		+'\t'+ 
+	    'both_mono %'		+'\t'+ 
+	    'both'			+'\t'+ 
+	    'both_16s_mono'		+'\t'+ 
+	    'both_16s_mono %'	+'\t'+ 
+	    'both'			+'\t'+ 
+	    'both_its_mono'		+'\t'+ 
+	    'both_its_mono %'	+'\n'
+	)
+	f.close()
+    for x_current in x_range:
+	for rc_type in ['total','good']:
+	    f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+'.values' ,'a' )
+	    f.write(str(x_current) +'\t'+     str(graph_info[rc_type][ x_current ]['all'])	+'\t'+	str(graph_info[rc_type][ x_current ]['None'])	+'\t'	)
+
+	    for [total_id,count_id] in [['16s','16s_mono'],['its','its_mono'],['both','both_mono'],['both','both_16s_mono'],['both','both_its_mono']]:
+		total  = graph_info[rc_type][ x_current ][total_id]
+		count = graph_info[rc_type][ x_current ][count_id]
 		
-		for [total_id,count_id] in [['16s','16s_mono'],['its','its_mono'],['both','both_mono'],['both','both_16s_mono'],['both','both_its_mono']]:
-		    
-		    total  = graph_info[rc_type][ x_current ][total_id]
-		    count = graph_info[rc_type][ x_current ][count_id]
-		    
-		    if total: graph_info[rc_type][ x_current ][count_id] = 100*round(float(count)/float(total),2)
-		    else:     graph_info[rc_type][ x_current ][count_id] = 0.0
+		f.write(	str(total)+'\t'+	str(count)+'\t'    )
+		if total:
+		    graph_info[rc_type][ x_current ][count_id] = 100*round(float(count)/float(total),2)
+		    f.write(str(100*round(float(count)/float(total),2))+'\t')
+		else:
+		    graph_info[rc_type][ x_current ][count_id] = 0.0
+		    f.write('0.0\t')
+	    f.write('\t'+str(x_current)+'\n')
+	    f.close()
 
+    if 'a' in indata.graphs:
+	config.logfile.write('Preparing variables for plotting ... \n')
 	for rc_type in ['total','good']:
 
 	    temp_x=graph_info[rc_type].keys()
@@ -157,30 +214,15 @@ def metagraph(indata):
 		    y9.append(graph_info[rc_type][i]['both_its_mono'])
 		    y10.append(graph_info[rc_type][i]['both_16s_mono'])
 
-	    #print ''
-	    #print 'x\t'.join([str(i) for i in x])
-	    #print ''
-	    #print 'all\t'.join([str(i) for i in y1])
-	    #print ''
-	    #print '16s\t'.join([str(i) for i in y3])
-	    #print '16s_mono\t'.join([str(i) for i in y6])
-	    #print ''
-	    #print 'its\t'.join([str(i) for i in y4])
-	    #print 'its_mono\t'.join([str(i) for i in y7])
-	    #print ''
-	    #print 'None\t'.join([str(i) for i in y5])
-	    #print ''
-	    #print 'both\t'.join([str(i) for i in y2])
-	    #print 'both_mono\t'.join([str(i) for i in y8])
-	    #print '\t'.join([str(i) for i in y9])
-	    #print '\t'.join([str(i) for i in y10])
-
+	    config.logfile.write('Creating graphics ... \n')
 	    import numpy as np
 	    import matplotlib.pyplot as plt
 	    from matplotlib import rc
 		    
 	    fig = plt.figure(figsize=(20, 15), dpi=100)
 	    ax = fig.add_subplot(111)
+	    if incomplete: ax.set_title('WARNING: incomplete dataset! '+ indata.sample+' ' +config.path)
+	    else : ax.set_title(indata.sample+' ' +config.path)
 	    ax.plot(x, y6, '--g', label = 'Percentage monoclonal 16S cluster')
 	    ax.plot(x, y7, '--y', label = 'Percentage monoclonal ITS cluster')
 	    ax.plot(x, y8, '--b', label = 'Perc. both mono. both in cluster')
@@ -210,29 +252,81 @@ def metagraph(indata):
 	    ax2.set_xlim(xscale[0],xscale[1])
 
 	    ax.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/10))
-	    ax2.set_yticks(np.arange(yscale[0],yscale[1]+1,yscale[1]/10))
-	    ax.set_yticks(np.arange(0,101,10))
+	    ax2.set_yticks(np.arange(yscale[0],yscale[1]+1,min(100,yscale[1]/10)))
+	    ax.set_yticks(np.arange(0,101,5))
 
-	    plt.savefig(config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.pdf')
+	    plt.savefig(config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+'.pdf')
+	    config.logfile.write('Created: '+config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+' (.pdf and .values)'+'.\n')
 	    plt.close()
 
-	#OLDSTUFF
-		#plt.figure()
-		#plt.axis(scale)
-		#plt.xlabel('Total Number of Reads per Barcode Cluster')
-		#plt.ylabel('Number of Clusters')
-		#pos = np.arange(len(x))
-		#width = 1.0     # gives histogram aspect to the bar diagram
-		#ax = plt.axes()
-		#ax.set_xticks(pos + (width / 2))
-		#ax.set_xticklabels(x,rotation='horizontal')
-		#plt.bar(pos, y, width, color='r')
-		##plt.show()
-		##plt.savefig(pp,format='pdf',bbox_inches=0)
-		#plt.plot(x,y)
-		#plt.suptitle('Y is Total Number of Clusters with X Reads Pairs per Barcode Cluster.', fontsize=12)
-		#plt.savefig(config.path+'/read_pairs_per_barcode_cluster.x_scale_'+str(scale[0])+'-'+str(scale[1])+'.y_scale_'+str(scale[2])+'-'+str(scale[3])+'.pdf')
-		#plt.close()
+    if 'b' in indata.graphs:
+	config.logfile.write('Preparing variables for plotting ... \n')
+	for cluster_type in ['its','16s','both']:
+
+	    temp_x=graph_info['total'].keys()
+	    temp_x.sort()
+	    
+	    x =[];y1=[];y2=[];y3=[];y4=[];y5=[];y6=[];y7=[];y8=[];
+
+	    for i in temp_x:
+		    x.append(i)
+		    y1.append(graph_info['good' ][i][cluster_type])
+		    y2.append(graph_info['total'][i][cluster_type])
+		    y3.append(graph_info['good' ][i][cluster_type+'_mono'])
+		    y4.append(graph_info['total'][i][cluster_type+'_mono'])
+		    if cluster_type == 'both':
+			y5.append(graph_info['good' ][i][cluster_type+'_its_mono'])
+			y6.append(graph_info['good' ][i][cluster_type+'_16s_mono'])
+			y7.append(graph_info['total'][i][cluster_type+'_its_mono'])
+			y8.append(graph_info['total'][i][cluster_type+'_16s_mono'])
+
+	    config.logfile.write('Creating graphics ... \n')
+	    import numpy as np
+	    import matplotlib.pyplot as plt
+	    from matplotlib import rc
+		    
+	    fig = plt.figure(figsize=(20, 15), dpi=100)
+	    ax = fig.add_subplot(111)
+	    
+	    if incomplete:	ax.set_title('WARNING: incomplete dataset! '+'Clusters with '+cluster_type+' consensus sequence(s)'+'. '+indata.sample+' '+config.path)
+	    else:		ax.set_title(				     'Clusters with '+cluster_type+' consensus sequence(s)'+'. '+indata.sample+' '+config.path)
+
+	    ax.plot(x, y3, '--b', label =     'Perc. mono. good pairs')
+	    ax.plot(x, y4, '--r', label =     'Perc. mono. totalpairs')
+	    if cluster_type == 'both':
+		ax.plot(x, y5, '--g', label = '% mono.its good pairs')
+		ax.plot(x, y6, '--m', label = '% mono.its totalpairs')
+		ax.plot(x, y7, '--c', label = '% mono.16s good pairs')
+		ax.plot(x, y8, '--y', label = '% mono.16s totalpairs')
+
+	    ax2 = ax.twinx()
+	    ax2.plot(x, y1, '-b', label =     'Number of good pairs')
+	    ax2.plot(x, y2, '-r', label =     'Number of totalpairs')
+	    
+	    lines, labels   = ax.get_legend_handles_labels()
+	    lines2, labels2 = ax2.get_legend_handles_labels()
+	    ax2.legend(lines + lines2, labels + labels2, loc=7)
+	    #ax.legend(lines, labels, loc=7)
+
+	    ax.grid(b=True, which='both')
+	    ax.set_xlabel('Read pairs per Barcode Cluster')
+	    ax.set_ylabel('Percentage Monoclonal')
+	    ax2.set_ylabel('Number of Clusters')
+	    
+	    ax.set_ylim(0,100)
+	    ax2.set_ylim(yscale[0],yscale[1])
+	    
+	    ax.set_xlim(xscale[0],xscale[1])
+	    ax2.set_xlim(xscale[0],xscale[1])
+
+	    ax.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/10))
+	    ax2.set_yticks(np.arange(yscale[0],yscale[1]+1,min(100,yscale[1]/10)))
+	    ax.set_yticks(np.arange(0,101,5))
+
+	    plt.savefig(                     config.path+'/graphs/'+cluster_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+'.pdf')
+	    config.logfile.write('Created: '+config.path+'/graphs/'+cluster_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+' (.pdf and .values)'+'.\n')
+	    plt.close()
+
     config.logfile.write( 'done\n')
     return 0
 
@@ -252,15 +346,15 @@ def sbatch(indata):
 
     config.logfile.write('Creating sbatch scripts.\n')
     
-    f = open(config.path +'/sbatch.cluster','w')
+    f = open(config.path +'/sbatch.cluster.sh','w')
     f.write(
 	'#! /bin/bash -l'+'\n'+
 	'#SBATCH -A b2011011'+'\n'+
 	'#SBATCH -n 8 -p node'+'\n'+
 	'#SBATCH -t 24:00:00'+'\n'+
 	'#SBATCH -J clust_'+config.path+'\n'+
-	'#SBATCH -e '+config.abspath+'/stderr.cluster.sbatch.txt'+'\n'+
-	'#SBATCH -o '+config.abspath+'/stdout.cluster.sbatch.txt'+'\n'+
+	'#SBATCH -e '+config.abspath+'/sbatch.cluster.stderr.txt'+'\n'+
+	'#SBATCH -o '+config.abspath+'/sbatch.cluster.stdout.txt'+'\n'+
 	'#SBATCH --mail-type=All'+'\n'+
 	'#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
 	'echo "$(date) Running on: $(hostname)"'+'\n'+
@@ -270,7 +364,7 @@ def sbatch(indata):
     )
     f.close()
 
-    f = open( config.path +'/sbatch.sortreads','w')
+    f = open( config.path +'/sbatch.sortreads.sh','w')
     f.write(
 	'#! /bin/bash -l'+'\n'+
 	'#SBATCH -A b2011011'+'\n'+
@@ -278,8 +372,8 @@ def sbatch(indata):
 	'#SBATCH -C fat'+'\n'+
 	'#SBATCH -t 24:00:00'+'\n'+
 	'#SBATCH -J sort_'+config.path+'\n'+
-	'#SBATCH -e '+config.abspath+'/stderr.sortreads.sbatch.txt'+'\n'+
-	'#SBATCH -o '+config.abspath+'/stdout.sortreads.sbatch.txt'+'\n'+
+	'#SBATCH -e '+config.abspath+'/sbatch.sortreads.stderr.txt'+'\n'+
+	'#SBATCH -o '+config.abspath+'/sbatch.sortreads.stdout.txt'+'\n'+
 	'#SBATCH --mail-type=All'+'\n'+
 	'#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
 	'echo "$(date) Running on: $(hostname)"'+'\n'+
@@ -289,15 +383,15 @@ def sbatch(indata):
     )
     f.close()
     
-    f = open( config.path +'/sbatch.meta','w')
+    f = open( config.path +'/sbatch.meta.sh','w')
     f.write(
 	'#! /bin/bash -l'+'\n'+
 	'#SBATCH -A b2011011'+'\n'+
 	'#SBATCH -n 8 -p node'+'\n'+
 	'#SBATCH -t 10:00:00'+'\n'+
 	'#SBATCH -J meta_'+config.path+'\n'+
-	'#SBATCH -e '+config.abspath+'/stderr.meta.sbatch.txt'+'\n'+
-	'#SBATCH -o '+config.abspath+'/stdout.meta.sbatch.txt'+'\n'+
+	'#SBATCH -e '+config.abspath+'/sbatch.meta.stderr.txt'+'\n'+
+	'#SBATCH -o '+config.abspath+'/sbatch.meta.stdout.txt'+'\n'+
 	'#SBATCH --mail-type=All'+'\n'+
 	'#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
 	'echo "$(date) Running on: $(hostname)"'+'\n'+
@@ -307,12 +401,11 @@ def sbatch(indata):
     )
     f.close()
     
-    send = False
-    if send:
+    if indata.send:
 	config.logfile.write('Placing scripts in jobqueue.\n')
 	import subprocess
 
-	sbatch = subprocess.Popen( ['sbatch',config.path +'/sbatch.cluster'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	sbatch = subprocess.Popen( ['sbatch',config.path +'/sbatch.cluster.sh'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	sbatch_out, errdata = sbatch.communicate()
 	if sbatch.returncode != 0:
 		print 'sbatch view Error code', sbatch.returncode, errdata
@@ -321,7 +414,7 @@ def sbatch(indata):
 	cluster_jobid = sbatch_out.split('\n')[0].split(' ')[3]
 	config.logfile.write('Queued barcode clustering with JOBID '+cluster_jobid+'.\n')
 
-	sbatch = subprocess.Popen( ['sbatch','--dependency=afterok:'+cluster_jobid,config.path +'/sbatch.sortreads'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	sbatch = subprocess.Popen( ['sbatch','--dependency=afterok:'+cluster_jobid,config.path +'/sbatch.sortreads.sh'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	sbatch_out, errdata = sbatch.communicate()
 	if sbatch.returncode != 0:
 		print 'sbatch view Error code', sbatch.returncode, errdata
@@ -330,7 +423,7 @@ def sbatch(indata):
 	sort_jobid = sbatch_out.split('\n')[0].split(' ')[3]
 	config.logfile.write('Queued sorting of reads with JOBID '+sort_jobid+'.\n')
 
-	sbatch = subprocess.Popen( ['sbatch','--dependency=afterok:'+sort_jobid,config.path +'/sbatch.meta'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	sbatch = subprocess.Popen( ['sbatch','--dependency=afterok:'+sort_jobid,config.path +'/sbatch.meta.sh'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	sbatch_out, errdata = sbatch.communicate()
 	if sbatch.returncode != 0:
 		print 'sbatch view Error code', sbatch.returncode, errdata
@@ -629,6 +722,7 @@ def meta(indata):
 
     config = Configuration(indata.path, indata.cmd, skip=indata.skip ,stop=indata.stop ,random=indata.n)
     import os
+    import sys
     if os.path.exists(config.outfile): os.remove(config.outfile)
     config.openconnections()
     
@@ -648,13 +742,17 @@ def meta(indata):
     
     # make a worker pool that works with the clusters returned from the generator
     if indata.debug: #single process // serial
-	config.logfile.write('Running in debug mode ...\n')
+	config.logfile.write('debugging: ');
+	sys.stdout.write('debugging: ')
+	config.logfile.write('Running in debug mode ')
 	results=[] # create holder for processed reads
 	progress = Progress(config.clustercount, logfile=config.logfile) # creates a progress "bar" thingy
 	with progress:
 	    for cluster_pairs in clusteriterator(clusterq):
 		progress.update()
 		results.append(foreachcluster_meta(cluster_pairs))
+		config.logfile.write('.');
+		sys.stdout.write('.')
 	config.logfile.write('finished, making summary ... \n')
     else: # multiple processes in parallel
 	import multiprocessing
@@ -689,7 +787,7 @@ def meta(indata):
 		onlyjunk += 1
 		return_info = tmp[1]
 	    else:
-		[output, _its, _16s,return_info] = tmp
+		[output, _its, _16s, return_info] = tmp
 		config.outfile.write( output )
 		processed += 1
 
@@ -701,31 +799,32 @@ def meta(indata):
 		    if _16s and not _its: monoclonal['both']['only 16S'] += 1
 		    if not _16s and not _its: monoclonal['both']['None'] += 1
 		elif _its != None:
-		    typecounter['ITS']+=1
+		    typecounter['ITS'] += 1
 		    if _its: monoclonal['ITS'] += 1
 		elif _16s != None:
-		    typecounter['16S']+=1
+		    typecounter['16S'] += 1
 		    if _16s: monoclonal['16S'] += 1
 		else:
-		    typecounter['None']+=1
-		if return_info:
-		    statstable.write( '\n'+'\t'.join([str(return_info[stat]) for stat in statsheader]) )
-		    assert len(return_info) == len(statsheader)
+		    typecounter['None'] += 1
+
+	    if return_info:
+		statstable.write( '\n'+'\t'.join([str(return_info[stat]) for stat in statsheader]) )
+		assert len(return_info) == len(statsheader)
 	statstable.close()
 
     reader.join()
     
-    print processed,
-    print 'clusters processed, out of these were:'
-    print onlyjunk, 'clusters of only adapter sequences or faulty primers'
-    print lowread, 'clusters with to few reads to be analysed'
+    config.outfile.write('##### SUMMARY #####'+'\n')
+    config.outfile.write(  str(processed)+ ' clusters processed, out of these were:'+'\n')
+    config.outfile.write(  str(onlyjunk) + ' clusters of only adapter sequences or faulty primers'+'\n')
+    config.outfile.write(  str(lowread)  + ' clusters with to few reads to be analysed'+'\n')
     for name,count in typecounter.iteritems():
 	if name == 'both ITS and 16S':
-	    print count, name, 'whereof:'
+	    config.outfile.write(  str(count)+' '+ name+' '+ 'whereof:'+'\n')
 	    for name,count2 in monoclonal['both'].iteritems():
-		print '\t',count2,'were monoclonal for',name
+		config.outfile.write(  '\t'+' '+str(count2)+' '+'were monoclonal for'+' '+name+'\n')
 	    continue
-	print count, name, 'whereof', monoclonal[name],'were monoclonal'
+	config.outfile.write(  str(count)+' '+ name+' '+ 'whereof'+' '+ str(monoclonal[name])+' '+'were monoclonal'+'\n')
 	
 	
     # create a nice run summary
@@ -879,7 +978,11 @@ def foreachcluster_meta(cluster_pairs):
 	return_info['number of strange primers'] = primererror
 
 	#check that there is data to work with
-	if adaptercount+primererror == len(cluster_pairs[1]): output+='All adapter and/or primer error.\n'; return ['ONLY JUNK',return_info]
+	if adaptercount+primererror == len(cluster_pairs[1]):
+	    output += 'All adapter and/or primer error.\n'
+	    import os
+	    os.remove( f.name )
+	    return ['ONLY JUNK',return_info]
 
 	#cluster reads
 	import subprocess
@@ -891,7 +994,7 @@ def foreachcluster_meta(cluster_pairs):
 	cdhit = subprocess.Popen( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cid)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cid)+'.fa','-g','1','-c','0.97'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	cdhit_out, errdata = cdhit.communicate()
 	if cdhit.returncode != 0:
-		print 'cd-hit view Error code', cdhit.returncode, errdata
+		print 'cd-hit cluster='+str(cid)+' view Error code', cdhit.returncode, errdata
 		sys.exit()
 	#cd-hit_out = StringIO(cd-hit_out)
 	#print cdhit_out
@@ -902,7 +1005,7 @@ def foreachcluster_meta(cluster_pairs):
 	ccc = subprocess.Popen( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cid)+'.fa',config.path+'/sortedReads/cluster.'+str(cid)+'.consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.aligned'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	ccc_out, errdata = ccc.communicate()
 	if ccc.returncode != 0:
-		print 'ccc view Error code', ccc.returncode, errdata
+		print 'cluster='+str(cid)+'ccc view Error code', ccc.returncode, errdata
 		print ccc_out
 		sys.exit()
 
@@ -1124,6 +1227,9 @@ def initiate_file(filename, logfile, mode='w'):
 	#    if type(indata.logfile) == file and mode != 'r': config.logfile.write('Creating file '+filename+'.\n')
     
     if mode =='ow': mode ='w'
+    import re
+    #if re.search('log',filename):	out = open(filename, mode,0)
+    #else:				out = open(filename, mode,1)
     out = open(filename, mode,1)
     
     if type(logfile) == file and mode != 'r': logfile.write('File '+filename+' sucessfully initiated.\n')
@@ -1138,6 +1244,8 @@ def getindata(cmd):
     argparser.add_argument('-path',	dest='path',	metavar='<path>',	type=str,	required=True,	default=False,	help='Set the analysis path.')
     argparser.add_argument('--src',	dest='skipreadcounting', 	action='store_true', 			required=False,	default=False,	help='Skip read counting (for speeding up debug runs, sets readcount to 30M/infile).')
     if cmd == 'init': pass
+    elif cmd == 'sbatch':
+	argparser.add_argument('--send',	dest='send', 	action='store_true', 			required=False,	default=False,	help='Send sbatch scripts to job-queue.')
     elif cmd == 'addfqs':
 	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='Indata "fastq"-file read1.')
 	argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='Indata "fastq"-file read2.')
@@ -1154,14 +1262,26 @@ def getindata(cmd):
 	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
         argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED')
     if cmd == 'metagraph':
-	argparser.add_argument(	'-x',			dest='xscale',	metavar='N',				type=str,	required=False,	default='0-1000',help='x axis scale (default 0-1000)')
-	argparser.add_argument(	'-y',			dest='yscale',	metavar='N',				type=str,	required=False,	default='0-1000',help='y axis scale (default 0-1000)')
-	argparser.add_argument(	'-g',			dest='graphs',	metavar='N',				type=str,	required=False,	default='all',	help='all or str with graph signs (default all)\n.Graph signs:\n'+
-			       'm monoclonality\n'+
-			       'b barcode cluster hist\n'+
-			       'c combo\n'
-			       )
+	argparser.add_argument(	'-step',		dest='step',	metavar='N',				type=int,	required=False,	default=0,	help='Update intervall. Updates y value every "step" x value (default "max(x)/200" ie 200 datapoints along x-axis)')
+	argparser.add_argument(	'-x',			dest='xscale',	metavar='N-N',				type=str,	required=False,	default='0-1000',help='x axis scale (default 0-1000)')
+	argparser.add_argument(	'-y',			dest='yscale',	metavar='N-N',				type=str,	required=False,	default='0-1000',help='y axis scale (default 0-1000)')
+	argparser.add_argument(	'-sample',		dest='sample',	metavar='str',				type=str,	required=False,	default='0-1000',help='Sample name to put in header and filename')
 	argparser.add_argument('--highres',	dest='highres', 	action='store_true', 			required=False,	default=False,	help='Use all x points to get high res data.')
+	argparser.add_argument(	'-g',			dest='graphs',	metavar='N',				type=str,	required=False,	default='a',	help='"all" or str with graph signs (default a).\n\n'+
+				'Available graph signs:\n\n'+
+				'a --> x  = "Minimum number of read pairs per cluster"\n'+
+				'      y1-5  = "Number of barcode cluster" for Total, 16S, ITS, BOTH and None clusters\n'+
+				'      y6-10 = "Percentage monoclonality"  for 16S, ITS and BOTH clusters\n'+
+				'      Makes one graph for "good pairs" and one for "total read pairs" per cluster.\n\n'+
+				'b --> x  = "Minimum number of read pairs per cluster"\n'+
+				'      y1 = "Number of barcode cluster with consensus sequences of TYPE, total readpairs"\n'+
+				'      y2 = "Percentage barcode clusters monoclonal for TYPE, total readpairs"\n'+
+				'      y3 = "Number of barcode cluster with consensus sequences of TYPE, good readpairs"\n'+
+				'      y4 = "Percentage barcode clusters monoclonal for TYPE, good readpairs"\n'+
+				'      Makes one graph each for TYPE = ITS, 16S and BOTH.\n\n'+
+				'c --> Nothing yet.\n\n'
+			       )
+	
 
 
     import sys
