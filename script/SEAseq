@@ -295,8 +295,8 @@ def metagraph(indata):
 	    ax.plot(x, y4, '--r', label =     'Perc. mono. totalpairs')
 	    if cluster_type == 'both':
 		ax.plot(x, y5, '--g', label = '% mono.its good pairs')
-		ax.plot(x, y6, '--m', label = '% mono.its totalpairs')
-		ax.plot(x, y7, '--c', label = '% mono.16s good pairs')
+		ax.plot(x, y7, '--m', label = '% mono.its totalpairs')
+		ax.plot(x, y6, '--c', label = '% mono.16s good pairs')
 		ax.plot(x, y8, '--y', label = '% mono.16s totalpairs')
 
 	    ax2 = ax.twinx()
@@ -773,6 +773,7 @@ def meta(indata):
     statstable.write('\t'.join(statsheader))
     with progress:
 	for tmp in results:
+	    seqdict = {}
 	    progress.update()
 	    if tmp == 'INITIAL':
 		nonecount+=1
@@ -787,7 +788,7 @@ def meta(indata):
 		onlyjunk += 1
 		return_info = tmp[1]
 	    else:
-		[output, _its, _16s, return_info] = tmp
+		[output, _its, _16s, return_info, seqdict] = tmp
 		config.outfile.write( output )
 		processed += 1
 
@@ -1120,9 +1121,10 @@ def foreachcluster_meta(cluster_pairs):
 		if percentage >= 5.0 and data['support'] > 1:
 		    tmp[cons_type][consensus] = data
 		    typecounter[cons_type] = True
-	types = tmp
+	types = tmp	
 
-	# make cluster summary
+	seqdict = {}
+	# make cluster summary and seqdict for dumping to fasta
 	output += 'There are '+str(adaptercount)+' illumina adapter reads.\n'
 	output += 'There are '+str(primererror)+' primer missmatch reads.\n'
 	#output += 'There are '+str(len(types))+' type(s) of amplicon(s) in cluster:\n'
@@ -1130,11 +1132,13 @@ def foreachcluster_meta(cluster_pairs):
 	for cons_type, consensuses in types.iteritems():
 	    types[cons_type]['mono'] = False
 	    output += '\t'+cons_type+' '+str(consensuses['total'])+' reads in total.\n'
+	    seqdict[cons_type] = {}
 	    for consensus, data in consensuses.iteritems():
 		if consensus == 'total' or consensus == 'mono':continue
 		percentage = round(100*float(data['support'])/consensuses['total'],2)
 		output += '\t\tConsensus '+consensus+' supported by '+str(percentage)+'% of readpop ('+str(data['support'])+' reads)\t'+data['sequence'].replace('-','')+'\n'
 		#if percentage >= 95.0: types[cons_type]['mono'] = True
+		seqdict[cons_type][consensus] = data['sequence'].replace('-','')
 		if len(consensuses)-2 == 1: types[cons_type]['mono'] = True
 	output += '\n'
 
@@ -1163,7 +1167,7 @@ def foreachcluster_meta(cluster_pairs):
 	    _16s = types['16S']['mono']
 	    if _16s:output+='Cluster is monoclonal for 16S.\n'
 
-	return [output, _its,_16s,return_info]#str(cluster_pairs[1][0].cid)+' has '+str(len(cluster_pairs[1]))+' read pairs'
+	return [output, _its,_16s,return_info,seqdict]#str(cluster_pairs[1][0].cid)+' has '+str(len(cluster_pairs[1]))+' read pairs'
 
 def clusteriterator(clusterq):  # a generator that yields clusters from queue until it finds a cluster = END
     while True:
