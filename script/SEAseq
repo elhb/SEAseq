@@ -771,6 +771,7 @@ def meta(indata):
     statstable = open(config.path+'/meta.statstable','w',1)
     statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support']
     statstable.write('\t'.join(statsheader))
+    seqdump = open(config.path+'/meta.sequences.fa','w',1)
     with progress:
 	for tmp in results:
 	    seqdict = {}
@@ -807,10 +808,16 @@ def meta(indata):
 		    if _16s: monoclonal['16S'] += 1
 		else:
 		    typecounter['None'] += 1
-
+	    
+	    # SEQDICT printing to file
+	    for cons_type in seqdict:
+		for consensus in seqdict[cons_type]:
+		    seqdump.write(seqdict[cons_type][consensus])
+	    
 	    if return_info:
 		statstable.write( '\n'+'\t'.join([str(return_info[stat]) for stat in statsheader]) )
 		assert len(return_info) == len(statsheader)
+	seqdump.close()
 	statstable.close()
 
     reader.join()
@@ -1138,7 +1145,8 @@ def foreachcluster_meta(cluster_pairs):
 		percentage = round(100*float(data['support'])/consensuses['total'],2)
 		output += '\t\tConsensus '+consensus+' supported by '+str(percentage)+'% of readpop ('+str(data['support'])+' reads)\t'+data['sequence'].replace('-','')+'\n'
 		#if percentage >= 95.0: types[cons_type]['mono'] = True
-		seqdict[cons_type][consensus] = data['sequence'].replace('-','')
+		seqdict[cons_type][consensus] = '\n>cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r1.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNNN')[0]
+		seqdict[cons_type][consensus] += '\n>cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r2.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNNN')[1]
 		if len(consensuses)-2 == 1: types[cons_type]['mono'] = True
 	output += '\n'
 
