@@ -1473,7 +1473,8 @@ def classifymeta(indata):
     import time
 
     #setting up blast
-    database='/bubo/proj/b2011011/SEAseq/reference/NCBI_HUMAN_MICROBIOM_ALL/all.fa'
+    database='/bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa'
+    #database='/bubo/proj/b2011011/SEAseq/reference/NCBI_HUMAN_MICROBIOM_ALL/all.fa'
     #database='/bubo/proj/b2011011/SEAseq/references/NCBI_BACTERIA_ALL/all.fa'
     infile = config.path+'/meta.sequences.fa'
     cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, num_threads=8,perc_identity=97)#, out=infile+'.blastout')
@@ -1494,6 +1495,7 @@ def classifymeta(indata):
     config.printblast = True
     if config.printblast:o=''
     
+    print '### reading report to mem'
     data = {}
     for blast_record in records:
 
@@ -1507,6 +1509,7 @@ def classifymeta(indata):
 
 	try:			data[cluster][amplicon][consensus][readnumber] = blast_record
 	except KeyError:	data[cluster][amplicon][consensus] = { readnumber : blast_record }
+    print '### Done'
 
     noblasthit_its = 0
     noblasthit_16s = 0
