@@ -1150,8 +1150,20 @@ def foreachcluster_meta(cluster_pairs):
 		percentage = round(100*float(data['support'])/consensuses['total'],2)
 		output += '\t\tConsensus '+consensus+' supported by '+str(percentage)+'% of readpop ('+str(data['support'])+' reads)\t'+data['sequence'].replace('-','')+'\n'
 		#if percentage >= 95.0: types[cons_type]['mono'] = True
-		seqdict[cons_type][consensus] = '\n>cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r1.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNNN')[0]
-		seqdict[cons_type][consensus] += '\n>cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r2.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNNN')[1]
+		try:
+		    seqdict[cons_type][consensus] = '\n>cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r1.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNNN')[0]
+		    seqdict[cons_type][consensus] += '\n>cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r2.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNNN')[1]
+		except IndexError:
+		    output += 'WARNING: consensus sequence not properly splittable into r1 and r2, not dumping this cluster ('+str(cid)+').\n'
+		#    try:
+		#	seqdict[cons_type][consensus] = '\n>cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r1.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNN')[0]
+		#	seqdict[cons_type][consensus] += '\n>cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r2.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNN')[1]
+		#    except IndexError:
+		#	print '\n\n###Cluster ==',cid;
+		#	print 'Erro when splitting sequence:'
+		#	print 'cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads'
+		#	print data['sequence']
+		#	raise ValueError
 		if len(consensuses)-2 == 1: types[cons_type]['mono'] = True
 	output += '\n'
 
