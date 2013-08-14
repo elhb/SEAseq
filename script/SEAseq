@@ -753,8 +753,8 @@ def meta(indata):
 	    for cluster_pairs in clusteriterator(clusterq):
 		progress.update()
 		results.append(foreachcluster_meta(cluster_pairs))
-		config.logfile.write('.');
-		sys.stdout.write('.')
+		#config.logfile.write('.');
+		#sys.stdout.write('.')
 	config.logfile.write('finished, making summary ... \n')
     else: # multiple processes in parallel
 	import multiprocessing
@@ -1117,6 +1117,8 @@ def foreachcluster_meta(cluster_pairs):
 #		types[primerpairs[0]]['total']=len(consensuses[consensusid])-1
 	    if verb >2: output += '\n\n'
 
+	perccutoff = 5.0
+	countcutoff = 5
 	#remove less than 5% (should I remove singletons aswell?)
 	tmp = {}
 	typecounter={}
@@ -1128,7 +1130,7 @@ def foreachcluster_meta(cluster_pairs):
 		if consensus == 'total' or consensus == 'mono': tmp[cons_type][consensus] = data;continue
 		#print cons_type,consensus,data, consensuses['total']
 		percentage = round(100*float(data['support'])/consensuses['total'],2)
-		if percentage >= 5.0 and data['support'] > 1:
+		if percentage >= perccutoff and data['support'] >= countcutoff:
 		    tmp[cons_type][consensus] = data
 		    typecounter[cons_type] = True
 	types = tmp	
@@ -1138,7 +1140,7 @@ def foreachcluster_meta(cluster_pairs):
 	output += 'There are '+str(adaptercount)+' illumina adapter reads.\n'
 	output += 'There are '+str(primererror)+' primer missmatch reads.\n'
 	#output += 'There are '+str(len(types))+' type(s) of amplicon(s) in cluster:\n'
-	output += str(len(typecounter))+' amplicon(s) have enough data (>=1 cons with >= 5% support and > 1 read):\n'
+	output += str(len(typecounter))+' amplicon(s) have enough data (>=1 cons with >= '+str(perccutoff)+'% support and >= '+str(countcutoff)+' reads):\n'
 	for cons_type, consensuses in types.iteritems():
 	    types[cons_type]['mono'] = False
 	    output += '\t'+cons_type+' '+str(consensuses['total'])+' reads in total.\n'
@@ -1462,7 +1464,7 @@ def classifymeta(indata):
     database='/bubo/proj/b2011011/SEAseq/reference/NCBI_HUMAN_MICROBIOM_ALL/all.fa'
     #database='/bubo/proj/b2011011/SEAseq/references/NCBI_BACTERIA_ALL/all.fa'
     infile = config.path+'/meta.sequences.fa'
-    cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, num_threads=8)#, out=infile+'.blastout')
+    cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, num_threads=8,perc_identity=97)#, out=infile+'.blastout')
     #cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn', out=infile+'.'+config.blastid+'.blastout')
 
     print '### blasting'
@@ -1477,15 +1479,11 @@ def classifymeta(indata):
     #records = NCBIXML.parse(f)
     records = NCBIXML.parse(blast_handle)
 
-    results = {'total':0}
-    records_counter = 0
-    
     config.printblast = True
     if config.printblast:o=''
     
     data = {}
     for blast_record in records:
-	records_counter +=1
 
 	#>cluster=1.amplicon=ITS.consensus=83_r1.27.08%_of_2626reads
 	cluster	= int(	blast_record.query.split('.')[0].split('=')[1]	)
@@ -1498,10 +1496,13 @@ def classifymeta(indata):
 	try:			data[cluster][amplicon][consensus][readnumber] = blast_record
 	except KeyError:	data[cluster][amplicon][consensus] = { readnumber : blast_record }
 
-
+    noblasthit_its = 0
+    noblasthit_16s = 0
+    blasthitsagree = 0
+    hitsdonotagree = 0
     for cluster_id, amplicons in data.iteritems():
 	
-	print 'Cluster '+str(cluster_id)
+	print '### Cluster '+str(cluster_id)+' ###'
 	identity_cutoff = 97#%
 	alignment_length_cutoff = 95#%
 	
@@ -1550,13 +1551,35 @@ def classifymeta(indata):
 		    print '\t\t\t'+alignment
 		if not in_both_reads[amplicon]:
 		    print '\t\t\tNo alignment supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage'
-		    if amplicon == 'ITS': broken = True;break;
+		    if amplicon == '16S':
+			noblasthit_16s +=1
+			broken = True;
+		    elif amplicon == 'ITS':
+			noblasthit_its += 1
+			broken = True;
+			break;
 	    if broken: break
-	
-	for alignment in in_both_reads['ITS']:
-	    if alignment in in_both_reads['16S']: print '\t'+alignment+' is present in both'
-	
 
+	
+	hitagree = False
+	print '\nSupported by both:'
+	for alignment in in_both_reads['ITS']:
+	    if alignment in in_both_reads['16S']:
+		print '\t'+alignment+' is present in both'
+		hitagree = True
+	
+	if hitagree:	blasthitsagree += 1
+	elif not broken:
+	    hitsdonotagree += 1
+	    print '\tno hit is present in both'
+	print ''
+	
+    assert len(data) - noblasthit_its - noblasthit_16s - blasthitsagree - hitsdonotagree == 0, '\n\nError '+str(len(data))+' - '+str(noblasthit_its)+' - '+str(noblasthit_16s)+' - '+str(blasthitsagree)+' - '+str(hitsdonotagree)+' != 0\n\n'
+    print 'out of '+str(len(data))+' analyzed clusters (with both amplicons present and monoclonal for both) were:'
+    print str(noblasthit_its) +' ('+str(round(100*float(noblasthit_its)/float(len(data)),2))+'%) removed because the ITS sequence gave no hits supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage.'
+    print str(noblasthit_16s) +' ('+str(round(100*float(noblasthit_16s)/float(len(data)),2))+'%) removed because the 16S sequence gave no hits supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage.'
+    print str(hitsdonotagree) +' ('+str(round(100*float(hitsdonotagree)/float(len(data)),2))+'%) removed because none of the ITS and 16S hits did agree.'
+    print 'For '+str(blasthitsagree) +' ('+str(round(100*float(blasthitsagree)/float(len(data)),2))+'%) clusters did the ITS and 16S hits agree at least once.'
 	#if blast_record.alignments:
 	#	if config.printblast:
 	#		for alignment in blast_record.alignments[:10]:
@@ -1567,7 +1590,7 @@ def classifymeta(indata):
 	#		    data[cluster][consensus][readnumber]['hits'].append(alignment.title)
 	#		    data[cluster][consensus][readnumber][alignment.title] = alignment
 
-	else: pass # no hits
+
 
 #    for cluster in data:
 #	print '\ncluster',cluster
