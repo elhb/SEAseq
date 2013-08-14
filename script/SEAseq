@@ -846,7 +846,7 @@ def foreachcluster_meta(cluster_pairs):
     if cluster_pairs[0] == 0: return 'INITIAL'
     config = cluster_pairs[2]
     cid = cluster_pairs[1][0].cid
-    verb = 0
+    verb = 2
 
     # for each cluster:
 	# remove reads containing illumina adapter sequences
@@ -882,7 +882,7 @@ def foreachcluster_meta(cluster_pairs):
     else:
 	reads = {}
 
-	if verb >1: output += 'PAIRS:\n'
+	if verb >=3: output += 'PAIRS:\n'
 	import re
 	
 	f = open(config.path+'/sortedReads/temporary.'+str(cid)+'.fa','w')
@@ -894,8 +894,8 @@ def foreachcluster_meta(cluster_pairs):
 	    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
 	    
 	    tmpcounter += 1
-	    #if verb >1: output += str(tmpcounter)+'\t'+pair.header +'\t'
-	    if verb >1: output += str(tmpcounter)+'\t'
+	    #if verb >=1: output += str(tmpcounter)+'\t'+pair.header +'\t'
+	    if verb >=3: output += str(tmpcounter)+'\t'
 	    
 	    #identify subparts of read
 	    C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
@@ -906,7 +906,7 @@ def foreachcluster_meta(cluster_pairs):
 	    #match adaptersequence
 	    if (pair.r1.illuminaadapter or pair.r2.illuminaadapter):
 		adaptercount +=1;
-		if verb >1: output+='ADAPTER\n';
+		if verb >=3: output+='ADAPTER\n';
 		continue
 	    
 	    #determine fwd primer
@@ -914,13 +914,13 @@ def foreachcluster_meta(cluster_pairs):
 	    p1_16S = re.match( 'GTG.CAGC.GCCGCGGTAA',    pair.r1.seq[pair.handle_end:])
 	    p1_ITS = re.match( 'GG.CTTGTAC.CAC.GCCCGTC', pair.r1.seq[pair.handle_end:])
 	    if	 p1_16S:
-		if verb >1: output += '16S\t';
+		if verb >=3: output += '16S\t';
 		pair.p1 = '16S'
 	    elif p1_ITS:
-		if verb >1: output += 'ITS\t';
+		if verb >=3: output += 'ITS\t';
 		pair.p1 = 'ITS'
 	    else:
-		if verb >1: output += '???\t';
+		if verb >=3: output += '???\t';
 		pair.p1 = '???'
 	    
 	    #determine reverse primer
@@ -928,19 +928,19 @@ def foreachcluster_meta(cluster_pairs):
 	    p2_16S = re.match( 'ACA..TCAC..CACGAGCTGACGAC',pair.r2.seq)
 	    p2_ITS = re.match( 'CTC..A.TGCC..GGCATCCACC',  pair.r2.seq)
 	    if 	 p2_16S:
-		if verb >1: output += '16S\t';
+		if verb >=3: output += '16S\t';
 		pair.p2 = '16S'
 	    elif p2_ITS:
-		if verb >1: output += 'ITS\t';
+		if verb >=3: output += 'ITS\t';
 		pair.p2 = 'ITS'
 	    else:
-		if verb >1: output += '???\t';
+		if verb >=3: output += '???\t';
 		pair.p2 = '???'
 	    
 	    # check that primers match
 	    if pair.p1 == '???' or pair.p1 != pair.p2:
 		primererror+=1;
-		if verb >1: output+='PRIMER ERROR\n';
+		if verb >=3: output+='PRIMER ERROR\n';
 		continue 
 
 	    #look for unexpected primer sequences
@@ -951,7 +951,7 @@ def foreachcluster_meta(cluster_pairs):
 		revITS_in_any = re.search( 'CTC..A.TGCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its rev in any read
 		if fwd16S_in_r2 or rev16S_in_r1 or fwdITS_in_any or revITS_in_any:
 		    primererror+=1;
-		    if verb >1: output+='PRIMER ERROR\n';
+		    if verb >=3: output+='PRIMER ERROR\n';
 		    #print 'Happened'
 		    continue
 	    elif pair.p1 == 'ITS':
@@ -961,7 +961,7 @@ def foreachcluster_meta(cluster_pairs):
 		revITS_in_r1  = re.search( 'CTC..A.TGCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:]) 
 		if fwd16S_in_any or rev16S_in_any or fwdITS_in_r2 or revITS_in_r1:
 		    primererror+=1;
-		    if verb >1: output+='PRIMER ERROR\n';
+		    if verb >=3: output+='PRIMER ERROR\n';
 		    #print 'Happened'
 		    continue
 
@@ -971,7 +971,7 @@ def foreachcluster_meta(cluster_pairs):
 	    #ITS_rev primer	CTCYDANTGCCSRGGCATCCACC	23	384
 
 	    #output +='\n'
-	    if verb >1: output += pair.r1.seq +' '+ pair.r2.seq+'\n'
+	    if verb >=3: output += pair.r1.seq +' '+ pair.r2.seq+'\n'
 	    
 	    # prepare for clustering
 	    if   pair.p1 == '16S': tem_seq = pair.r1.seq[pair.handle_end:][20:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-26]
@@ -1021,7 +1021,7 @@ def foreachcluster_meta(cluster_pairs):
 		sys.exit()
 
 	# output info
-	if verb >5: 
+	if verb >=5: 
 	    for info in [
 		[config.path+'/sortedReads/cluster.'+str(cid)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
 		[config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr','\nClustering details:\n'],
@@ -1088,34 +1088,34 @@ def foreachcluster_meta(cluster_pairs):
 		    consensuses[consensusid]['Consensus'][0] += line
 
 	#make output for alnignments
-	if verb >2: output += '\n'
+	if verb >=2: output += '\n'
 	types = {'ITS':{'total':0},'16S':{'total':0}}
 	for consensusid in consensuses:
 	    if  not consensusid: continue
 	    primerpairs = []
 	    if 'Consensus' in consensuses[consensusid]:
-		if verb >2: output += 'Consensus number '+consensusid+' from '+str(len(consensuses[consensusid])-1)+' read pairs'
-		if verb >2: output += ':\t\t\t'+consensuses[consensusid]['Consensus'][0]+'\n'
+		if verb >=2: output += 'Consensus number '+consensusid+' from '+str(len(consensuses[consensusid])-1)+' read pairs'
+		if verb >=2: output += ':\t\t\t'+consensuses[consensusid]['Consensus'][0]+'\n'
 	    for read_id, tmp in consensuses[consensusid].iteritems():
 		[seq, identity] = tmp
 		if identity[-1] == '*': identity = 'SEED'
 	        if read_id == 'Consensus': continue#output +=read_id+'\t'+seq+'\n'
 	        else:
-		    #if verb >2: output += str(read_id)+'\t'+int2header[int(read_id)].split('_')[0]+'   \t'+identity+'\t'+reads[int2header[int(read_id)]].p1+'\t'+seq
-		    if verb >2: output += 'Read pair id = '+str(read_id)+'    \t'+identity+'\t'+reads[int2header[int(read_id)]].p1+'\t'+seq
-		    if verb >2: output += '\n'
+		    #if verb >=2: output += str(read_id)+'\t'+int2header[int(read_id)].split('_')[0]+'   \t'+identity+'\t'+reads[int2header[int(read_id)]].p1+'\t'+seq
+		    if verb >=2: output += 'Read pair id = '+str(read_id)+'    \t'+identity+'\t'+reads[int2header[int(read_id)]].p1+'\t'+seq
+		    if verb >=2: output += '\n'
 		    primerpairs.append(reads[int2header[int(read_id)]].p1)
 	    if   primerpairs and primerpairs.count(primerpairs[0]) == len(primerpairs):
-		if verb >2: output += 'consensus is '+primerpairs[0]
+		if verb >=2: output += 'consensus is '+primerpairs[0]
 	    elif primerpairs and primerpairs.count(primerpairs[0]) != len(primerpairs):
-		if verb >2: output += 'WARNING: mixed consensus clustering!'
+		if verb >=2: output += 'WARNING: mixed consensus clustering!'
 	    try:
 		types[primerpairs[0]][consensusid]={'sequence':consensuses[consensusid]['Consensus'][0], 'support':len(consensuses[consensusid])-1}
 		types[primerpairs[0]]['total']+=len(consensuses[consensusid])-1
 	    except KeyError: raise ERIKERROR
 #		types[primerpairs[0]] = {consensusid:{'sequence':consensuses[consensusid]['Consensus'][0], 'support':len(consensuses[consensusid])-1}}
 #		types[primerpairs[0]]['total']=len(consensuses[consensusid])-1
-	    if verb >2: output += '\n\n'
+	    if verb >=2: output += '\n\n'
 
 	perccutoff = 5.0
 	countcutoff = 5
