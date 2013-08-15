@@ -1544,12 +1544,12 @@ def classifymeta(indata):
 		    try: r1 = consensuses[consensus][1]
 		    except KeyError:
 			config.outfile.write('\t\tConsensus cannot be read as read 1 sequence are not available from infile\n')
-			config.logfile.write('WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?')
+			config.logfile.write('WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?\n')
 			continue
 		    try: r2 = consensuses[consensus][2]
 		    except KeyError:
 			config.outfile.write('\t\tConsensus cannot be read as read 2 sequence are not available from infile\n')
-			config.logfile.write('WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?')
+			config.logfile.write('WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?\n')
 			continue
 
 		    amplicon	= 	r1.query.split('.')[1].split('=')[1]
@@ -1644,7 +1644,7 @@ def classifymeta(indata):
 #			config.outfile.write(      '\t\t\t\tm:  \t'+ hsp.match     +'\n')
 #			config.outfile.write(      '\t\t\t\ts: '+str(hsp.sbjct_start)+'\t'+ hsp.sbjct     +'\n')
 #			if len(hsp.query) < 40 : config.outfile.write(      '\tTo short will ba counted as "No Hit"'     +'\n')
-    config.logfile.write('Classification done.')
+    config.logfile.write('Classification done.\n')
     return 0
 
 #####
