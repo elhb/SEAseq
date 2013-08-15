@@ -1540,16 +1540,24 @@ def classifymeta(indata):
 		    break
 	    
 		for consensus in consensuses:
-    
-		    r1 = consensuses[consensus][1]
-		    r2 = consensuses[consensus][2]
-		    
+
+		    try: r1 = consensuses[consensus][1]
+		    except KeyError:
+			config.outfile.write('\t\tConsensus cannot be read as read 1 sequence are not available from infile\n')
+			config.logfile.write('WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?')
+			continue
+		    try: r2 = consensuses[consensus][2]
+		    except KeyError:
+			config.outfile.write('\t\tConsensus cannot be read as read 2 sequence are not available from infile\n')
+			config.logfile.write('WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?')
+			continue
+
 		    amplicon	= 	r1.query.split('.')[1].split('=')[1]
 		    support	= float(r1.query.split('r1.')[-1].split('_')[0].replace('%','')	)
 		    readpop = int(r1.query.split('r1.')[-1].split('_')[-1].replace('reads','')	)
     
 		    config.outfile.write(      '\t\tConsensus '+str(consensus)+': '+amplicon+' supported by '+str(support) +'% ('+str(readpop)+')'     +'\n')
-    
+
 		    in_r1 = {}
 		    for alignment in r1.alignments:
 			for hsp in alignment.hsps:
