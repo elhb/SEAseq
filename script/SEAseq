@@ -769,7 +769,7 @@ def meta(indata):
     typecounter = {'ITS':0,'16S':0,'None':0,'both ITS and 16S':0}
     monoclonal = {'ITS':0,'16S':0,'None':'NA','both':{'only ITS':0,'only 16S':0,'None':0,'both':0}}
     if not indata.debug: config.logfile.write('Part1: Per cluster action '+str(indata.cpus)+' processes  ...\n')
-    progress = Progress(config.clustercount, logfile=config.logfile, unit='cluster')
+    progress = Progress(config.clustercount, logfile=config.logfile, unit='cluster',mem=True)
     statstable = open(config.path+'/meta.statstable','w',1)
     statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support']
     statstable.write('\t'.join(statsheader))
