@@ -1480,10 +1480,10 @@ def classifymeta(indata):
     cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, num_threads=8,perc_identity=97)#, out=infile+'.blastout')
     #cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn', out=infile+'.'+config.blastid+'.blastout')
 
-    print '### blasting'
+    config.logfile.write( 'Starting BLAST\n')
     #Blasting all reads
     blast_handle = cline.__call__()
-    print '### done'
+    config.logfile.write('BLAST search done\n')
 
     blast_handle = StringIO(blast_handle[0])
     blast_handle.seek(0)
@@ -1493,9 +1493,9 @@ def classifymeta(indata):
     records = NCBIXML.parse(blast_handle)
 
     config.printblast = True
-    if config.printblast:o=''
+    if config.printblast: pass
     
-    print '### reading report to mem'
+    config.logfile.write('Reformatting BLAST output to enable clusterwise parsing\n')
     data = {}
     for blast_record in records:
 
@@ -1509,94 +1509,102 @@ def classifymeta(indata):
 
 	try:			data[cluster][amplicon][consensus][readnumber] = blast_record
 	except KeyError:	data[cluster][amplicon][consensus] = { readnumber : blast_record }
-    print '### Done'
+    config.logfile.write('Done' +'\n')
 
     noblasthit_its = 0
     noblasthit_16s = 0
     blasthitsagree = 0
     hitsdonotagree = 0
-    for cluster_id, amplicons in data.iteritems():
+    
+    config.logfile.write('Parsing BLASTreport ....\n')
+    progress = Progress(len(data),unit='cluster',logfile=config.logfile)
+    with progress:
+	for cluster_id, amplicons in data.iteritems():
+	    progress.update()
+	    
+	    config.outfile.write(      '### Cluster '+str(cluster_id)+' ###'     +'\n')
+	    identity_cutoff = 97#%
+	    alignment_length_cutoff = 95#%
+	    
+	    #for amplicon, consensuses in amplicons.iteritems():
+	    in_both_reads = {'ITS':[],'16S':[]}
+	    for amplicon in ['ITS','16S']:
+		broken = False
+		consensuses = amplicons[amplicon]
+		config.outfile.write(      '\t'+amplicon     +'\n')
+		if not consensuses:
+		    config.outfile.write(      '\t\tNo support'     +'\n')
+		    if amplicon == 'ITS': break
+		if len(consensuses) != 1:
+		    config.outfile.write('\t\tNot monoclonal'+'\n');
+		    break
+	    
+		for consensus in consensuses:
+    
+		    r1 = consensuses[consensus][1]
+		    r2 = consensuses[consensus][2]
+		    
+		    amplicon	= 	r1.query.split('.')[1].split('=')[1]
+		    support	= float(r1.query.split('r1.')[-1].split('_')[0].replace('%','')	)
+		    readpop = int(r1.query.split('r1.')[-1].split('_')[-1].replace('reads','')	)
+    
+		    config.outfile.write(      '\t\tConsensus '+str(consensus)+': '+amplicon+' supported by '+str(support) +'% ('+str(readpop)+')'     +'\n')
+    
+		    in_r1 = {}
+		    for alignment in r1.alignments:
+			for hsp in alignment.hsps:
+			    perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
+			    perc_coverage = float(hsp.align_length)	/	float(r1.query_letters)	*100
+			    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r1[alignment.title] = alignment
+    
+		    in_r2 = {}
+		    for alignment in r2.alignments:
+			for hsp in alignment.hsps:
+			    perc_identity = float(hsp.identities)	/	float(hsp.align_length)	*100
+			    perc_coverage = float(hsp.align_length)	/	float(r2.query_letters)	*100
+			    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r2[alignment.title] = alignment
+    
+		    
+		    for alignment in in_r1:
+			if alignment in in_r2:
+			    in_both_reads[amplicon].append(alignment)
+    
+		    for alignment in in_both_reads[amplicon]:
+			config.outfile.write(      '\t\t\t'+alignment     +'\n')
+		    if not in_both_reads[amplicon]:
+			config.outfile.write(      '\t\t\tNo alignment supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage'     +'\n')
+			if amplicon == '16S':
+			    noblasthit_16s +=1
+			    broken = True;
+			elif amplicon == 'ITS':
+			    noblasthit_its += 1
+			    broken = True;
+			    break;
+		if broken: break
+    
+	    
+	    hitagree = False
+	    config.outfile.write(      '\nSupported by both:'     +'\n')
+	    for alignment in in_both_reads['ITS']:
+		if alignment in in_both_reads['16S']:
+		    config.outfile.write(      '\t'+alignment+' is present in both'     +'\n')
+		    hitagree = True
+	    
+	    if hitagree:	blasthitsagree += 1
+	    elif not broken:
+		hitsdonotagree += 1
+		config.outfile.write(      '\tno hit is present in both'     +'\n')
+	    config.outfile.write(      ''     +'\n')
+	    
+	assert len(data) - noblasthit_its - noblasthit_16s - blasthitsagree - hitsdonotagree == 0, '\n\nError '+str(len(data))+' - '+str(noblasthit_its)+' - '+str(noblasthit_16s)+' - '+str(blasthitsagree)+' - '+str(hitsdonotagree)+' != 0\n\n'
+	config.outfile.write(      'out of '+str(len(data))+' analyzed clusters (with both amplicons present and monoclonal for both) were:'     +'\n')
+	config.outfile.write(      str(noblasthit_its) +' ('+str(round(100*float(noblasthit_its)/float(len(data)),2))+'%) removed because the ITS sequence gave no hits supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage.'     +'\n')
+	config.outfile.write(      str(noblasthit_16s) +' ('+str(round(100*float(noblasthit_16s)/float(len(data)),2))+'%) removed because the 16S sequence gave no hits supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage.'     +'\n')
+	config.outfile.write(      str(hitsdonotagree) +' ('+str(round(100*float(hitsdonotagree)/float(len(data)),2))+'%) removed because none of the ITS and 16S hits did agree.'     +'\n')
+	config.outfile.write(      'For '+str(blasthitsagree) +' ('+str(round(100*float(blasthitsagree)/float(len(data)),2))+'%) clusters did the ITS and 16S hits agree at least once.'     +'\n')
 	
-	print '### Cluster '+str(cluster_id)+' ###'
-	identity_cutoff = 97#%
-	alignment_length_cutoff = 95#%
-	
-	#for amplicon, consensuses in amplicons.iteritems():
-	in_both_reads = {'ITS':[],'16S':[]}
-	for amplicon in ['ITS','16S']:
-	    broken = False
-	    consensuses = amplicons[amplicon]
-	    print '\t'+amplicon
-	    if not consensuses:
-		print '\t\tNo support'
-		if amplicon == 'ITS': break
-	    if len(consensuses) != 1: print '\t\tNot monoclonal';break
-	
-	    for consensus in consensuses:
-
-		r1 = consensuses[consensus][1]
-		r2 = consensuses[consensus][2]
-		
-		amplicon	= 	r1.query.split('.')[1].split('=')[1]
-		support	= float(r1.query.split('r1.')[-1].split('_')[0].replace('%','')	)
-		readpop = int(r1.query.split('r1.')[-1].split('_')[-1].replace('reads','')	)
-
-		print '\t\tConsensus '+str(consensus)+': '+amplicon+' supported by '+str(support) +'% ('+str(readpop)+')'
-
-		in_r1 = {}
-		for alignment in r1.alignments:
-		    for hsp in alignment.hsps:
-			perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
-			perc_coverage = float(hsp.align_length)	/	float(r1.query_letters)	*100
-			if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r1[alignment.title] = alignment
-
-		in_r2 = {}
-		for alignment in r2.alignments:
-		    for hsp in alignment.hsps:
-			perc_identity = float(hsp.identities)	/	float(hsp.align_length)	*100
-			perc_coverage = float(hsp.align_length)	/	float(r2.query_letters)	*100
-			if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r2[alignment.title] = alignment
-
-		
-		for alignment in in_r1:
-		    if alignment in in_r2:
-			in_both_reads[amplicon].append(alignment)
-
-		for alignment in in_both_reads[amplicon]:
-		    print '\t\t\t'+alignment
-		if not in_both_reads[amplicon]:
-		    print '\t\t\tNo alignment supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage'
-		    if amplicon == '16S':
-			noblasthit_16s +=1
-			broken = True;
-		    elif amplicon == 'ITS':
-			noblasthit_its += 1
-			broken = True;
-			break;
-	    if broken: break
-
-	
-	hitagree = False
-	print '\nSupported by both:'
-	for alignment in in_both_reads['ITS']:
-	    if alignment in in_both_reads['16S']:
-		print '\t'+alignment+' is present in both'
-		hitagree = True
-	
-	if hitagree:	blasthitsagree += 1
-	elif not broken:
-	    hitsdonotagree += 1
-	    print '\tno hit is present in both'
-	print ''
-	
-    assert len(data) - noblasthit_its - noblasthit_16s - blasthitsagree - hitsdonotagree == 0, '\n\nError '+str(len(data))+' - '+str(noblasthit_its)+' - '+str(noblasthit_16s)+' - '+str(blasthitsagree)+' - '+str(hitsdonotagree)+' != 0\n\n'
-    print 'out of '+str(len(data))+' analyzed clusters (with both amplicons present and monoclonal for both) were:'
-    print str(noblasthit_its) +' ('+str(round(100*float(noblasthit_its)/float(len(data)),2))+'%) removed because the ITS sequence gave no hits supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage.'
-    print str(noblasthit_16s) +' ('+str(round(100*float(noblasthit_16s)/float(len(data)),2))+'%) removed because the 16S sequence gave no hits supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage.'
-    print str(hitsdonotagree) +' ('+str(round(100*float(hitsdonotagree)/float(len(data)),2))+'%) removed because none of the ITS and 16S hits did agree.'
-    print 'For '+str(blasthitsagree) +' ('+str(round(100*float(blasthitsagree)/float(len(data)),2))+'%) clusters did the ITS and 16S hits agree at least once.'
 	#if blast_record.alignments:
-	#	if config.printblast:
+	#	if config.config.outfile.write(     blast:     +'\n')
 	#		for alignment in blast_record.alignments[:10]:
 	#		    #o+='\t'+ '****Alignment****'+'\n'
 	#		    #o+='\t'+ 'sequence: '+ alignment.title+'\n'
@@ -1608,26 +1616,27 @@ def classifymeta(indata):
 
 
 #    for cluster in data:
-#	print '\ncluster',cluster
+#	config.outfile.write(      '\ncluster',cluster     +'\n')
 #	for consensus in data[cluster]:
-#	    print '\tconsensus',consensus
+#	    config.outfile.write(      '\tconsensus',consensus     +'\n')
 #	    for alignment_name in data[cluster][consensus][1]['hits']:
 #	        if alignment_name in data[cluster][consensus][2]:
-#		    print '\t\tboth r1 and r2 aligns to '+alignment_name
-#		    print '\t\t\tr1:'
+#		    config.outfile.write(      '\t\tboth r1 and r2 aligns to '+alignment_name     +'\n')
+#		    config.outfile.write(      '\t\t\tr1:'     +'\n')
 #		    for hsp in data[cluster][consensus][1][alignment_name].hsps:
-#			print '\t\t\t\t'+ 'e value: '+ str(hsp.expect)
-#			print '\t\t\t\tq: '+str(hsp.query_start)+'\t'+ hsp.query
-#			print '\t\t\t\tm:  \t'+ hsp.match
-#			print '\t\t\t\ts: '+str(hsp.sbjct_start)+'\t'+ hsp.sbjct
-#			if len(hsp.query) < 40 : print '\tTo short will ba counted as "No Hit"'
-#		    print '\t\t\tr2:'
+#			config.outfile.write(      '\t\t\t\t'+ 'e value: '+ str(hsp.expect)     +'\n')
+#			config.outfile.write(      '\t\t\t\tq: '+str(hsp.query_start)+'\t'+ hsp.query     +'\n')
+#			config.outfile.write(      '\t\t\t\tm:  \t'+ hsp.match     +'\n')
+#			config.outfile.write(      '\t\t\t\ts: '+str(hsp.sbjct_start)+'\t'+ hsp.sbjct     +'\n')
+#			if len(hsp.query) < 40 : config.outfile.write(      '\tTo short will ba counted as "No Hit"'     +'\n')
+#		    config.outfile.write(      '\t\t\tr2:'     +'\n')
 #		    for hsp in data[cluster][consensus][2][alignment_name].hsps:
-#			print '\t\t\t\t'+ 'e value: '+ str(hsp.expect)
-#			print '\t\t\t\tq: '+str(hsp.query_start)+'\t'+ hsp.query
-#			print '\t\t\t\tm:  \t'+ hsp.match
-#			print '\t\t\t\ts: '+str(hsp.sbjct_start)+'\t'+ hsp.sbjct
-#			if len(hsp.query) < 40 : print '\tTo short will ba counted as "No Hit"'
+#			config.outfile.write(      '\t\t\t\t'+ 'e value: '+ str(hsp.expect)     +'\n')
+#			config.outfile.write(      '\t\t\t\tq: '+str(hsp.query_start)+'\t'+ hsp.query     +'\n')
+#			config.outfile.write(      '\t\t\t\tm:  \t'+ hsp.match     +'\n')
+#			config.outfile.write(      '\t\t\t\ts: '+str(hsp.sbjct_start)+'\t'+ hsp.sbjct     +'\n')
+#			if len(hsp.query) < 40 : config.outfile.write(      '\tTo short will ba counted as "No Hit"'     +'\n')
+    config.logfile.write('Classification done.')
     return 0
 
 #####
