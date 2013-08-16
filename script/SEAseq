@@ -390,7 +390,7 @@ def sbatch(indata):
 	'#! /bin/bash -l'+'\n'+
 	'#SBATCH -A b2011011'+'\n'+
 	'#SBATCH -n 8 -p node'+'\n'+
-	'#SBATCH -t 10:00:00'+'\n'+
+	'#SBATCH -t 24:00:00'+'\n'+
 	'#SBATCH -J meta_'+config.path+'\n'+
 	'#SBATCH -e '+config.abspath+'/sbatch.meta.stderr.txt'+'\n'+
 	'#SBATCH -o '+config.abspath+'/sbatch.meta.stdout.txt'+'\n'+
@@ -400,6 +400,26 @@ def sbatch(indata):
 	'cd '+os.getcwd()+'\n'+
 	'module load python/2.7'+'\n'+
 	sys.argv[0]+' meta -path '+config.path+' -p8'+'\n'
+    )
+    f.close()
+
+    f = open( config.path +'/sbatch.classify.sh','w')
+    f.write(
+	'#! /bin/bash -l'+'\n'+
+	'#SBATCH -A b2011011'+'\n'+
+	'#SBATCH -n 8 -p node'+'\n'+
+	'#SBATCH -t 05:00:00'+'\n'+
+	'#SBATCH -J classify_'+config.path+'\n'+
+	'#SBATCH -e '+config.abspath+'/sbatch.classify.stderr.txt'+'\n'+
+	'#SBATCH -o '+config.abspath+'/sbatch.classify.stdout.txt'+'\n'+
+	'#SBATCH --mail-type=All'+'\n'+
+	'#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
+	'echo "$(date) Running on: $(hostname)"'+'\n'+
+	'cd '+os.getcwd()+'\n'+
+	'module load bioinfo-tools blast/2.2.28+ biopython'+'\n'+
+	'module unload python/2.6.6'+'\n'+
+	'module load python/2.7'+'\n'+
+	sys.argv[0]+' classifymeta -path '+config.path+''+'\n'
     )
     f.close()
     
@@ -433,6 +453,16 @@ def sbatch(indata):
 		sys.exit()
 	meta_jobid = sbatch_out.split('\n')[0].split(' ')[3]
 	config.logfile.write('Queued metagenomics analysis with JOBID '+meta_jobid+'.\n')
+
+	sbatch = subprocess.Popen( ['sbatch','--dependency=afterok:'+meta_jobid,config.path +'/sbatch.classify.sh'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	sbatch_out, errdata = sbatch.communicate()
+	if sbatch.returncode != 0:
+		print 'sbatch view Error code', sbatch.returncode, errdata
+		print sbatch_out
+		sys.exit()
+	classify_jobid = sbatch_out.split('\n')[0].split(' ')[3]
+	config.logfile.write('Queued classifygenomics analysis with JOBID '+classify_jobid+'.\n')
+
     
     config.logfile.write('Done.\n')
     return 0
@@ -1511,6 +1541,10 @@ def classifymeta(indata):
 	except KeyError:	data[cluster][amplicon][consensus] = { readnumber : blast_record }
     config.logfile.write('Done' +'\n')
 
+    #for the random match estimation
+    matches = {}
+    
+    # initiating vars
     noblasthit_its = 0
     noblasthit_16s = 0
     blasthitsagree = 0
@@ -1520,12 +1554,16 @@ def classifymeta(indata):
     progress = Progress(len(data),unit='cluster',logfile=config.logfile)
     with progress:
 	for cluster_id, amplicons in data.iteritems():
-	    progress.update()
 	    
+	    #for the random match estimation
+	    tmp_matches = {'ITS':{},'16S':{}}
+	    
+	    progress.update()
+
 	    config.outfile.write(      '### Cluster '+str(cluster_id)+' ###'     +'\n')
 	    identity_cutoff = 97#%
 	    alignment_length_cutoff = 95#%
-	    
+
 	    #for amplicon, consensuses in amplicons.iteritems():
 	    in_both_reads = {'ITS':[],'16S':[]}
 	    for amplicon in ['ITS','16S']:
@@ -1538,7 +1576,7 @@ def classifymeta(indata):
 		if len(consensuses) != 1:
 		    config.outfile.write('\t\tNot monoclonal'+'\n');
 		    break
-	    
+
 		for consensus in consensuses:
 
 		    try: r1 = consensuses[consensus][1]
@@ -1555,7 +1593,7 @@ def classifymeta(indata):
 		    amplicon	= 	r1.query.split('.')[1].split('=')[1]
 		    support	= float(r1.query.split('r1.')[-1].split('_')[0].replace('%','')	)
 		    readpop = int(r1.query.split('r1.')[-1].split('_')[-1].replace('reads','')	)
-    
+
 		    config.outfile.write(      '\t\tConsensus '+str(consensus)+': '+amplicon+' supported by '+str(support) +'% ('+str(readpop)+')'     +'\n')
 
 		    in_r1 = {}
@@ -1564,21 +1602,22 @@ def classifymeta(indata):
 			    perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
 			    perc_coverage = float(hsp.align_length)	/	float(r1.query_letters)	*100
 			    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r1[alignment.title] = alignment
-    
+
 		    in_r2 = {}
 		    for alignment in r2.alignments:
 			for hsp in alignment.hsps:
 			    perc_identity = float(hsp.identities)	/	float(hsp.align_length)	*100
 			    perc_coverage = float(hsp.align_length)	/	float(r2.query_letters)	*100
 			    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r2[alignment.title] = alignment
-    
-		    
+
+
 		    for alignment in in_r1:
 			if alignment in in_r2:
 			    in_both_reads[amplicon].append(alignment)
-    
+
 		    for alignment in in_both_reads[amplicon]:
 			config.outfile.write(      '\t\t\t'+alignment     +'\n')
+			tmp_matches[amplicon][alignment] = True
 		    if not in_both_reads[amplicon]:
 			config.outfile.write(      '\t\t\tNo alignment supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage'     +'\n')
 			if amplicon == '16S':
@@ -1589,27 +1628,52 @@ def classifymeta(indata):
 			    broken = True;
 			    break;
 		if broken: break
-    
-	    
+
+	    if tmp_matches['ITS'] and tmp_matches['16S']:
+		matches[cluster_id] = tmp_matches
+
+
 	    hitagree = False
 	    config.outfile.write(      '\nSupported by both:'     +'\n')
 	    for alignment in in_both_reads['ITS']:
 		if alignment in in_both_reads['16S']:
 		    config.outfile.write(      '\t'+alignment+' is present in both'     +'\n')
 		    hitagree = True
-	    
+
 	    if hitagree:	blasthitsagree += 1
 	    elif not broken:
 		hitsdonotagree += 1
 		config.outfile.write(      '\tno hit is present in both'     +'\n')
 	    config.outfile.write(      ''     +'\n')
-	    
+
 	assert len(data) - noblasthit_its - noblasthit_16s - blasthitsagree - hitsdonotagree == 0, '\n\nError '+str(len(data))+' - '+str(noblasthit_its)+' - '+str(noblasthit_16s)+' - '+str(blasthitsagree)+' - '+str(hitsdonotagree)+' != 0\n\n'
 	config.outfile.write(      'out of '+str(len(data))+' analyzed clusters (with both amplicons present and monoclonal for both) were:'     +'\n')
 	config.outfile.write(      str(noblasthit_its) +' ('+str(round(100*float(noblasthit_its)/float(len(data)),2))+'%) removed because the ITS sequence gave no hits supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage.'     +'\n')
 	config.outfile.write(      str(noblasthit_16s) +' ('+str(round(100*float(noblasthit_16s)/float(len(data)),2))+'%) removed because the 16S sequence gave no hits supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage.'     +'\n')
-	config.outfile.write(      str(hitsdonotagree) +' ('+str(round(100*float(hitsdonotagree)/float(len(data)),2))+'%) removed because none of the ITS and 16S hits did agree.'     +'\n')
-	config.outfile.write(      'For '+str(blasthitsagree) +' ('+str(round(100*float(blasthitsagree)/float(len(data)),2))+'%) clusters did the ITS and 16S hits agree at least once.'     +'\n')
+	config.outfile.write(      str(hitsdonotagree+blasthitsagree) +' ('+str(round(100*float(hitsdonotagree+blasthitsagree)/float(len(data)),2))+'%) have hits for both ITS and 16S.'     +'\n')
+	config.outfile.write(      str(hitsdonotagree) +' ('+str(round(100*float(hitsdonotagree)/float(len(data)),2))+'%) removed because none of the ITS and 16S hits did agree.'+	 ' ('+str(round(100*float(hitsdonotagree)/float(hitsdonotagree+blasthitsagree),2))+'% out of clusters with hits for both)'     +'\n')
+	config.outfile.write(      'For '+str(blasthitsagree) +' ('+str(round(100*float(blasthitsagree)/float(len(data)),2))+'%) clusters did the ITS and 16S hits agree at least once.'+' ('+str(round(100*float(blasthitsagree)/float(hitsdonotagree+blasthitsagree),2))+'% out of clusters with hits for both)'     +'\n')
+	
+	groups_its = [] 
+	groups_16s = []
+	for cluster in matches:
+	    groups_its.append(matches[cluster]['ITS'])
+	    groups_16s.append(matches[cluster]['16S'])
+	
+	import random
+	total_tries = 10000
+	random_hits = 0
+	for i in xrange(total_tries):
+	    hits_its = random.choice(groups_its)
+	    hits_16s = random.choice(groups_16s)
+	    
+	    at_least_one_match = False
+	    for hit in hits_its:
+		if hit in hits_16s: at_least_one_match = True
+	    
+	    if at_least_one_match: random_hits += 1
+	
+	config.outfile.write('Random matches between hits in 16S/ITS hit groups, made '+str(total_tries)+' tries and got '+str(random_hits)+' hits ('+str(round(100*float(random_hits)/float(total_tries),2))+'%)')
 	
 	#if blast_record.alignments:
 	#	if config.config.outfile.write(     blast:     +'\n')
