@@ -2,6 +2,14 @@ import sys
 
 def lib_main(): pass
 
+def gi2orgname(gi_number):
+	from Bio import Entrez
+	Entrez.email = "erik.borgstrom@scilifelab.se"
+	handle = Entrez.efetch(db="nucleotide", id=gi_number, retmode="xml")
+	records = Entrez.read(handle)
+	assert len(records) == 1
+	return records[0]['GBSeq_organism']
+
 def UIPAC2REGEXP(string):
     return string.replace('R','[AG]').replace('Y','[CT]').replace('S','[GC]').replace('W','[AT]').replace('K','[GT]').replace('M','[AC]').replace('B','[CGT]').replace('D','[AGT]').replace('H','[ACT]').replace('V','[ACG]').replace('N','.')
 

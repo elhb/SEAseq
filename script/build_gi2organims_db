@@ -1,0 +1,81 @@
+#! /bin/env python
+#! /usr/bin/env python2.7
+
+###
+# main wrapper will take cmdline input and run programs
+###
+import os
+from SEAseqLib.mainLibrary import *
+MASTER = os.getpid()
+
+def main():
+    import sys
+    print 'pid =',MASTER,'\nCMD =', ' '.join(sys.argv)
+    
+    indata = getindata()
+    entries = faentries(indata.fasta)
+    print entries, 'fasta entries in total.'
+    progress = Progress(entries, unit='giNumber')
+    local_gi2org = {}
+
+    infile = open(indata.fasta)
+
+    import multiprocessing
+    WorkerPool = multiprocessing.Pool(multiprocessing.cpu_count()*5,maxtasksperchild=1000000)
+    results = WorkerPool.imap_unordered(foreach,infile,chunksize=1000)
+    with progress:
+	for tmp in results:
+            if tmp:
+                progress.update()
+                [gi_number,organism] = tmp
+                local_gi2org[gi_number] = organism
+    infile.close()
+
+    outfile = open(indata.out,'w')
+    outfile.write(local_gi2org)
+    outfile.close()
+    return 0
+
+def foreach(line):
+    if line[0] == '>':
+        gi_number = line.split('|')[1]
+        organism = gi2orgname(gi_number)
+        #print gi_number,'===>', organism
+        return [gi_number,organism]
+    else : return None
+
+def faentries(filename):
+	""" returns the number of ">"s in a file
+	"""
+	import gzip
+	if filename.split('.')[-1] in ['gz','gzip']: f = gzip.open(filename)
+	else: f = open(filename)
+	entries = 0
+	buf_size = 1024 * 1024 * 10
+	read_f = f.read # loop optimization
+	
+	buf = read_f(buf_size)
+	while buf:
+		entries += buf.count('>')
+		buf = read_f(buf_size)
+		f.close
+	return entries
+
+def getindata():
+    import argparse
+    argparser = argparse.ArgumentParser(description='build database of gids for a fasta and relate ro organism name.', formatter_class=argparse.RawTextHelpFormatter)
+    argparser.add_argument('-fa',	dest='fasta',	metavar='<path>',	type=str,	required=True,	default=False,	help='input fasta file with sequences.')
+    argparser.add_argument('-o',	dest='out',	metavar='<path>',	type=str,	required=True,	default=False,	help='output database file.')
+
+    import sys
+    indata = argparser.parse_args(sys.argv[1:])
+
+    return indata
+
+#####
+#check if run or imported // call main() or not
+#####
+if __name__ == "__main__":
+    main()
+#END of script
+

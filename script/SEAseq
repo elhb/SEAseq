@@ -599,7 +599,7 @@ def clusterbarcodes(indata):
     progress = Progress(config.reads2process, logfile=config.logfile)
     summary = SEAseqSummary()
     f1 = open(config.abspath+'/nonCreads.1.fq','w')
-    f2 = open(config.abspath+'/nonCreads.1.fq'.'w')
+    f2 = open(config.abspath+'/nonCreads.1.fq','w')
     with progress:
 	for pair in results:
 	    progress.update()
@@ -1359,6 +1359,7 @@ def getindata(cmd):
         argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED')
     if cmd == 'classifymeta':
 	argparser.add_argument(	'-db',			dest='database',	metavar='FILE',			type=str,	required=False,	default='/bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa',	help='database for the BLAST search (default /bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa)')
+	argparser.add_argument(	'-gidb',		dest='gidatabase',	metavar='FILE',			type=str,	required=False,	default=None,	help='database for gi number to organism name conversion (default = None, ie fetch online from ncbi)')
 	argparser.add_argument(	'-identity',		dest='identity',	metavar='N',			type=int,	required=False,	default=97,	help='Identity cutoff for BLAST hits (default 97).')
     if cmd == 'metagraph':
 	argparser.add_argument(	'-step',		dest='step',	metavar='N',				type=int,	required=False,	default=0,	help='Update intervall. Updates y value every "step" x value (default "max(x)/200" ie 200 datapoints along x-axis)')
@@ -1593,6 +1594,13 @@ def classifymeta(indata):
     blasthitsagree = 0
     hitsdonotagree = 0
     
+    if indata.gidatabase:
+	tmp_file = open(indata.gidatabas)
+	tmp_string = tmp_file.read()
+	tmp_file.close()
+	local_gi2org = eval(tmp_string)
+    else:local_gi2org = {}
+    
     config.logfile.write('Parsing BLASTreport ....\n')
     progress = Progress(len(data),unit='cluster',logfile=config.logfile)
     with progress:
@@ -1644,23 +1652,37 @@ def classifymeta(indata):
 			for hsp in alignment.hsps:
 			    perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
 			    perc_coverage = float(hsp.align_length)	/	float(r1.query_letters)	*100
-			    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r1[alignment.title] = alignment
+			    gi_number = alignment.title.split(' ')[1].split('|')[1]
+			    try:
+				organism = local_gi2org[gi_number]
+			    except KeyError:
+				organism = gi2orgname(gi_number)
+				local_gi2org[gi_number] = organism
+			    print organism
+			    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r1[organism] = alignment
 
 		    in_r2 = {}
 		    for alignment in r2.alignments:
 			for hsp in alignment.hsps:
 			    perc_identity = float(hsp.identities)	/	float(hsp.align_length)	*100
 			    perc_coverage = float(hsp.align_length)	/	float(r2.query_letters)	*100
-			    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r2[alignment.title] = alignment
+			    gi_number = alignment.title.split(' ')[1].split('|')[1]
+			    try:
+				organism = local_gi2org[gi_number]
+			    except KeyError:
+				organism = gi2orgname(gi_number)
+				local_gi2org[gi_number] = organism
+			    print organism
+			    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r2[organism] = alignment
 
 
-		    for alignment in in_r1:
-			if alignment in in_r2:
-			    in_both_reads[amplicon].append(alignment)
+		    for organism in in_r1:
+			if organism in in_r2:
+			    in_both_reads[amplicon].append(organism)
 
-		    for alignment in in_both_reads[amplicon]:
-			config.outfile.write(      '\t\t\t'+alignment     +'\n')
-			tmp_matches[amplicon][alignment] = True
+		    for organism in in_both_reads[amplicon]:
+			config.outfile.write(      '\t\t\t'+organism     +'\n')
+			tmp_matches[amplicon][organism] = True
 		    if not in_both_reads[amplicon]:
 			config.outfile.write(      '\t\t\tNo alignment supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage'     +'\n')
 			if amplicon == '16S':
@@ -1675,12 +1697,11 @@ def classifymeta(indata):
 	    if tmp_matches['ITS'] and tmp_matches['16S']:
 		matches[cluster_id] = tmp_matches
 
-
 	    hitagree = False
 	    config.outfile.write(      '\nSupported by both:'     +'\n')
-	    for alignment in in_both_reads['ITS']:
-		if alignment in in_both_reads['16S']:
-		    config.outfile.write(      '\t'+alignment+' is present in both'     +'\n')
+	    for organism in in_both_reads['ITS']:
+		if organism in in_both_reads['16S']:
+		    config.outfile.write(      '\t'+organism+' is present in both'     +'\n')
 		    hitagree = True
 
 	    if hitagree:	blasthitsagree += 1
@@ -1718,39 +1739,6 @@ def classifymeta(indata):
 	
 	config.outfile.write('Random matches between hits in 16S/ITS hit groups, made '+str(total_tries)+' tries and got '+str(random_hits)+' hits ('+str(round(100*float(random_hits)/float(total_tries),2))+'%)')
 	
-	#if blast_record.alignments:
-	#	if config.config.outfile.write(     blast:     +'\n')
-	#		for alignment in blast_record.alignments[:10]:
-	#		    #o+='\t'+ '****Alignment****'+'\n'
-	#		    #o+='\t'+ 'sequence: '+ alignment.title+'\n'
-	#		    #o+='\t'+ 'length: '+ str(alignment.length)+'\n'
-	#
-	#		    data[cluster][consensus][readnumber]['hits'].append(alignment.title)
-	#		    data[cluster][consensus][readnumber][alignment.title] = alignment
-
-
-
-#    for cluster in data:
-#	config.outfile.write(      '\ncluster',cluster     +'\n')
-#	for consensus in data[cluster]:
-#	    config.outfile.write(      '\tconsensus',consensus     +'\n')
-#	    for alignment_name in data[cluster][consensus][1]['hits']:
-#	        if alignment_name in data[cluster][consensus][2]:
-#		    config.outfile.write(      '\t\tboth r1 and r2 aligns to '+alignment_name     +'\n')
-#		    config.outfile.write(      '\t\t\tr1:'     +'\n')
-#		    for hsp in data[cluster][consensus][1][alignment_name].hsps:
-#			config.outfile.write(      '\t\t\t\t'+ 'e value: '+ str(hsp.expect)     +'\n')
-#			config.outfile.write(      '\t\t\t\tq: '+str(hsp.query_start)+'\t'+ hsp.query     +'\n')
-#			config.outfile.write(      '\t\t\t\tm:  \t'+ hsp.match     +'\n')
-#			config.outfile.write(      '\t\t\t\ts: '+str(hsp.sbjct_start)+'\t'+ hsp.sbjct     +'\n')
-#			if len(hsp.query) < 40 : config.outfile.write(      '\tTo short will ba counted as "No Hit"'     +'\n')
-#		    config.outfile.write(      '\t\t\tr2:'     +'\n')
-#		    for hsp in data[cluster][consensus][2][alignment_name].hsps:
-#			config.outfile.write(      '\t\t\t\t'+ 'e value: '+ str(hsp.expect)     +'\n')
-#			config.outfile.write(      '\t\t\t\tq: '+str(hsp.query_start)+'\t'+ hsp.query     +'\n')
-#			config.outfile.write(      '\t\t\t\tm:  \t'+ hsp.match     +'\n')
-#			config.outfile.write(      '\t\t\t\ts: '+str(hsp.sbjct_start)+'\t'+ hsp.sbjct     +'\n')
-#			if len(hsp.query) < 40 : config.outfile.write(      '\tTo short will ba counted as "No Hit"'     +'\n')
     config.logfile.write('Classification done.\n')
     return 0
 
