@@ -1360,8 +1360,8 @@ def getindata(cmd):
     if cmd == 'classifymeta':
 	argparser.add_argument(	'-db',			dest='database',	metavar='FILE',			type=str,	required=False,	default='/bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa',	help='database for the BLAST search (default /bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa)')
 	argparser.add_argument(	'-gidb',		dest='gidatabase',	metavar='FILE',			type=str,	required=False,	default='/bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.gi2organism.db',	help='database for gi number to organism name conversion (None = fetch online from ncbi)')
-	argparser.add_argument(	'-identity',		dest='identity',	metavar='N',			type=float,	required=False,	default=97.0,	help='Identity cutoff for BLAST hits (default 97%).')
-	argparser.add_argument(	'-length',		dest='length',	metavar='N',			type=float,	required=False,	default=95.0,	help='Alignment length cutoff for BLAST hits (default 95%).')
+	argparser.add_argument(	'-identity',		dest='identity',	metavar='N',			type=float,	required=False,	default=97.0,	help='Identity cutoff for BLAST hits (default 97 percent).')
+	argparser.add_argument(	'-length',		dest='length',		metavar='N',			type=float,	required=False,	default=95.0,	help='Alignment length cutoff for BLAST hits (default 95 percent).')
     if cmd == 'metagraph':
 	argparser.add_argument(	'-step',		dest='step',	metavar='N',				type=int,	required=False,	default=0,	help='Update intervall. Updates y value every "step" x value (default "max(x)/200" ie 200 datapoints along x-axis)')
 	argparser.add_argument(	'-x',			dest='xscale',	metavar='N-N',				type=str,	required=False,	default='0-1000',help='x axis scale (default 0-1000)')
@@ -1739,7 +1739,7 @@ def classifymeta(indata):
 	    
 	    if at_least_one_match: random_hits += 1
 	
-	config.outfile.write('Random matches between hits in 16S/ITS hit groups, made '+str(total_tries)+' tries and got '+str(random_hits)+' hits ('+str(round(100*float(random_hits)/float(total_tries),2))+'%)')
+	config.outfile.write('Random matches between hits in 16S/ITS hit groups, made '+str(total_tries)+' tries and got '+str(random_hits)+' hits ('+str(round(100*float(random_hits)/float(total_tries),2))+'%).\n')
 	
     config.logfile.write('Classification done.\n')
     return 0
