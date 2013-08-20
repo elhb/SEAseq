@@ -876,7 +876,7 @@ def foreachcluster_meta(cluster_pairs):
     if cluster_pairs[0] == 0: return 'INITIAL'
     config = cluster_pairs[2]
     cid = cluster_pairs[1][0].cid
-    verb = 2
+    verb = 3
 
     # for each cluster:
 	# remove reads containing illumina adapter sequences
@@ -942,7 +942,7 @@ def foreachcluster_meta(cluster_pairs):
 	    #determine fwd primer
 	    pair.p1 = None
 	    p1_16S = re.match( 'GTG.CAGC.GCCGCGGTAA',    pair.r1.seq[pair.handle_end:])
-	    p1_ITS = re.match( 'GG.CTTGTAC.CAC.GCCCGTC', pair.r1.seq[pair.handle_end:])
+	    p1_ITS = re.match( 'G?G.CTTGTAC.CAC.GCCCGTC', pair.r1.seq[pair.handle_end:])
 	    if	 p1_16S:
 		if verb >=3: output += '16S\t';
 		pair.p1 = '16S'
@@ -956,7 +956,8 @@ def foreachcluster_meta(cluster_pairs):
 	    #determine reverse primer
 	    pair.p2 = None
 	    p2_16S = re.match( 'ACA..TCAC..CACGAGCTGACGAC',pair.r2.seq)
-	    p2_ITS = re.match( 'CTC..A.TGCC..GGCATCCACC',  pair.r2.seq)
+	    p2_ITS = re.match( 'CTC....[AT]GCC..GGCATCCACC',  pair.r2.seq)
+	    #p2_ITS = re.match( 'CTC..A.TGCC..GGCATCCACC',  pair.r2.seq)
 	    if 	 p2_16S:
 		if verb >=3: output += '16S\t';
 		pair.p2 = '16S'
@@ -970,28 +971,36 @@ def foreachcluster_meta(cluster_pairs):
 	    # check that primers match
 	    if pair.p1 == '???' or pair.p1 != pair.p2:
 		primererror+=1;
-		if verb >=3: output+='PRIMER ERROR\n';
+		if verb >=3:
+		    output+='PRIMER ERROR\t';
+		    output += pair.r1.seq +' '+ pair.r2.seq+'\n'
 		continue 
 
 	    #look for unexpected primer sequences
 	    if pair.p1 == '16S':
 	        fwd16S_in_r2  = re.search( 'GTG.CAGC.GCCGCGGTAA',      pair.r2.seq) #16 fwd in read 2
 		rev16S_in_r1  = re.search( 'ACA..TCAC..CACGAGCTGACGAC',pair.r1.seq[pair.handle_end:]) #16 rev in read1
-		fwdITS_in_any = re.search( 'GG.CTTGTAC.CAC.GCCCGTC',   pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its fwd in any read
-		revITS_in_any = re.search( 'CTC..A.TGCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its rev in any read
+		fwdITS_in_any = re.search( 'G?G.CTTGTAC.CAC.GCCCGTC',   pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its fwd in any read
+		revITS_in_any = re.search( 'CTC....[AT]GCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its rev in any read
+		#revITS_in_any = re.search( 'CTC..A.TGCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its rev in any read
 		if fwd16S_in_r2 or rev16S_in_r1 or fwdITS_in_any or revITS_in_any:
 		    primererror+=1;
-		    if verb >=3: output+='PRIMER ERROR\n';
+		    if verb >=3:
+			output+='PRIMER ERROR\t';
+			output += pair.r1.seq +' '+ pair.r2.seq+'\n'
 		    #print 'Happened'
 		    continue
 	    elif pair.p1 == 'ITS':
 	        fwd16S_in_any = re.search( 'GTG.CAGC.GCCGCGGTAA',      pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) 
 		rev16S_in_any = re.search( 'ACA..TCAC..CACGAGCTGACGAC',pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) 
-		fwdITS_in_r2  = re.search( 'GG.CTTGTAC.CAC.GCCCGTC',   pair.r2.seq) 
-		revITS_in_r1  = re.search( 'CTC..A.TGCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:]) 
+		fwdITS_in_r2  = re.search( 'G?G.CTTGTAC.CAC.GCCCGTC',   pair.r2.seq) 
+		revITS_in_r1  = re.search( 'CTC....[AT]GCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:])
+		#revITS_in_r1  = re.search( 'CTC..A.TGCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:]) 
 		if fwd16S_in_any or rev16S_in_any or fwdITS_in_r2 or revITS_in_r1:
 		    primererror+=1;
-		    if verb >=3: output+='PRIMER ERROR\n';
+		    if verb >=3:
+			output+='PRIMER ERROR\t';
+			output += pair.r1.seq +' '+ pair.r2.seq+'\n'
 		    #print 'Happened'
 		    continue
 
@@ -999,6 +1008,17 @@ def foreachcluster_meta(cluster_pairs):
 	    #ITS_fwd primer	GGBCTTGTACWCACYGCCCGTC	22	6
 	    #16S_rev primer	ACAHYTCACRRCACGAGCTGACGAC	25	24
 	    #ITS_rev primer	CTCYDANTGCCSRGGCATCCACC	23	384
+
+	    #2 genom modelsystem=em, realsmples=all
+	    #16S_fwd_em		GTGCCAGCAGCCGCGGTAA
+	    #16S_fwd_all	GTG.CAGC.GCCGCGGTAA
+	    #16S_rev_em		ACAT.TCAC.ACACGAGCTGACGAC
+	    #16S_rev_all	ACA..TCAC..CACGAGCTGACGAC
+	    #	
+	    #ITS_fwd em		GCCTTGTACACACCGCCCGTC 
+	    #ITS_fwd all       GG.CTTGTAC.CAC.GCCCGTC
+	    #ITS_rev em		CTCT...AGCCA.GGCATCCACC
+	    #ITS_rev all	CTC..A.TGCC..GGCATCCACC
 
 	    #output +='\n'
 	    if verb >=3: output += pair.r1.seq +' '+ pair.r2.seq+'\n'
@@ -1320,6 +1340,9 @@ def getindata(cmd):
 	argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
 	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
         argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED')
+    if cmd == 'classifymeta':
+	argparser.add_argument(	'-db',			dest='database',	metavar='FILE',			type=str,	required=False,	default='/bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa',	help='database for the BLAST search (default /bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa)')
+	argparser.add_argument(	'-identity',		dest='identity',	metavar='N',			type=int,	required=False,	default=97,	help='Identity cutoff for BLAST hits (default 97).')
     if cmd == 'metagraph':
 	argparser.add_argument(	'-step',		dest='step',	metavar='N',				type=int,	required=False,	default=0,	help='Update intervall. Updates y value every "step" x value (default "max(x)/200" ie 200 datapoints along x-axis)')
 	argparser.add_argument(	'-x',			dest='xscale',	metavar='N-N',				type=str,	required=False,	default='0-1000',help='x axis scale (default 0-1000)')
@@ -1503,11 +1526,14 @@ def classifymeta(indata):
     import time
 
     #setting up blast
+    BLAST_identity = 99
+    BLAST_identity = indata.identity
     database='/bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa'
+    database = indata.database
     #database='/bubo/proj/b2011011/SEAseq/reference/NCBI_HUMAN_MICROBIOM_ALL/all.fa'
     #database='/bubo/proj/b2011011/SEAseq/references/NCBI_BACTERIA_ALL/all.fa'
     infile = config.path+'/meta.sequences.fa'
-    cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, num_threads=8,perc_identity=97)#, out=infile+'.blastout')
+    cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, num_threads=8,perc_identity=BLAST_identity)#, out=infile+'.blastout')
     #cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn', out=infile+'.'+config.blastid+'.blastout')
 
     config.logfile.write( 'Starting BLAST\n')
@@ -1561,7 +1587,7 @@ def classifymeta(indata):
 	    progress.update()
 
 	    config.outfile.write(      '### Cluster '+str(cluster_id)+' ###'     +'\n')
-	    identity_cutoff = 97#%
+	    identity_cutoff = BLAST_identity#%
 	    alignment_length_cutoff = 95#%
 
 	    #for amplicon, consensuses in amplicons.iteritems():
