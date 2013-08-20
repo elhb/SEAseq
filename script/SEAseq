@@ -1006,7 +1006,9 @@ def foreachcluster_meta(cluster_pairs):
 		rev16S_in_r1  = re.search( rev_16S,	pair.r1.seq[pair.handle_end:]) #16 rev in read1
 		fwdITS_in_any = re.search( fwd_ITS,   	pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its fwd in any read
 		revITS_in_any = re.search( rev_ITS,  pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its rev in any read
-		if fwd16S_in_r2 or rev16S_in_r1 or fwdITS_in_any or revITS_in_any:
+		fwdcount = len(re.findall(fwd_16S,pair.r1.seq[pair.handle_end:]))
+		revcount = len(re.findall(rev_16S,pair.r2.seq))
+		if fwd16S_in_r2 or rev16S_in_r1 or fwdITS_in_any or revITS_in_any or revcount != 1 or fwdcount != 1:
 		    primererror+=1;
 		    if verb >=3:
 			output+='PRIMER ERROR\t';
@@ -1018,7 +1020,9 @@ def foreachcluster_meta(cluster_pairs):
 		rev16S_in_any = re.search( rev_16S,	pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) 
 		fwdITS_in_r2  = re.search( fwd_ITS,	pair.r2.seq) 
 		revITS_in_r1  = re.search( rev_ITS,  pair.r1.seq[pair.handle_end:])
-		if fwd16S_in_any or rev16S_in_any or fwdITS_in_r2 or revITS_in_r1:
+		fwdcount = len(re.findall(fwd_ITS,pair.r1.seq[pair.handle_end:]))
+		revcount = len(re.findall(rev_ITS,pair.r2.seq))
+		if fwd16S_in_any or rev16S_in_any or fwdITS_in_r2 or revITS_in_r1 or revcount != 1 or fwdcount != 1:
 		    primererror+=1;
 		    if verb >=3:
 			output+='PRIMER ERROR\t';
