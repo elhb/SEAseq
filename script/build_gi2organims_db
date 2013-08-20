@@ -21,7 +21,7 @@ def main():
     infile = open(indata.fasta)
 
     import multiprocessing
-    WorkerPool = multiprocessing.Pool(multiprocessing.cpu_count()*5,maxtasksperchild=1000000)
+    WorkerPool = multiprocessing.Pool(multiprocessing.cpu_count(),maxtasksperchild=1000000)
     results = WorkerPool.imap_unordered(foreach,infile,chunksize=1000)
     with progress:
 	for tmp in results:
@@ -51,7 +51,7 @@ def faentries(filename):
 	if filename.split('.')[-1] in ['gz','gzip']: f = gzip.open(filename)
 	else: f = open(filename)
 	entries = 0
-	buf_size = 1024 * 1024 * 10
+	buf_size = 1024 * 1024 * 100
 	read_f = f.read # loop optimization
 	
 	buf = read_f(buf_size)
