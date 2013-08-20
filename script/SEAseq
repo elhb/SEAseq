@@ -598,14 +598,21 @@ def clusterbarcodes(indata):
     else: config.logfile.write('Running the multiprocessing results handeling in serial ... \n')
     progress = Progress(config.reads2process, logfile=config.logfile)
     summary = SEAseqSummary()
+    f1 = open(config.abspath+'/nonCreads.1.fq','w')
+    f2 = open(config.abspath+'/nonCreads.1.fq'.'w')
     with progress:
 	for pair in results:
 	    progress.update()
 	    summary.add(pair)
+	    if pair.handle_start==None or pair.handle_end==None:
+		f1.write(pair.r1.header + '\n'+pair.r1.seq+'\n+\n'+pair.r1.qual+'\n')
+		f2.write(pair.r2.header + '\n'+pair.r2.seq+'\n+\n'+pair.r2.qual+'\n')
     if not indata.debug:WorkerPool.close()
     if not indata.debug:WorkerPool.join()
     config.outfile.write(str( summary.part1() )+'\n')
     config.logfile.write('Part1: finished barcode sequences identified.\n')
+    f1.close()
+    f2.close()
     
     config.logfile.write('Part2: Clustering the identified barcodes.\n')
     summary.reducebarcodes(config)
