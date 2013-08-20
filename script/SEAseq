@@ -1359,8 +1359,9 @@ def getindata(cmd):
         argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED')
     if cmd == 'classifymeta':
 	argparser.add_argument(	'-db',			dest='database',	metavar='FILE',			type=str,	required=False,	default='/bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa',	help='database for the BLAST search (default /bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa)')
-	argparser.add_argument(	'-gidb',		dest='gidatabase',	metavar='FILE',			type=str,	required=False,	default=None,	help='database for gi number to organism name conversion (default = None, ie fetch online from ncbi)')
-	argparser.add_argument(	'-identity',		dest='identity',	metavar='N',			type=int,	required=False,	default=97,	help='Identity cutoff for BLAST hits (default 97).')
+	argparser.add_argument(	'-gidb',		dest='gidatabase',	metavar='FILE',			type=str,	required=False,	default='/bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.gi2organism.db',	help='database for gi number to organism name conversion (None = fetch online from ncbi)')
+	argparser.add_argument(	'-identity',		dest='identity',	metavar='N',			type=float,	required=False,	default=97.0,	help='Identity cutoff for BLAST hits (default 97%).')
+	argparser.add_argument(	'-length',		dest='length',	metavar='N',			type=float,	required=False,	default=95.0,	help='Alignment length cutoff for BLAST hits (default 95%).')
     if cmd == 'metagraph':
 	argparser.add_argument(	'-step',		dest='step',	metavar='N',				type=int,	required=False,	default=0,	help='Update intervall. Updates y value every "step" x value (default "max(x)/200" ie 200 datapoints along x-axis)')
 	argparser.add_argument(	'-x',			dest='xscale',	metavar='N-N',				type=str,	required=False,	default='0-1000',help='x axis scale (default 0-1000)')
@@ -1544,7 +1545,7 @@ def classifymeta(indata):
     import time
 
     #setting up blast
-    BLAST_identity = 99
+    #BLAST_identity = 99
     BLAST_identity = indata.identity
     database='/bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa'
     database = indata.database
@@ -1574,10 +1575,11 @@ def classifymeta(indata):
     for blast_record in records:
 
 	#>cluster=1.amplicon=ITS.consensus=83_r1.27.08%_of_2626reads
-	cluster	= int(	blast_record.query.split('.')[0].split('=')[1]	)
-	amplicon	= blast_record.query.split('.')[1].split('=')[1]
-	consensus	= int(	blast_record.query.split('.')[2].split('=')[1].split('_')[0]	)
-	readnumber	= int(	blast_record.query.split('.')[2].split('=')[1].split('_')[1].split('r')[1]	)
+	splitted = blast_record.query.split('.')
+	cluster	= int(	splitted[0].split('=')[1]	)
+	amplicon	= splitted[1].split('=')[1]
+	consensus	= int(	splitted[2].split('=')[1].split('_')[0]	)
+	readnumber	= int(	splitted[2].split('=')[1].split('_')[1].split('r')[1]	)
 	
 	if cluster not in data: data[cluster] = {'ITS':{},'16S':{}}
 
@@ -1595,7 +1597,7 @@ def classifymeta(indata):
     hitsdonotagree = 0
     
     if indata.gidatabase:
-	tmp_file = open(indata.gidatabas)
+	tmp_file = open(indata.gidatabase)
 	tmp_string = tmp_file.read()
 	tmp_file.close()
 	local_gi2org = eval(tmp_string)
@@ -1613,7 +1615,7 @@ def classifymeta(indata):
 
 	    config.outfile.write(      '### Cluster '+str(cluster_id)+' ###'     +'\n')
 	    identity_cutoff = BLAST_identity#%
-	    alignment_length_cutoff = 95#%
+	    alignment_length_cutoff = indata.length#95#%
 
 	    #for amplicon, consensuses in amplicons.iteritems():
 	    in_both_reads = {'ITS':[],'16S':[]}
@@ -1658,7 +1660,7 @@ def classifymeta(indata):
 			    except KeyError:
 				organism = gi2orgname(gi_number)
 				local_gi2org[gi_number] = organism
-			    print organism
+			    #print organism
 			    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r1[organism] = alignment
 
 		    in_r2 = {}
@@ -1672,7 +1674,7 @@ def classifymeta(indata):
 			    except KeyError:
 				organism = gi2orgname(gi_number)
 				local_gi2org[gi_number] = organism
-			    print organism
+			    #print organism
 			    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r2[organism] = alignment
 
 

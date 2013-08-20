@@ -10,39 +10,84 @@ MASTER = os.getpid()
 
 def main():
     import sys
-    print 'pid =',MASTER,'\nCMD =', ' '.join(sys.argv)
-    
     indata = getindata()
+    if indata.logfile: logfile = open(indata.logfile,'a',1)
+    else: logfile = sys.stdout
+    logfile.write( '-----------------------------\npid = '+str(MASTER)+'\nCMD = '+ ' '.join(sys.argv)+'\n')
+    
     entries = faentries(indata.fasta)
-    print entries, 'fasta entries in total.'
-    progress = Progress(entries, unit='giNumber')
-    local_gi2org = {}
+    logfile.write( str(entries)+' fasta entries in total.\n')
+    progress = Progress(entries, unit='giNumber', logfile=logfile)
+    if indata.add:
+        tmp_file = open(indata.add)
+        tmp_string = tmp_file.read()
+        tmp_file.close()
+        local_gi2org = eval(tmp_string)
+    else:local_gi2org = {}
+    last_size = len(local_gi2org)
+    save_limit = indata.save
 
     infile = open(indata.fasta)
 
-    import multiprocessing
-    WorkerPool = multiprocessing.Pool(multiprocessing.cpu_count(),maxtasksperchild=1000000)
-    results = WorkerPool.imap_unordered(foreach,infile,chunksize=1000)
     with progress:
-	for tmp in results:
-            if tmp:
+        if indata.serial:
+            for gi_number in giGen(infile,local_gi2org):
                 progress.update()
-                [gi_number,organism] = tmp
-                local_gi2org[gi_number] = organism
+                if gi_number:
+                    organism = gi2orgname(gi_number)
+                    #print gi_number,'===>', organism
+                    local_gi2org[gi_number] = organism
+                if len(local_gi2org) - last_size > save_limit:
+                    savedb(indata,local_gi2org,logfile)
+                    last_size = len(local_gi2org)
+        else:
+            import multiprocessing
+            if not indata.cpus:
+                indata.cpus = multiprocessing.cpu_count()
+            WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000000)
+            results = WorkerPool.imap_unordered(foreach,giGen(infile,local_gi2org),chunksize=1)
+            for tmp in results:
+                progress.update()
+                if tmp:
+                    [gi_number,organism] = tmp
+                    #print gi_number,'===>', organism
+                    local_gi2org[gi_number] = organism
+                if len(local_gi2org) - last_size > save_limit:
+                    savedb(indata,local_gi2org,logfile)
+                    last_size = len(local_gi2org)
+    
+    if len(local_gi2org) > last_size:
+        logfile.write( 'Final save to db'+'\n')
+        savedb(indata,local_gi2org,logfile)
+    elif len(local_gi2org) == last_size:
+        logfile.write( 'all present, no change ... Exiting' +'\n')
     infile.close()
-
-    outfile = open(indata.out,'w')
-    outfile.write(local_gi2org)
-    outfile.close()
     return 0
 
-def foreach(line):
-    if line[0] == '>':
-        gi_number = line.split('|')[1]
+def savedb(indata,local_gi2org,logfile):
+    logfile.write( 'saving db to file ...' +'\n')
+    if indata.out: outfile = open(indata.out,'w')
+    if indata.add: outfile = open(indata.add,'w')
+    outfile.write(str(local_gi2org))
+    outfile.close()
+    logfile.write( 'done.' +'\n')
+    return 0
+
+def giGen(infile,local_gi2org):
+    for line in infile:
+        if line[0] == '>':
+            gi_number = line.split('|')[1]
+            try:
+                organism = local_gi2org[gi_number]
+                yield False
+            except KeyError:
+                yield gi_number
+
+def foreach(gi_number):
+    if gi_number:
         organism = gi2orgname(gi_number)
-        #print gi_number,'===>', organism
         return [gi_number,organism]
-    else : return None
+    else: return False
 
 def faentries(filename):
 	""" returns the number of ">"s in a file
@@ -51,7 +96,7 @@ def faentries(filename):
 	if filename.split('.')[-1] in ['gz','gzip']: f = gzip.open(filename)
 	else: f = open(filename)
 	entries = 0
-	buf_size = 1024 * 1024 * 100
+	buf_size = 1024 * 1024
 	read_f = f.read # loop optimization
 	
 	buf = read_f(buf_size)
@@ -63,9 +108,14 @@ def faentries(filename):
 
 def getindata():
     import argparse
-    argparser = argparse.ArgumentParser(description='build database of gids for a fasta and relate ro organism name.', formatter_class=argparse.RawTextHelpFormatter)
-    argparser.add_argument('-fa',	dest='fasta',	metavar='<path>',	type=str,	required=True,	default=False,	help='input fasta file with sequences.')
-    argparser.add_argument('-o',	dest='out',	metavar='<path>',	type=str,	required=True,	default=False,	help='output database file.')
+    argparser = argparse.ArgumentParser(description='build database of gids for a fasta and relate ro organism name. Note that the program is shaky if you see any exception what so ever try rerunning with the -add option if no exception is displayed th db is probably fine. though a manual control of the file is recomended', formatter_class=argparse.RawTextHelpFormatter)
+    argparser.add_argument('-fa',	dest='fasta',	metavar='FILE',	type=str,	required=True,	default=False,	help='input fasta file with sequences.')
+    argparser.add_argument('-l',	dest='logfile',	metavar='FILE',	type=str,	required=True,	default=False,	help='logfile.')
+    argparser.add_argument('-o',	dest='out',	metavar='FILE',	type=str,	required=False,	default=False,	help='output database file.')
+    argparser.add_argument('-add',	dest='add',	metavar='FILE',	type=str,	required=False,	default=False,	help='add to existing database file (instead of -o).')
+    argparser.add_argument('--serial',	dest='serial',	action='store_true', 		required=False,	default=False,	help='Debug (run as regular single process python script).')
+    argparser.add_argument('-p',	dest='cpus',	metavar='N',	type=int,	required=False,	default=1,	help='The number of processes to run in parallel (default 1, 0 = cpu_count).')
+    argparser.add_argument('-save',	dest='save',	metavar='N',	type=int,	required=False,	default=10,	help='save every N new entry (default 10).')
 
     import sys
     indata = argparser.parse_args(sys.argv[1:])
