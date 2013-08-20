@@ -938,11 +938,36 @@ def foreachcluster_meta(cluster_pairs):
 		adaptercount +=1;
 		if verb >=3: output+='ADAPTER\n';
 		continue
+
+	    #metagenomics PRIMERS				Length	Degeneration degree
+	    #16S_fwd primer	GTGBCAGCMGCCGCGGTAA		19	6
+	    #ITS_fwd primer	GGBCTTGTACWCACYGCCCGTC		22	6
+	    #16S_rev primer	ACAHYTCACRRCACGAGCTGACGAC	25	24
+	    #ITS_rev primer	CTCYDANTGCCSRGGCATCCACC		23	384
+
+	    #2 genom modelsystem=em, realsmples=all
+	    #16S_fwd_em	GTGCCAGCAGCCGCGGTAA
+	    #16S_fwd_allGTGBCAGCMGCCGCGGTAA
+	    fwd_16S =  'GTGBCAGCMGCCGCGGTAA'
+	    #16S_rev_em	ACATKTCACRACACGAGCTGACGAC
+	    #16S_rev_allACAHYTCACRRCACGAGCTGACGAC
+	    rev_16S =  'ACAHBTCACRRCACGAGCTGACGAC'
+	    #ITS_fwd em	 GCCTTGTACACACCGCCCGTC 
+	    #ITS_fwd allGGBCTTGTACWCACYGCCCGTC
+	    fwd_ITS = 'G?GBCTTBTACWCACYGCCCGTC'
+	    #ITS_rev em	CTCTWRMAGCCARGGCATCCACC
+	    #ITS_rev allCTCYDANTGCCSRGGCATCCACC
+	    rev_ITS =  'CTCYDRNWGCCVRGGCATCCACC'
+
+	    fwd_16S = UIPAC2REGEXP(fwd_16S)
+	    rev_16S = UIPAC2REGEXP(rev_16S)
+	    fwd_ITS = UIPAC2REGEXP(fwd_ITS)
+	    rev_ITS = UIPAC2REGEXP(rev_ITS)
 	    
 	    #determine fwd primer
 	    pair.p1 = None
-	    p1_16S = re.match( 'GTG.CAGC.GCCGCGGTAA',    pair.r1.seq[pair.handle_end:])
-	    p1_ITS = re.match( 'G?G.CTTGTAC.CAC.GCCCGTC', pair.r1.seq[pair.handle_end:])
+	    p1_16S = re.match( fwd_16S,    pair.r1.seq[pair.handle_end:])
+	    p1_ITS = re.match( fwd_ITS,	   pair.r1.seq[pair.handle_end:])
 	    if	 p1_16S:
 		if verb >=3: output += '16S\t';
 		pair.p1 = '16S'
@@ -955,9 +980,8 @@ def foreachcluster_meta(cluster_pairs):
 	    
 	    #determine reverse primer
 	    pair.p2 = None
-	    p2_16S = re.match( 'ACA..TCAC..CACGAGCTGACGAC',pair.r2.seq)
-	    p2_ITS = re.match( 'CTC....[AT]GCC..GGCATCCACC',  pair.r2.seq)
-	    #p2_ITS = re.match( 'CTC..A.TGCC..GGCATCCACC',  pair.r2.seq)
+	    p2_16S = re.match( rev_16S,pair.r2.seq)
+	    p2_ITS = re.match( rev_ITS,  pair.r2.seq)
 	    if 	 p2_16S:
 		if verb >=3: output += '16S\t';
 		pair.p2 = '16S'
@@ -978,11 +1002,10 @@ def foreachcluster_meta(cluster_pairs):
 
 	    #look for unexpected primer sequences
 	    if pair.p1 == '16S':
-	        fwd16S_in_r2  = re.search( 'GTG.CAGC.GCCGCGGTAA',      pair.r2.seq) #16 fwd in read 2
-		rev16S_in_r1  = re.search( 'ACA..TCAC..CACGAGCTGACGAC',pair.r1.seq[pair.handle_end:]) #16 rev in read1
-		fwdITS_in_any = re.search( 'G?G.CTTGTAC.CAC.GCCCGTC',   pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its fwd in any read
-		revITS_in_any = re.search( 'CTC....[AT]GCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its rev in any read
-		#revITS_in_any = re.search( 'CTC..A.TGCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its rev in any read
+	        fwd16S_in_r2  = re.search( fwd_16S,     pair.r2.seq) #16 fwd in read 2
+		rev16S_in_r1  = re.search( rev_16S,	pair.r1.seq[pair.handle_end:]) #16 rev in read1
+		fwdITS_in_any = re.search( fwd_ITS,   	pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its fwd in any read
+		revITS_in_any = re.search( rev_ITS,  pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its rev in any read
 		if fwd16S_in_r2 or rev16S_in_r1 or fwdITS_in_any or revITS_in_any:
 		    primererror+=1;
 		    if verb >=3:
@@ -991,11 +1014,10 @@ def foreachcluster_meta(cluster_pairs):
 		    #print 'Happened'
 		    continue
 	    elif pair.p1 == 'ITS':
-	        fwd16S_in_any = re.search( 'GTG.CAGC.GCCGCGGTAA',      pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) 
-		rev16S_in_any = re.search( 'ACA..TCAC..CACGAGCTGACGAC',pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) 
-		fwdITS_in_r2  = re.search( 'G?G.CTTGTAC.CAC.GCCCGTC',   pair.r2.seq) 
-		revITS_in_r1  = re.search( 'CTC....[AT]GCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:])
-		#revITS_in_r1  = re.search( 'CTC..A.TGCC..GGCATCCACC',  pair.r1.seq[pair.handle_end:]) 
+	        fwd16S_in_any = re.search( fwd_16S,     pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) 
+		rev16S_in_any = re.search( rev_16S,	pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) 
+		fwdITS_in_r2  = re.search( fwd_ITS,	pair.r2.seq) 
+		revITS_in_r1  = re.search( rev_ITS,  pair.r1.seq[pair.handle_end:])
 		if fwd16S_in_any or rev16S_in_any or fwdITS_in_r2 or revITS_in_r1:
 		    primererror+=1;
 		    if verb >=3:
@@ -1003,22 +1025,6 @@ def foreachcluster_meta(cluster_pairs):
 			output += pair.r1.seq +' '+ pair.r2.seq+'\n'
 		    #print 'Happened'
 		    continue
-
-	    #16S_fwd primer	GTGBCAGCMGCCGCGGTAA	19	6
-	    #ITS_fwd primer	GGBCTTGTACWCACYGCCCGTC	22	6
-	    #16S_rev primer	ACAHYTCACRRCACGAGCTGACGAC	25	24
-	    #ITS_rev primer	CTCYDANTGCCSRGGCATCCACC	23	384
-
-	    #2 genom modelsystem=em, realsmples=all
-	    #16S_fwd_em		GTGCCAGCAGCCGCGGTAA
-	    #16S_fwd_all	GTG.CAGC.GCCGCGGTAA
-	    #16S_rev_em		ACAT.TCAC.ACACGAGCTGACGAC
-	    #16S_rev_all	ACA..TCAC..CACGAGCTGACGAC
-	    #	
-	    #ITS_fwd em		GCCTTGTACACACCGCCCGTC 
-	    #ITS_fwd all       GG.CTTGTAC.CAC.GCCCGTC
-	    #ITS_rev em		CTCT...AGCCA.GGCATCCACC
-	    #ITS_rev all	CTC..A.TGCC..GGCATCCACC
 
 	    #output +='\n'
 	    if verb >=3: output += pair.r1.seq +' '+ pair.r2.seq+'\n'

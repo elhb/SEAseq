@@ -2,6 +2,9 @@ import sys
 
 def lib_main(): pass
 
+def UIPAC2REGEXP(string):
+    return string.replace('R','[AG]').replace('Y','[CT]').replace('S','[GC]').replace('W','[AT]').replace('K','[GT]').replace('M','[AC]').replace('B','[CGT]').replace('D','[AGT]').replace('H','[ACT]').replace('V','[ACG]').replace('N','.')
+
 class Progress():
 
 	def __init__(self,total, verb='full', logfile=sys.stderr, unit='read' ,mem=False):
