@@ -121,7 +121,7 @@ def metagraph(indata):
     graph_info = {'good':{},'total':{}}
     for x_current in x_range:
 	for rc_type in ['total','good']:
-	    graph_info[rc_type][ x_current ] = {'all':0,'16s':0,'its':0,'both':0,'None':0,'16s_mono':0,'its_mono':0,'both_mono':0,'both_16s_mono':0,'both_its_mono':0}
+	    graph_info[rc_type][ x_current ] = {'all':0,'16s':0,'its':0,'both':0,'None':0,'any':0,'16s_mono':0,'its_mono':0,'both_mono':0,'both_16s_mono':0,'both_its_mono':0,'any_mono':0}
 
     config.logfile.write('Counting clusters ... \n')
     for cid in data:
@@ -134,22 +134,36 @@ def metagraph(indata):
 		if comp_value > x_current:
 		    graph_info[rc_type][ x_current ]['all'] += 1
 
-		    if data[cid]['16s'] and not data[cid]['its']:
-			graph_info[rc_type][ x_current ]['16s'] += 1
-			if data[cid]['16s monoclonal']: graph_info[rc_type][ x_current ]['16s_mono'] += 1
-		    
-		    if data[cid]['its'] and not data[cid]['16s']:
-			graph_info[rc_type][ x_current ]['its'] += 1
-			if data[cid]['its monoclonal']: graph_info[rc_type][ x_current ]['its_mono'] += 1
-			
 		    if data[cid]['16s'] and data[cid]['its']:
 			graph_info[rc_type][ x_current ]['both'] += 1
-			if data[cid]['16s monoclonal'] and data[cid]['its monoclonal']: graph_info[rc_type][ x_current ]['both_mono'] += 1
-			if not data[cid]['16s monoclonal'] and data[cid]['its monoclonal']: graph_info[rc_type][ x_current ]['both_its_mono'] += 1
-			if data[cid]['16s monoclonal'] and not data[cid]['its monoclonal']: graph_info[rc_type][ x_current ]['both_16s_mono'] += 1
+			graph_info[rc_type][ x_current ]['any'] += 1
+			if data[cid]['16s monoclonal'] and data[cid]['its monoclonal']:
+			    graph_info[rc_type][ x_current ]['both_mono'] += 1
+			    graph_info[rc_type][ x_current ]['any_mono'] += 1
+			if not data[cid]['16s monoclonal'] and data[cid]['its monoclonal']:
+			    graph_info[rc_type][ x_current ]['both_its_mono'] += 1
+			if data[cid]['16s monoclonal'] and not data[cid]['its monoclonal']:
+			    graph_info[rc_type][ x_current ]['both_16s_mono'] += 1
 
-		    if not data[cid]['16s'] and not data[cid]['its']:
+		    elif data[cid]['16s'] and not data[cid]['its']:
+			graph_info[rc_type][ x_current ]['16s'] += 1
+			graph_info[rc_type][ x_current ]['any'] += 1
+			if data[cid]['16s monoclonal']:
+			    graph_info[rc_type][ x_current ]['16s_mono'] += 1
+			    graph_info[rc_type][ x_current ]['any_mono'] += 1
+		    
+		    elif data[cid]['its'] and not data[cid]['16s']:
+			graph_info[rc_type][ x_current ]['its'] += 1
+			graph_info[rc_type][ x_current ]['any'] += 1
+			if data[cid]['its monoclonal']:
+			    graph_info[rc_type][ x_current ]['its_mono'] += 1
+			    graph_info[rc_type][ x_current ]['any_mono'] += 1
+			
+		    elif not data[cid]['16s'] and not data[cid]['its']:
 			graph_info[rc_type][ x_current ]['None'] += 1
+		    
+		    else: print 'ERROR: this should not be possible'
+		    
 		else: breaker.append(True)
 	    if len(breaker) == len(compare_pairs): break
 
@@ -158,23 +172,26 @@ def metagraph(indata):
 	f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.values' ,'w' )
 	f.write(
 	    'x'			+'\t'+ 
-	    'all'			+'\t'+ 
-	    'None'			+'\t'+ 
-	    '16s'			+'\t'+ 
+	    'all'		+'\t'+ 
+	    'None'		+'\t'+ 
+	    '16s'		+'\t'+ 
 	    '16s_mono'		+'\t'+ 
-	    '16s_mono %'		+'\t'+ 
-	    'its'			+'\t'+ 
+	    '16s_mono %'	+'\t'+ 
+	    'its'		+'\t'+ 
 	    'its_mono'		+'\t'+ 
-	    'its_mono %'		+'\t'+ 
-	    'both'			+'\t'+ 
+	    'its_mono %'	+'\t'+ 
+	    'both'		+'\t'+ 
 	    'both_mono'		+'\t'+ 
-	    'both_mono %'		+'\t'+ 
-	    'both'			+'\t'+ 
-	    'both_16s_mono'		+'\t'+ 
+	    'both_mono %'	+'\t'+ 
+	    'both'		+'\t'+ 
+	    'both_16s_mono'	+'\t'+ 
 	    'both_16s_mono %'	+'\t'+ 
-	    'both'			+'\t'+ 
-	    'both_its_mono'		+'\t'+ 
-	    'both_its_mono %'	+'\n'
+	    'both'		+'\t'+ 
+	    'both_its_mono'	+'\t'+ 
+	    'both_its_mono %'	+'\t'+
+	    'any'		+'\t'+ 
+	    'any_mono'		+'\t'+ 
+	    'any_mono %'	+'\n'
 	)
 	f.close()
     for x_current in x_range:
@@ -182,14 +199,15 @@ def metagraph(indata):
 	    f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+'.values' ,'a' )
 	    f.write(str(x_current) +'\t'+     str(graph_info[rc_type][ x_current ]['all'])	+'\t'+	str(graph_info[rc_type][ x_current ]['None'])	+'\t'	)
 
-	    for [total_id,count_id] in [['16s','16s_mono'],['its','its_mono'],['both','both_mono'],['both','both_16s_mono'],['both','both_its_mono']]:
+	    for [total_id,count_id] in [['16s','16s_mono'],['its','its_mono'],['both','both_mono'],['both','both_16s_mono'],['both','both_its_mono'],['any','any_mono']]:
 		total  = graph_info[rc_type][ x_current ][total_id]
 		count = graph_info[rc_type][ x_current ][count_id]
 		
 		f.write(	str(total)+'\t'+	str(count)+'\t'    )
 		if total:
-		    graph_info[rc_type][ x_current ][count_id] = 100*round(float(count)/float(total),2)
-		    f.write(str(100*round(float(count)/float(total),2))+'\t')
+		    tmp_percentage = round(100*float(count)/float(total),2)
+		    graph_info[rc_type][ x_current ][count_id] = tmp_percentage
+		    f.write(str(tmp_percentage)+'\t')
 		else:
 		    graph_info[rc_type][ x_current ][count_id] = 0.0
 		    f.write('0.0\t')
@@ -329,6 +347,59 @@ def metagraph(indata):
 	    config.logfile.write('Created: '+config.path+'/graphs/'+cluster_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+' (.pdf and .values)'+'.\n')
 	    plt.close()
 
+    if 'c' in indata.graphs:
+	config.logfile.write('Preparing variables for plotting ... \n')
+	for rc_type in ['total','good']:
+
+	    temp_x=graph_info[rc_type].keys()
+	    temp_x.sort()
+	    x =[];y1=[];y2=[];y3=[];y4=[];y5=[];y6=[];y7=[];y8=[];y9=[];y10=[]
+	    for i in temp_x:
+		    x.append(i)
+		    y1.append(graph_info[rc_type][i]['all'])
+		    y2.append(graph_info[rc_type][i]['any'])
+		    y3.append(graph_info[rc_type][i]['None'])
+		    y4.append(graph_info[rc_type][i]['any_mono'])
+
+	    config.logfile.write('Creating graphics ... \n')
+	    import numpy as np
+	    import matplotlib.pyplot as plt
+	    from matplotlib import rc
+		    
+	    fig = plt.figure(figsize=(20, 15), dpi=100)
+	    ax = fig.add_subplot(111)
+	    if incomplete: ax.set_title('WARNING: incomplete dataset! '+ indata.sample+' ' +config.path)
+	    else : ax.set_title(indata.sample+' ' +config.path)
+	    ax.plot(x, y4, '--b', label = 'Perc. mono. for defined amplicons')
+	    ax2 = ax.twinx()
+	    ax2.plot(x, y1, '-r', label = 'Total number of clusters')
+	    ax2.plot(x, y2, '-b', label = 'Number of defined clusters')
+	    ax2.plot(x, y3, '-k', label = 'Number of undefined clusters')
+	    
+	    lines, labels   = ax.get_legend_handles_labels()
+	    lines2, labels2 = ax2.get_legend_handles_labels()
+	    ax2.legend(lines + lines2, labels + labels2, loc=7)
+	    #ax.legend(lines, labels, loc=7)
+
+	    ax.grid(b=True, which='both')
+	    ax.set_xlabel('Read pairs per Barcode Cluster ( '+rc_type+' reads )')
+	    ax.set_ylabel('Percentage Monoclonal')
+	    ax2.set_ylabel('Number of Clusters')
+	    
+	    ax.set_ylim(0,100)
+	    ax2.set_ylim(yscale[0],yscale[1])
+	    
+	    ax.set_xlim(xscale[0],xscale[1])
+	    ax2.set_xlim(xscale[0],xscale[1])
+
+	    ax.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/10))
+	    ax2.set_yticks(np.arange(yscale[0],yscale[1]+1,min(100,yscale[1]/10)))
+	    ax.set_yticks(np.arange(0,101,5))
+
+	    plt.savefig(                     config.path+'/graphs/'+rc_type+'_pairs_per_barcode_with_amp.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+'.pdf')
+	    config.logfile.write('Created: '+config.path+'/graphs/'+rc_type+'_pairs_per_barcode_with_amp.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+' (.pdf and .values)'+'.\n')
+	    plt.close()
+
     config.logfile.write( 'done\n')
     return 0
 
@@ -420,6 +491,29 @@ def sbatch(indata):
 	'module unload python/2.6.6'+'\n'+
 	'module load python/2.7'+'\n'+
 	sys.argv[0]+' classifymeta -path '+config.path+''+'\n'
+    )
+    f.close()
+
+    f = open( config.path +'/sbatch.gzip.sh','w')
+    f.write(
+	'#! /bin/bash -l'+'\n'+
+	'#SBATCH -A b2011011'+'\n'+
+	'#SBATCH -n 8 -p node'+'\n'+
+	'#SBATCH -t 72:00:00'+'\n'+
+	'#SBATCH -J gzip_'+config.path+'\n'+
+	'#SBATCH -e '+config.abspath+'/sbatch.gzip.stderr.txt'+'\n'+
+	'#SBATCH -o '+config.abspath+'/sbatch.gzip.stdout.txt'+'\n'+
+	'#SBATCH --mail-type=All'+'\n'+
+	'#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
+	'echo "$(date) Running on: $(hostname)"'+'\n'+
+	'cd '+os.getcwd()+'\n'+
+	'gzip -v9 '+config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq &'+'\n'
+	'gzip -v9 '+config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq &'+'\n'
+	'gzip -v9 '+config.path+'/nonCreads.1.fq &'+'\n'
+	'gzip -v9 '+config.path+'/nonCreads.2.fq &'+'\n'
+	'gzip -v9 '+config.path+'/meta.out.txt &'+'\n'
+	'gzip -v9 '+config.path+'/classify.out.txt &'+'\n'
+	'wait'+'\n'
     )
     f.close()
     
@@ -599,7 +693,7 @@ def clusterbarcodes(indata):
     progress = Progress(config.reads2process, logfile=config.logfile)
     summary = SEAseqSummary()
     f1 = open(config.abspath+'/nonCreads.1.fq','w')
-    f2 = open(config.abspath+'/nonCreads.1.fq','w')
+    f2 = open(config.abspath+'/nonCreads.2.fq','w')
     with progress:
 	for pair in results:
 	    progress.update()
@@ -1380,7 +1474,10 @@ def getindata(cmd):
 				'      y3 = "Number of barcode cluster with consensus sequences of TYPE, good readpairs"\n'+
 				'      y4 = "Percentage barcode clusters monoclonal for TYPE, good readpairs"\n'+
 				'      Makes one graph each for TYPE = ITS, 16S and BOTH.\n\n'+
-				'c --> Nothing yet.\n\n'
+				'c --> x  = "Minimum number of read pairs per cluster"\n'+
+				'      y1-2 = "Number of barcode cluster" for Total and (16S, ITS or BOTH) clusters\n'+
+				'      y3   = "Percentage monoclonality" percentage of clusters where there are only one version (/sequence) of the defined amplicon(s)\n'+
+				'      Makes one graph for "good pairs" and one for "total read pairs" per cluster.\n\n'
 			       )
 	
 
