@@ -1,4 +1,177 @@
 import sys
+import os
+MASTER = os.getpid()
+version = 'ALPHA 1.3'
+
+def initiate_file(filename, logfile, mode='w'):
+    import os
+    
+    if type(logfile) == file and mode != 'r': logfile.write('Initiating '+filename+' ...\n')
+    
+    if mode == 'w' and os.path.exists(filename):
+	tmp = filename
+	filename = raw_input('WARNING: the file '+filename+' already excists. Enter an alternative filename (leave empty to overwrite):')
+	if type(logfile) == file and mode != 'r': logfile.write('WARNING: the file '+filename+' already excists. Enter an alternative filename (leave empty to overwrite):')
+	if not filename:
+	    filename = tmp
+	    if type(logfile) == file and mode != 'r': logfile.write('overwriting\n')
+	#else:
+	#    if type(indata.logfile) == file and mode != 'r': config.logfile.write('Creating file '+filename+'.\n')
+    
+    if mode =='ow': mode ='w'
+    import re
+    #if re.search('log',filename):	out = open(filename, mode,0)
+    #else:				out = open(filename, mode,1)
+    out = open(filename, mode,1)
+    
+    if type(logfile) == file and mode != 'r': logfile.write('File '+filename+' sucessfully initiated.\n')
+    
+    return out
+
+def writelogheader(logfile):
+    import sys
+    import time
+    logfile.write('----------------\n')
+    logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
+    logfile.write('Version: '+version+'\n')
+    logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
+    logfile.write('Master process id='+str(MASTER)+'\n')
+
+class Configuration():
+    
+    def __init__ (self, path, cmd, stop=None, skip=None ,random=None ):
+
+	# permanent
+	self.path 		= path
+	self.config		= self.path+'/'+'config'
+	self.init_logfile	= self.path + '/' + 'init.log.txt'
+	self.init_outfile	= self.path + '/' + 'init.out.txt'
+	self.addfqs_logfile	= self.path + '/' + 'addfqs.log.txt'
+	self.addfqs_outfile	= self.path + '/' + 'addfqs.out.txt'
+	self.cluster_logfile	= self.path + '/' + 'cluster.log.txt'
+	self.cluster_outfile	= self.path + '/' + 'cluster.out.txt'
+	self.sortreads_logfile	= self.path + '/' + 'sort.log.txt'
+	self.sortreads_outfile	= self.path + '/' + 'sort.out.txt'
+	self.meta_logfile	= self.path + '/' + 'meta.log.txt'
+	self.meta_outfile	= self.path + '/' + 'meta.out.txt'
+	self.sbatch_logfile	= self.path + '/' + 'sbatch.log.txt'
+	self.sbatch_outfile	= self.path + '/' + 'sbatch.out.txt'
+	self.metagraph_logfile	= self.path + '/' + 'graph.log.txt'
+	self.metagraph_outfile	= self.path + '/' + 'graph.out.txt'
+	self.classifymeta_logfile= self.path + '/' + 'classify.log.txt'
+	self.classifymeta_outfile= self.path + '/' + 'classify.out.txt'
+	self.clusters_file	= self.path+'/barcode_clusters_dictionary'
+	self.abspath		= None # not loaded or set
+
+	# longlasting
+	self.infiles		= {'r1':[],'r2':[]}
+	self.readcounts		= []
+	self.chandlemissmatch	= None
+	self.barcodemissmatch	= None
+	self.clustercount	= None
+	self.numberofseeds	= None
+
+	# for each run
+	self.cmd		= cmd
+	self.stop		= stop
+	self.skip		= skip
+	self.random		= random
+	self.sortformat		= 'fq'
+	self.read_count_per_barcode_cluster_cutoff = 1
+	
+	
+	if cmd == 'init':
+	    self.logfile = self.init_logfile
+	    self.outfile = self.init_outfile
+	elif cmd == 'addfqs':
+	    self.logfile = self.addfqs_logfile
+	    self.outfile = self.addfqs_outfile
+	elif cmd == 'clusterbarcodes':
+	    self.logfile = self.cluster_logfile
+	    self.outfile = self.cluster_outfile
+	elif cmd == 'sortreads':
+	    self.logfile = self.sortreads_logfile
+	    self.outfile = self.sortreads_outfile
+	elif cmd == 'meta':
+	    self.logfile = self.meta_logfile
+	    self.outfile = self.meta_outfile
+	elif cmd == 'sbatch':
+	    self.logfile = self.sbatch_logfile
+	    self.outfile = self.sbatch_outfile
+	elif cmd == 'metagraph':
+	    self.logfile = self.metagraph_logfile
+	    self.outfile = self.metagraph_outfile
+	elif cmd == 'classifymeta':
+	    self.logfile = self.classifymeta_logfile
+	    self.outfile = self.classifymeta_outfile
+
+    def getreads2process(self, ):
+	
+	self.logfile.write('Getting readcounts ...\n')
+	total = 0
+	for i in range(len(self.readcounts)):
+	    rc = self.readcounts[i]
+	    self.logfile.write(self.infiles['r1'][i]+' -> '+str(rc) +' reads.\n')
+	    total += rc
+	self.logfile.write(str(total)+' read pairs in fastq files.\n');
+	
+	# calculate the number of reads to process
+	self.reads2process = total
+	if self.skip: 	self.reads2process -= self.skip
+	if self.stop: 	self.reads2process = self.stop
+	if self.random:	self.reads2process = self.random
+
+    def set(self,varname, value ):
+	if varname == 'chandlemissmatch':	self.chandlemissmatch	= value
+	elif varname == 'barcodemissmatch':	self.barcodemissmatch	= value
+	elif varname == 'clustercount':		self.clustercount	= value
+	elif varname == 'numberofseeds':	self.numberofseeds	= value
+	elif varname == 'sortformat':		self.sortformat		= value
+	elif varname == 'read_count_per_barcode_cluster_cutoff':self.read_count_per_barcode_cluster_cutoff = value
+	else: raise ValueError
+
+    def load(self, ):
+	self.config = initiate_file(self.config, self.logfile , mode='r')
+	for line in self.config:
+	    if line.rstrip() == '# Absolute path:':
+		self.abspath = self.config.next().rstrip()
+	    if line.rstrip() == '# Infiles dictionary:':
+		self.infiles = eval(self.config.next())
+	    if line.rstrip() == '# Read counts list:':
+		self.readcounts = eval(self.config.next())
+	    if line.rstrip() == '# Number of cluster seeds:':
+		self.numberofseeds = eval(self.config.next().rstrip())
+	    if line.rstrip() == '# Number of barcode clusters identified:':
+		self.clustercount = eval(self.config.next().rstrip())
+	self.config.close()
+	self.config = self.config.name
+
+    def openconnections(self, ):
+	if self.cmd == 'init':
+	    self.outfile = initiate_file(self.outfile, self.logfile)
+	    self.logfile = initiate_file(self.logfile, self.logfile)
+	else:
+	    self.outfile = initiate_file(self.outfile, self.logfile, mode='a')
+	    self.logfile = initiate_file(self.logfile, self.logfile, mode='a')
+
+    def save(self, ):
+
+	if not os.path.exists(self.config):
+	    self.config = initiate_file(self.config, self.logfile)
+	    self.abspath = os.path.abspath(self.path)
+	else:
+	    self.config = initiate_file(self.config, self.logfile, mode='ow')
+
+	self.logfile.write('Writing settings to config file ...\n')
+	self.config.write(
+	    '# Absolute path:\n'+str(self.abspath)+'\n'+
+	    '# Infiles dictionary:\n'+str(self.infiles)+'\n'+
+	    '# Read counts list:\n'+str(self.readcounts)+'\n'+
+	    '# Number of cluster seeds:\n'+str(self.numberofseeds)+'\n'+
+	    '# Number of barcode clusters identified:\n'+str(self.clustercount)+'\n'
+	    )
+	self.config.close()
+	self.config = self.config.name
 
 def lib_main(): pass
 
