@@ -188,7 +188,7 @@ def UIPAC2REGEXP(string):
 
 class Progress():
 
-	def __init__(self,total, verb='full', logfile=sys.stderr, unit='read' ,mem=False):
+	def __init__(self,total, verb='full', logfile=sys.stderr, unit='read' ,mem=False, printint=0):
 		import time
 		self.total = total
 		self.current = 0
@@ -201,6 +201,7 @@ class Progress():
 		elif verb == 'minimal':self.printint = 5
 		self.unit = unit
 		self.mem = mem
+		if printint: self.printint = printint
 
 	def __enter__(self):
 		if self.type == 'minimal': self.logfile.write('0%                 50%                 100%\n')
