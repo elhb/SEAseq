@@ -31,11 +31,14 @@ def initiate_file(filename, logfile, mode='w'):
 def writelogheader(logfile):
     import sys
     import time
+    import getpass
+    username = getpass.getuser()
     logfile.write('----------------\n')
     logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
     logfile.write('Version: '+version+'\n')
     logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
     logfile.write('Master process id='+str(MASTER)+'\n')
+    logfile.write('Started by user = '+username+'\n')
 
 class Configuration():
     
