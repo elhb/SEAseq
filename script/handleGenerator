@@ -1,0 +1,145 @@
+#! /bin/env python
+#! /usr/bin/env python2.7
+
+
+# Constants
+length = 25
+gc = 50
+verbose = True
+allPossible = False
+seq2gen = 1000
+max_homopolymer_length = 2
+max_twoBaseRepeats = 2
+max_threBaseRepeats = 2
+max_fourBaseRepeats = 2
+max_fiveBaseRepeats = 2
+import itertools
+homopolymerMatchString = 'A{'+str(max_homopolymer_length+1)+',}|G{'+str(max_homopolymer_length+1)+',}|T{'+str(max_homopolymer_length+1)+',}|C{'+str(max_homopolymer_length+1)+',}'
+twoBaseRepeatMatchString = ('{'+str(max_twoBaseRepeats+1)+ ',}|').join(['('+''.join(tmp)+')' for tmp in itertools.product(['A','C','G','T'],repeat=2)])+'{'+str(max_twoBaseRepeats+1)+ ',}'
+threBaseRepeatMatchString= ('{'+str(max_threBaseRepeats+1)+',}|').join(['('+''.join(tmp)+')' for tmp in itertools.product(['A','C','G','T'],repeat=3)])+'{'+str(max_threBaseRepeats+1)+',}'
+fourBaseRepeatMatchStrings= [[]]
+for repeat_unit in itertools.product(['A','C','G','T'],repeat=4):
+    if len(fourBaseRepeatMatchStrings[-1]) == 99: fourBaseRepeatMatchStrings.append([])
+    fourBaseRepeatMatchStrings[-1].append( '('+''.join(repeat_unit)+'){'+str(max_fourBaseRepeats+1)+',}' )
+for i in range( len(fourBaseRepeatMatchStrings) ): fourBaseRepeatMatchStrings[i] = '|'.join(fourBaseRepeatMatchStrings[i])
+fiveBaseRepeatMatchStrings= [[]]
+for repeat_unit in itertools.product(['A','C','G','T'],repeat=5):
+    if len(fiveBaseRepeatMatchStrings[-1]) == 99: fiveBaseRepeatMatchStrings.append([])
+    fiveBaseRepeatMatchStrings[-1].append( '('+''.join(repeat_unit)+'){'+str(max_fiveBaseRepeats+1)+',}' )
+for i in range( len(fiveBaseRepeatMatchStrings) ): fiveBaseRepeatMatchStrings[i] = '|'.join(fiveBaseRepeatMatchStrings[i])
+
+
+def main():
+    
+    import multiprocessing
+    
+    if allPossible:
+            tot = 4**length
+            sequenceGeneratorFunction = sequenceGenerator
+    else:
+            tot = seq2gen
+            sequenceGeneratorFunction = sequenceGenerator2
+    WorkerPool = multiprocessing.Pool(multiprocessing.cpu_count()*2, maxtasksperchild=10000)
+    results = WorkerPool.imap_unordered(foreach, sequenceGeneratorFunction(length), chunksize=1)
+
+    from SEAseqLib.mainLibrary import Progress
+    import sys
+    progress = Progress(tot,logfile=sys.stderr,unit='sequence')
+    sys.stderr.write('Parsing possible primers:\n')
+    counter = 0
+    counter2 = 0
+    with progress:
+        for return_info in results:
+            progress.update()
+            counter2+=1
+            [sequence, status] = return_info
+            if status:
+                if verbose: sys.stderr.write( str(counter2) +' '+sequence + ' - ' + status+ '\n')
+            else:
+                sequence_gc = 100*float(sequence.count('G')+sequence.count('C')) / len(sequence)
+                if verbose: sys.stderr.write( str(counter2) +' '+'OK sequence! '+sequence + ' - ' + str(sequence_gc)+'%GC'+ '\n')
+                print '>'+str(counter)+' '+str(sequence_gc)+'%GC'
+                print sequence
+                counter+=1
+    
+def foreach(sequence):
+    
+    sequence_gc = 100*float(sequence.count('G')+sequence.count('C')) / len(sequence)
+    if sequence_gc < gc-5 or sequence_gc > gc+5: return [sequence, str(sequence_gc)+'%GC out of range']
+    
+    if sequence[0:3].count(sequence[0]) == 3: return [sequence, 'homopolymer']
+    import re
+    homopolymer = re.search(homopolymerMatchString, sequence)
+    if homopolymer: return [sequence, 'homopolymer']
+
+    twoBaseRepeat = re.search(twoBaseRepeatMatchString, sequence)
+    if twoBaseRepeat: return [sequence, 'two base repeats']
+
+    threBaseRepeat = re.search(threBaseRepeatMatchString, sequence)
+    if threBaseRepeat: return [sequence, 'three base repeats']
+
+    for fourBaseRepeatMatchString in fourBaseRepeatMatchStrings:
+        fourBaseRepeat = re.search(fourBaseRepeatMatchString, sequence)
+        if fourBaseRepeat: return [sequence, 'four base repeaats']
+
+    for fiveBaseRepeatMatchString in fiveBaseRepeatMatchStrings:
+        fiveBaseRepeat = re.search(fiveBaseRepeatMatchString, sequence)
+        if fiveBaseRepeat: return [sequence, 'five base repeats']
+
+    identity_cutoff = 80#%
+    alignment_length_cutoff = 60#%
+    local = True
+    
+    if not local:
+        from Bio.Blast import NCBIWWW,NCBIXML
+        blast_handle = NCBIWWW.qblast("blastn", "nt", sequence)
+    else:    
+        from Bio.Blast.Applications import NcbiblastnCommandline
+        from Bio.Blast import NCBIXML
+        from cStringIO import StringIO
+        import os
+        f = open(str(os.getpid())+'.tempfile.fa','w')
+        f.write('>TMP\n'+sequence)
+        f.close()
+        cline = NcbiblastnCommandline(query=f.name, db='/bubo/nobackup/uppnex/blast_databases/nt', outfmt=5)#, num_threads=8, perc_identity=identity_cutoff, out=infile+'.blastout')
+        blast_handle = cline.__call__()
+        os.remove(f.name)
+        blast_handle = StringIO(blast_handle[0])
+        blast_handle.seek(0)
+
+    blast_handle = NCBIXML.parse(blast_handle)
+    for blast_record in blast_handle:
+        #if len(blast_record.alignments) == 0: print sequence, 'No hits'
+        for alignment in blast_record.alignments:
+            for hsp in alignment.hsps:
+                perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
+                perc_coverage = float(hsp.align_length)	/	float(blast_record.query_letters)	*100
+                if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff:
+                    return [sequence, 'BLAST hit: ' + alignment.title + ' i=' + str(perc_identity) + '% cov=' + str(perc_coverage) + '%']
+    
+    return [sequence, 0]
+
+def sequenceGenerator(length):
+    
+    import itertools
+    for sequence in itertools.product(['A','C','G','T'],repeat=length):
+        sequence = ''.join(sequence)
+        yield sequence
+
+def sequenceGenerator2(length):
+    
+    import random
+    yielded = {}
+    while len(yielded) <= seq2gen:#4**length:
+        sequence = ''.join([random.choice(['A','C','G','T']) for i in xrange(length)])
+        if sequence not in yielded:
+            yielded[sequence] = True
+            yield sequence
+
+#####
+#check if run or imported // call main() or not
+#####
+if __name__ == "__main__":
+    main()
+#END of script
+
