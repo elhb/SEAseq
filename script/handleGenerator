@@ -5,9 +5,11 @@
 # Constants
 length = 25
 gc = 50
+gc_range = 5
 verbose = True
 allPossible = False
 seq2gen = 1000
+local = False
 max_homopolymer_length = 2
 max_twoBaseRepeats = 2
 max_threBaseRepeats = 2
@@ -65,7 +67,7 @@ def main():
 def foreach(sequence):
     
     sequence_gc = 100*float(sequence.count('G')+sequence.count('C')) / len(sequence)
-    if sequence_gc < gc-5 or sequence_gc > gc+5: return [sequence, str(sequence_gc)+'%GC out of range']
+    if sequence_gc < gc-gc_range or sequence_gc > gc+gc_range: return [sequence, str(sequence_gc)+'%GC out of range']
     
     if sequence[0:3].count(sequence[0]) == 3: return [sequence, 'homopolymer']
     import re
@@ -86,9 +88,8 @@ def foreach(sequence):
         fiveBaseRepeat = re.search(fiveBaseRepeatMatchString, sequence)
         if fiveBaseRepeat: return [sequence, 'five base repeats']
 
-    identity_cutoff = 80#%
-    alignment_length_cutoff = 60#%
-    local = True
+    identity_cutoff = 50#%
+    alignment_length_cutoff = 50#%
     
     if not local:
         from Bio.Blast import NCBIWWW,NCBIXML
@@ -114,8 +115,7 @@ def foreach(sequence):
             for hsp in alignment.hsps:
                 perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
                 perc_coverage = float(hsp.align_length)	/	float(blast_record.query_letters)	*100
-                if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff:
-                    return [sequence, 'BLAST hit: ' + alignment.title + ' i=' + str(perc_identity) + '% cov=' + str(perc_coverage) + '%']
+                if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: return [sequence, 'BLAST hit: ' + alignment.title + ' i=' + str(perc_identity) + '% cov=' + str(perc_coverage) + '%']
     
     return [sequence, 0]
 
