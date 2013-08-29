@@ -76,6 +76,8 @@ def getindata(cmd):
     if cmd == 'init': pass
     elif cmd == 'sbatch':
 	argparser.add_argument('--send',	dest='send', 	action='store_true', 			required=False,	default=False,	help='Send sbatch scripts to job-queue.')
+	argparser.add_argument('--sendonly',	dest='sendonly',action='store_true', 			required=False,	default=False,	help='Do not generate the files only Send sbatch scripts to job-queue.')
+	argparser.add_argument('--small',	dest='small', 	action='store_true', 			required=False,	default=False,	help='make for smaller dataset job-queue.')
     elif cmd == 'addfqs':
 	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='Indata "fastq"-file read1.')
 	argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='Indata "fastq"-file read2.')
