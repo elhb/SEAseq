@@ -27,7 +27,7 @@ def sbatch(indata):
         else:
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
-            '#SBATCH -J clust_'+config.path+'\n'+
+            '#SBATCH -J clust_'+indata.jobname+'_'+config.path+'\n'+
             '#SBATCH -e '+config.abspath+'/sbatch.cluster.stderr.txt'+'\n'+
             '#SBATCH -o '+config.abspath+'/sbatch.cluster.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+
@@ -50,7 +50,7 @@ def sbatch(indata):
         else:
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
-            '#SBATCH -J sort_'+config.path+'\n'+
+            '#SBATCH -J sort_'+indata.jobname+'_'+config.path+'\n'+
             '#SBATCH -e '+config.abspath+'/sbatch.sortreads.stderr.txt'+'\n'+
             '#SBATCH -o '+config.abspath+'/sbatch.sortreads.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+
@@ -72,7 +72,7 @@ def sbatch(indata):
         else:
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
-            '#SBATCH -J meta_'+config.path+'\n'+
+            '#SBATCH -J meta_'+indata.jobname+'_'+config.path+'\n'+
             '#SBATCH -e '+config.abspath+'/sbatch.meta.stderr.txt'+'\n'+
             '#SBATCH -o '+config.abspath+'/sbatch.meta.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+
@@ -95,7 +95,7 @@ def sbatch(indata):
         else:
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
-            '#SBATCH -J classify_'+config.path+'\n'+
+            '#SBATCH -J classify_'+indata.jobname+'_'+config.path+'\n'+
             '#SBATCH -e '+config.abspath+'/sbatch.classify.stderr.txt'+'\n'+
             '#SBATCH -o '+config.abspath+'/sbatch.classify.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+
@@ -115,7 +115,7 @@ def sbatch(indata):
             '#SBATCH -A b2011011'+'\n'+
             '#SBATCH -n 8 -p node'+'\n'+
             '#SBATCH -t 72:00:00'+'\n'+
-            '#SBATCH -J gzip_'+config.path+'\n'+
+            '#SBATCH -J gzip_'+indata.jobname+'_'+config.path+'\n'+
             '#SBATCH -e '+config.abspath+'/sbatch.gzip.stderr.txt'+'\n'+
             '#SBATCH -o '+config.abspath+'/sbatch.gzip.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+

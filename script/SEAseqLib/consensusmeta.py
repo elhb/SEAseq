@@ -1,3 +1,5 @@
+import sys
+
 def meta(indata):
 
     from SEAseqLib.mainLibrary import Configuration, writelogheader
@@ -40,7 +42,7 @@ def meta(indata):
 	import multiprocessing
 	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
 	#results = WorkerPool.imap_unordered(foreachcluster_meta,clusteriterator(clusterq),chunksize=10)
-	results = WorkerPool.imap(foreachcluster_meta,clusteriterator(clusterq),chunksize=10)
+	results = WorkerPool.imap(foreachcluster_meta,clusteriterator(clusterq, indata),chunksize=10)
 
     nonecount = 0
     processed = 0
@@ -105,25 +107,39 @@ def meta(indata):
 
     reader.join()
     
+    defined_clust = 0
+    defined_clust_mono = 0
     config.outfile.write('##### SUMMARY #####'+'\n')
     config.outfile.write(  str(processed)+ ' clusters processed, out of these were:'+'\n')
-    config.outfile.write(  str(onlyjunk) + ' clusters of only adapter sequences or faulty primers'+'\n')
-    config.outfile.write(  str(lowread)  + ' clusters with to few reads to be analysed'+'\n')
+    config.outfile.write(  str(onlyjunk) + ' ('+str(round(100*float(onlyjunk)/float(processed),2))+'%) clusters of only adapter sequences or faulty primers'+'\n')
+    config.outfile.write(  str(lowread)  + ' ('+str(round(100*float(lowread)/ float(processed),2))+'%) clusters with to few reads to be analysed'+'\n')
     for name,count in typecounter.iteritems():
-	if name == 'both ITS and 16S':
-	    config.outfile.write(  str(count)+' '+ name+' '+ 'whereof:'+'\n')
-	    for name,count2 in monoclonal['both'].iteritems():
-		config.outfile.write(  '\t'+' '+str(count2)+' '+'were monoclonal for'+' '+name+'\n')
+	if name != None and name != 'None':defined_clust += count
+        if name == 'both ITS and 16S':
+	    config.outfile.write(  str(count)+' ('+str(round(100*float(count)/float(processed),2))+'%) '+ name+' '+ 'whereof:'+'\n')
+	    for name2,count2 in monoclonal['both'].iteritems():
+		config.outfile.write(  '\t'+' '+str(count2)+' ('+str(round(100*float(count2)/float(count),2))+'%) '+'were monoclonal for'+' '+name2+'\n')
+                if name2 == 'both': defined_clust_mono += count2
 	    continue
-	config.outfile.write(  str(count)+' '+ name+' '+ 'whereof'+' '+ str(monoclonal[name])+' '+'were monoclonal'+'\n')
-	
+        if name != None and name != 'None':
+            defined_clust_mono += monoclonal[name]
+            config.outfile.write(  str(count)+' ('+str(round(100*float(count)/float(processed),2))+'%) '+ name+' '+ 'whereof'+' '+ str(monoclonal[name])+' ('+str(round(100*float(monoclonal[name])/float(count),2))+'%) were monoclonal'+'\n')
+        else:config.outfile.write(  str(count)+' ('+str(round(100*float(count)/float(processed),2))+'%) '+ name+' '+ 'whereof'+' '+ str(monoclonal[name])+' ( NA %) were monoclonal'+'\n')
+
+    
+    config.outfile.write(
+        str(defined_clust)+' ('+str(round(100*float(defined_clust)/float(processed),2))+'%) has at least one defined amplicon out of these are '+str(defined_clust_mono)+' ('+str(round(100*float(defined_clust_mono)/float(defined_clust),2))+'%) monoclonal for the defined amplicon(s)\n'+
+        '(ie there is only one consensus sequence of that type with more than '+str(indata.minimum_reads)+' reads and '+str(indata.minimum_support)+'% support, clustering done with '+str(indata.clustering_identity)+'% identity cutoff)\n'
+        )
 	
     # create a nice run summary
     config.logfile.write('Done.\n')
     return 0
 
 def foreachcluster_meta(cluster_pairs):
-    if cluster_pairs[0] == 0: return 'INITIAL'
+    if cluster_pairs[0][0] == 0: return 'INITIAL'
+    indata = cluster_pairs[1]
+    cluster_pairs = cluster_pairs[0]
     config = cluster_pairs[2]
     cid = cluster_pairs[1][0].cid
     verb = 3
@@ -313,9 +329,10 @@ def foreachcluster_meta(cluster_pairs):
 	import multiprocessing
 	tempo = time.time()
 	#config.logfile.write('starting '+' '.join(['cd-hit',''])+'\n')
-	cdhit = subprocess.Popen( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cid)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cid)+'.fa','-g','1','-c','0.97'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	cdhit = subprocess.Popen( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cid)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cid)+'.fa','-g','1','-c',str(indata.clustering_identity/100.0)], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	cdhit_out, errdata = cdhit.communicate()
 	if cdhit.returncode != 0:
+                print 'cmd: '+' '.join( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cid)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cid)+'.fa','-g','1','-c',str(indata.clustering_identity/100.0)])
 		print 'cd-hit cluster='+str(cid)+' view Error code', cdhit.returncode, errdata
 		sys.exit()
 	#cd-hit_out = StringIO(cd-hit_out)
@@ -327,7 +344,8 @@ def foreachcluster_meta(cluster_pairs):
 	ccc = subprocess.Popen( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cid)+'.fa',config.path+'/sortedReads/cluster.'+str(cid)+'.consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.aligned'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	ccc_out, errdata = ccc.communicate()
 	if ccc.returncode != 0:
-		print 'cluster='+str(cid)+'ccc view Error code', ccc.returncode, errdata
+                print 'cmd: '+' '.join( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cid)+'.fa',config.path+'/sortedReads/cluster.'+str(cid)+'.consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.aligned'])
+		print 'cluster='+str(cid)+' cdhit-cluster-consensus view Error code', ccc.returncode, errdata
 		print ccc_out
 		sys.exit()
 
@@ -406,7 +424,7 @@ def foreachcluster_meta(cluster_pairs):
 	    primerpairs = []
 	    if 'Consensus' in consensuses[consensusid]:
 		if verb >=2: output += 'Consensus number '+consensusid+' from '+str(len(consensuses[consensusid])-1)+' read pairs'
-		if verb >=2: output += ':\t\t\t'+consensuses[consensusid]['Consensus'][0]+'\n'
+		if verb >=2: output += ':\t\t'+consensuses[consensusid]['Consensus'][0]+'\n'
 	    for read_id, tmp in consensuses[consensusid].iteritems():
 		[seq, identity] = tmp
 		if identity[-1] == '*': identity = 'SEED'
@@ -428,8 +446,8 @@ def foreachcluster_meta(cluster_pairs):
 #		types[primerpairs[0]]['total']=len(consensuses[consensusid])-1
 	    if verb >=2: output += '\n\n'
 
-	perccutoff = 5.0
-	countcutoff = 5
+	perccutoff  = indata.minimum_support#5.0
+	countcutoff = indata.minimum_reads#5
 	#remove less than 5% (should I remove singletons aswell?)
 	tmp = {}
 	typecounter={}
@@ -505,11 +523,11 @@ def foreachcluster_meta(cluster_pairs):
 
 	return [output, _its,_16s,return_info,seqdict]#str(cluster_pairs[1][0].cid)+' has '+str(len(cluster_pairs[1]))+' read pairs'
 
-def clusteriterator(clusterq):  # a generator that yields clusters from queue until it finds a cluster = END
+def clusteriterator(clusterq, indata):  # a generator that yields clusters from queue until it finds a cluster = END
     while True:
 	pairs = clusterq.get()
 	if pairs == 'END': break
-	yield pairs
+	yield [pairs, indata]
     
 def getClustersAndPairs(config,clusterq):
     
