@@ -132,6 +132,7 @@ def sortreads(indata):
     config.logfile.write('Reads sorted into sortedReads/sorted_by_barcode_cluster.1.fq\n')
     config.logfile.write('Part1: Sorting reads to clusters END\n----------\n')
     config.logfile.close()
+    config.outfile.write('Finished as expected\n')
     config.outfile.close()
     return 0
 
