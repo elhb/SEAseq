@@ -35,7 +35,7 @@ def sbatch(indata):
             'echo "$(date) Running on: $(hostname)"'+'\n'+
             'cd '+os.getcwd()+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' clusterbarcodes -path '+config.path+' -bm 2 -hm 4 -seed 2000 -p 8'+'\n'
+            sys.argv[0]+' clusterbarcodes -path '+config.path+' -bm '+str(indata.bcmm)+' -hm '+str(indata.handlemm)+' -seed '+str(indata.seed)+' -p 8'+'\n'
         )
         f.close()
     
@@ -58,7 +58,7 @@ def sbatch(indata):
             'echo "$(date) Running on: $(hostname)"'+'\n'+
             'cd '+os.getcwd()+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' sortreads -path '+config.path+' -p8'+'\n'
+            sys.argv[0]+' sortreads -path '+config.path+' -sortfmt '+str(indata.sortfmt)+' -p8'+'\n'
         )
         f.close()
         
@@ -68,7 +68,8 @@ def sbatch(indata):
             '#SBATCH -A b2011011'+'\n'+
             '#SBATCH -n 8 -p node'+'\n')
         if not indata.small:
-                f.write('#SBATCH -C fat'+'\n')
+                f.write(#'#SBATCH -C fat'+'\n'+
+                        '#SBATCH -t 24:00:00'+'\n')
         else:
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
@@ -80,7 +81,7 @@ def sbatch(indata):
             'echo "$(date) Running on: $(hostname)"'+'\n'+
             'cd '+os.getcwd()+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' meta -path '+config.path+' -p8'+'\n'+
+            sys.argv[0]+' meta -path '+config.path+' -p8'+'-mr '+str(indata.minimum_reads)+' -ms '+str(indata.minimum_support)+' -mi '+str(indata.clustering_identity)+'\n'+
             'grep -vP "^((Read)|([0-9]+\t)|P|c|(Co))" '+config.path+'/meta.out.txt | cat -s > '+config.path+'/meta.smaller.out.txt\n'
         )
         f.close()
@@ -105,7 +106,7 @@ def sbatch(indata):
             'module load bioinfo-tools blast/2.2.28+ biopython'+'\n'+
             'module unload python/2.6.6'+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' classifymeta -path '+config.path+''+'\n'
+            sys.argv[0]+' classifymeta -path '+config.path+''+' -db '+str(indata.database)+' -gidb '+str(indata.gidatabase)+' -identity '+str(indata.identity)+' -length '+str(indata.length)+'\n'
         )
         f.close()
     

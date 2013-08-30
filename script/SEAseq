@@ -74,19 +74,19 @@ def getindata(cmd):
     argparser.add_argument('-path',	dest='path',	metavar='<path>',	type=str,	required=True,	default=False,	help='Set the analysis path.')
     argparser.add_argument('--src',	dest='skipreadcounting', 	action='store_true', 			required=False,	default=False,	help='Skip read counting (for speeding up debug runs, sets readcount to 30M/infile).')
     if cmd == 'init': pass
-    elif cmd == 'sbatch':
+    if cmd == 'sbatch':
 	argparser.add_argument('-jobname',	dest='jobname',	metavar='NAME',			type=str,	required=False,	default='',	help='Name be able to identify sample, only 11first char will be visible for jobinfo (default "")')
 	argparser.add_argument('--send',	dest='send', 	action='store_true', 			required=False,	default=False,	help='Send sbatch scripts to job-queue.')
 	argparser.add_argument('--sendonly',	dest='sendonly',action='store_true', 			required=False,	default=False,	help='Do not generate the files only Send sbatch scripts to job-queue.')
 	argparser.add_argument('--small',	dest='small', 	action='store_true', 			required=False,	default=False,	help='make for smaller dataset job-queue.')
-    elif cmd == 'addfqs':
+    if cmd == 'addfqs':
 	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='Indata "fastq"-file read1.')
 	argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='Indata "fastq"-file read2.')
-    elif cmd == 'clusterbarcodes':
+    if cmd == 'clusterbarcodes' or cmd == 'sbatch':
 	argparser.add_argument(	'-bm',			dest='bcmm',	metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in barcode sequence during clustering (default 0)')
 	argparser.add_argument(	'-hm',			dest='handlemm',metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in handle sequence (default 0)')
         argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=100,	help='Number of top barcodes (with most reads) to use as seeds in clustering(default 100)')
-    elif cmd == 'sortreads':
+    if cmd == 'sortreads' or cmd == 'sbatch':
         argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq]',			type=str,	required=False,	default='fq',	help='Format to output reads to fa=fasta or fq=fastq(default fastq)')
     if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta':
 	argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to run in parallel (default 1).')
@@ -94,11 +94,11 @@ def getindata(cmd):
 	argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
 	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
         argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED')
-    if cmd == 'meta':
+    if cmd == 'meta' or cmd == 'sbatch':
 	argparser.add_argument(	'-mr',			dest='minimum_reads',	metavar='N',				type=int,	required=False,	default=5,	help='minimum number of reads supporting a consensus sequence (default 5).')
 	argparser.add_argument(	'-ms',			dest='minimum_support',	metavar='N',				type=float,	required=False,	default=5.0,	help='minimum percentage of read population supporting a consensus sequence  (default 5).')
 	argparser.add_argument(	'-mi',			dest='clustering_identity',	metavar='N',				type=float,	required=False,	default=97.0,	help='Minimum identity for two sequences to cluster together (default 97).')
-    if cmd == 'classifymeta':
+    if cmd == 'classifymeta' or cmd == 'sbatch':
 	argparser.add_argument(	'-db',			dest='database',	metavar='FILE',			type=str,	required=False,	default='/bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa',	help='database for the BLAST search (default /bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa)')
 	argparser.add_argument(	'-gidb',		dest='gidatabase',	metavar='FILE',			type=str,	required=False,	default='/bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.gi2organism.db',	help='database for gi number to organism name conversion (None = fetch online from ncbi)')
 	argparser.add_argument(	'-identity',		dest='identity',	metavar='N',			type=float,	required=False,	default=97.0,	help='Identity cutoff for BLAST hits (default 97 percent).')
