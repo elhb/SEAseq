@@ -13,6 +13,7 @@ def sbatch(indata):
     
     import os
     import sys
+    uppmaxprojectid = 'b2011168'
 
     if not indata.sendonly:
         config.logfile.write('Creating sbatch scripts.\n')
@@ -20,7 +21,7 @@ def sbatch(indata):
         f = open(config.path +'/sbatch.cluster.sh','w')
         f.write(
             '#! /bin/bash -l'+'\n'+
-            '#SBATCH -A b2011011'+'\n'+
+            '#SBATCH -A '+uppmaxprojectid+''+'\n'+
             '#SBATCH -n 8 -p node'+'\n')
         if not indata.small:
                 f.write('#SBATCH -t 24:00:00'+'\n')
@@ -42,7 +43,7 @@ def sbatch(indata):
         f = open( config.path +'/sbatch.sortreads.sh','w')
         f.write(
             '#! /bin/bash -l'+'\n'+
-            '#SBATCH -A b2011011'+'\n'+
+            '#SBATCH -A '+uppmaxprojectid+''+'\n'+
             '#SBATCH -n 8 -p node'+'\n')
         if not indata.small:
                 f.write('#SBATCH -t 24:00:00'+'\n'+
@@ -65,7 +66,7 @@ def sbatch(indata):
         f = open( config.path +'/sbatch.meta.sh','w')
         f.write(
             '#! /bin/bash -l'+'\n'+
-            '#SBATCH -A b2011011'+'\n'+
+            '#SBATCH -A '+uppmaxprojectid+''+'\n'+
             '#SBATCH -n 8 -p node'+'\n')
         if not indata.small:
                 f.write(#'#SBATCH -C fat'+'\n'+
@@ -89,7 +90,7 @@ def sbatch(indata):
         f = open( config.path +'/sbatch.classify.sh','w')
         f.write(
             '#! /bin/bash -l'+'\n'+
-            '#SBATCH -A b2011011'+'\n'+
+            '#SBATCH -A '+uppmaxprojectid+''+'\n'+
             '#SBATCH -n 8 -p node'+'\n')
         if not indata.small:
                 f.write('#SBATCH -t 5:00:00'+'\n')
@@ -113,7 +114,7 @@ def sbatch(indata):
         f = open( config.path +'/sbatch.gzip.sh','w')
         f.write(
             '#! /bin/bash -l'+'\n'+
-            '#SBATCH -A b2011011'+'\n'+
+            '#SBATCH -A '+uppmaxprojectid+''+'\n'+
             '#SBATCH -n 8 -p node'+'\n'+
             '#SBATCH -t 72:00:00'+'\n'+
             '#SBATCH -J gzip_'+indata.jobname+'_'+config.path+'\n'+
