@@ -32,7 +32,7 @@ def meta(indata):
 	results=[] # create holder for processed reads
 	progress = Progress(config.clustercount, logfile=config.logfile) # creates a progress "bar" thingy
 	with progress:
-	    for cluster_pairs in clusteriterator(clusterq):
+	    for cluster_pairs in clusteriterator(clusterq, indata):
 		progress.update()
 		results.append(foreachcluster_meta(cluster_pairs))
 		#config.logfile.write('.');
@@ -41,8 +41,8 @@ def meta(indata):
     else: # multiple processes in parallel
 	import multiprocessing
 	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
-	#results = WorkerPool.imap_unordered(foreachcluster_meta,clusteriterator(clusterq),chunksize=10)
-	results = WorkerPool.imap(foreachcluster_meta,clusteriterator(clusterq, indata),chunksize=10)
+	results = WorkerPool.imap_unordered(foreachcluster_meta,clusteriterator(clusterq,indata),chunksize=1)
+	#results = WorkerPool.imap(foreachcluster_meta,clusteriterator(clusterq, indata),chunksize=10)
 
     nonecount = 0
     processed = 0
@@ -50,10 +50,15 @@ def meta(indata):
     onlyjunk = 0
     typecounter = {'ITS':0,'16S':0,'None':0,'both ITS and 16S':0}
     monoclonal = {'ITS':0,'16S':0,'None':'NA','both':{'only ITS':0,'only 16S':0,'None':0,'both':0}}
+    for amptype in ['ecoli','myco','lambda','m13']:
+        typecounter[amptype] = 0
+        monoclonal[amptype] = 0
+        
     if not indata.debug: config.logfile.write('Part1: Per cluster action '+str(indata.cpus)+' processes  ...\n')
     progress = Progress(config.clustercount, logfile=config.logfile, unit='cluster',mem=True)
     statstable = open(config.path+'/meta.statstable','w',1)
     statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support']
+    for amptype in ['ecoli','myco','lambda','m13']: statsheader.append(amptype+' reads');statsheader.append(amptype+' monoclonal');statsheader.append(amptype)
     statstable.write('\t'.join(statsheader))
     seqdump = open(config.path+'/meta.sequences.fa','w',1)
     with progress:
@@ -78,20 +83,32 @@ def meta(indata):
 		processed += 1
 
 		#print tmp[1:]		
-		if _its != None and _16s != None:
+		#if _its != None and _16s != None:
+                if return_info['its'] and return_info['16s']:
 		    typecounter['both ITS and 16S']+=1
-		    if _its and _16s: monoclonal['both']['both'] += 1
-		    if _its and not _16s: monoclonal['both']['only ITS'] += 1
-		    if _16s and not _its: monoclonal['both']['only 16S'] += 1
-		    if not _16s and not _its: monoclonal['both']['None'] += 1
-		elif _its != None:
+		#    if _its and _16s: monoclonal['both']['both'] += 1
+		#    if _its and not _16s: monoclonal['both']['only ITS'] += 1
+		#    if _16s and not _its: monoclonal['both']['only 16S'] += 1
+		#    if not _16s and not _its: monoclonal['both']['None'] += 1
+		#elif _its != None:
+                    if return_info['its monoclonal'] and return_info['16s monoclonal']: monoclonal['both']['both'] += 1
+		    if return_info['its monoclonal'] and not return_info['16s monoclonal']: monoclonal['both']['only ITS'] += 1
+		    if return_info['16s monoclonal'] and not return_info['its monoclonal']: monoclonal['both']['only 16S'] += 1
+		    if not return_info['16s monoclonal'] and not return_info['its monoclonal']: monoclonal['both']['None'] += 1
+		elif return_info['its']:
 		    typecounter['ITS'] += 1
-		    if _its: monoclonal['ITS'] += 1
-		elif _16s != None:
+		    if return_info['its monoclonal']: monoclonal['ITS'] += 1
+		elif return_info['16s']:
 		    typecounter['16S'] += 1
-		    if _16s: monoclonal['16S'] += 1
+		    if return_info['16s monoclonal']: monoclonal['16S'] += 1
 		else:
-		    typecounter['None'] += 1
+                    nonefound = True
+                    for amptype in ['ecoli','myco','lambda','m13']:
+                        if return_info[amptype]:
+                            typecounter[amptype] +=1
+                            if return_info[amptype+' monoclonal']: monoclonal[amptype]+=1
+                            nonefound = False;break
+		    if nonefound: typecounter['None'] += 1
 
 		# SEQDICT printing to file ONLY for both monoclonal
 		if _its and _16s:
@@ -101,7 +118,7 @@ def meta(indata):
 
 	    if return_info:
 		statstable.write( '\n'+'\t'.join([str(return_info[stat]) for stat in statsheader]) )
-		assert len(return_info) == len(statsheader)
+		#assert len(return_info) == len(statsheader)
 	seqdump.close()
 	statstable.close()
 
@@ -118,17 +135,23 @@ def meta(indata):
         if name == 'both ITS and 16S':
 	    config.outfile.write(  str(count)+' ('+str(round(100*float(count)/float(processed),2))+'%) '+ name+' '+ 'whereof:'+'\n')
 	    for name2,count2 in monoclonal['both'].iteritems():
-		config.outfile.write(  '\t'+' '+str(count2)+' ('+str(round(100*float(count2)/float(count),2))+'%) '+'were monoclonal for'+' '+name2+'\n')
+                percentage2 = 0
+                if count != 0: percentage2 = round(100*float(count2)/float(count),2)
+		config.outfile.write(  '\t'+' '+str(count2)+' ('+str(percentage2)+'%) '+'were monoclonal for'+' '+name2+'\n')
                 if name2 == 'both': defined_clust_mono += count2
 	    continue
         if name != None and name != 'None':
             defined_clust_mono += monoclonal[name]
-            config.outfile.write(  str(count)+' ('+str(round(100*float(count)/float(processed),2))+'%) '+ name+' '+ 'whereof'+' '+ str(monoclonal[name])+' ('+str(round(100*float(monoclonal[name])/float(count),2))+'%) were monoclonal'+'\n')
+            percentage = 0
+            if count: percentage = round(100*float(monoclonal[name])/float(count),2)
+            config.outfile.write(  str(count)+' ('+str(round(100*float(count)/float(processed),2))+'%) '+ name+' '+ 'whereof'+' '+ str(monoclonal[name])+' ('+str(percentage)+'%) were monoclonal'+'\n')
         else:config.outfile.write(  str(count)+' ('+str(round(100*float(count)/float(processed),2))+'%) '+ name+' '+ 'whereof'+' '+ str(monoclonal[name])+' ( NA %) were monoclonal'+'\n')
 
     
+    tmppercentage = 0
+    if defined_clust: tmppercentage = round(100*float(defined_clust_mono)/float(defined_clust),2)
     config.outfile.write(
-        str(defined_clust)+' ('+str(round(100*float(defined_clust)/float(processed),2))+'%) has at least one defined amplicon out of these are '+str(defined_clust_mono)+' ('+str(round(100*float(defined_clust_mono)/float(defined_clust),2))+'%) monoclonal for the defined amplicon(s)\n'+
+        str(defined_clust)+' ('+str(round(100*float(defined_clust)/float(processed),2))+'%) has at least one defined amplicon out of these are '+str(defined_clust_mono)+' ('+str(tmppercentage)+'%) monoclonal for the defined amplicon(s)\n'+
         '(ie there is only one consensus sequence of that type with more than '+str(indata.minimum_reads)+' reads and '+str(indata.minimum_support)+'% support, clustering done with '+str(indata.clustering_identity)+'% identity cutoff)\n'
         )
 	
@@ -166,10 +189,10 @@ def foreachcluster_meta(cluster_pairs):
 	'its monoclonal':None,
 	'16s monoclonal':None
     }
-    for amptype in ['ecioli','myco','lambda','m13']:
-        return_info[amptyupe+' reads'] = None
-        return_info[amptyupe] = None
-        return_info[amptyupe+' monoclonal'] = None
+    for amptype in ['ecoli','myco','lambda','m13']:
+        return_info[amptype+' reads'] = None
+        return_info[amptype] = None
+        return_info[amptype+' monoclonal'] = None
     
     
     from SEAseqLib.mainLibrary import SEAseqpair, sequence, UIPAC2REGEXP
@@ -230,22 +253,16 @@ def foreachcluster_meta(cluster_pairs):
 	    #ITS_rev em	CTCTWRMAGCCARGGCATCCACC
 	    #ITS_rev allCTCYDANTGCCSRGGCATCCACC
 	    rev_ITS =  'CTCYDRNWGCCVRGGCATCCACC'
-#>2th_fwd_primer_Escherichia_coli_str._K-12_substr._MG1655_chromosome
-            fwd_ecoli = TGCGAACGCGCGAATCAACTGG
-#>2nd_rev_primer_Escherichia_coli_str._K-12_substr._MG1655_chromosome
-            rev_ecoli = AAGCGCGCGGCTGAATTACTGG
-#>7th_fwd_primer_Enterobacteria_phage_M13
-            fwd_m13 = GCCTCGTTCCGGCTAAGTAACATGGAG
-#>7th_rev_primer_Enterobacteria_phage_M13
-            rev_m13 = AGTTGCGCCGACAATGACAACAACC
-#>3rd_rev_primer_Mycobacterium_tuberculosis_H37Rv_chromosome
-            rev_myco = TTCGTGGCACTTGCCGAACTGG
-#>3th_fwd_primer_Mycobacterium_tuberculosis_H37Rv_chromosome
-            fwd_myco = ATGCCGCAGCCAAGAACGCATC
-#>5th_fwd_primer_Enterobacteria_phage_lambda
-            fwd_lambda = TCAGCTATGCGCCGACCAGAACAC
-#>5th_rev_primer_Enterobacteria_phage_lambda
-            rev_lambda = TTCCATGACCGCACCAACAGGCTC
+
+            #new amplicons
+            fwd_ecoli   = 'TGCGAACGCGCGAATCAACTGG'
+            rev_ecoli   = 'AAGCGCGCGGCTGAATTACTGG'
+            fwd_m13     = 'GCCTCGTTCCGGCTAAGTAACATGGAG'
+            rev_m13     = 'AGTTGCGCCGACAATGACAACAACC'
+            rev_myco    = 'TTCGTGGCACTTGCCGAACTGG'
+            fwd_myco    = 'ATGCCGCAGCCAAGAACGCATC'
+            fwd_lambda  = 'TCAGCTATGCGCCGACCAGAACAC'
+            rev_lambda  = 'TTCCATGACCGCACCAACAGGCTC'
 
 	    fwd_16S = UIPAC2REGEXP(fwd_16S)
 	    rev_16S = UIPAC2REGEXP(rev_16S)
@@ -485,7 +502,7 @@ def foreachcluster_meta(cluster_pairs):
 	    primerpairs = []
 	    if 'Consensus' in consensuses[consensusid]:
 		if verb >=2: output += 'Consensus number '+consensusid+' from '+str(len(consensuses[consensusid])-1)+' read pairs'
-		if verb >=2: output += ':\t\t'+consensuses[consensusid]['Consensus'][0]+'\n'
+		if verb >=2: output += ':\t'+consensuses[consensusid]['Consensus'][0]+'\n'
 	    for read_id, tmp in consensuses[consensusid].iteritems():
 		[seq, identity] = tmp
 		if identity[-1] == '*': identity = 'SEED'
@@ -523,7 +540,7 @@ def foreachcluster_meta(cluster_pairs):
 		if percentage >= perccutoff and data['support'] >= countcutoff:
 		    tmp[cons_type][consensus] = data
 		    typecounter[cons_type] = True
-	types = tmp	
+	types = tmp
 
 	seqdict = {}
 	# make cluster summary and seqdict for dumping to fasta
@@ -565,7 +582,7 @@ def foreachcluster_meta(cluster_pairs):
 	return_info['16s'] = bool('16S' in typecounter)
 	return_info['its monoclonal'] = types['ITS']['mono']
 	return_info['16s monoclonal'] = types['16S']['mono']
-        for amptype in ['ecioli','myco','lambda','m13']:
+        for amptype in ['ecoli','myco','lambda','m13']:
             return_info[amptype+' reads'] = types[amptype]['total']
             return_info[amptype] = bool(amptype in typecounter)
             return_info[amptype+' monoclonal'] = types[amptype]['mono']
@@ -580,12 +597,18 @@ def foreachcluster_meta(cluster_pairs):
 
 	_its = None
 	_16s = None
+        _amptype = {'its':None,'16s':None,'ecoli':None,'myco':None,'m13':None,'lambda':None}
 	if 'ITS' in typecounter:
 	    _its = types['ITS']['mono']
 	    if _its: output+='Cluster is monoclonal for ITS.\n'
 	if '16S' in typecounter:
 	    _16s = types['16S']['mono']
 	    if _16s:output+='Cluster is monoclonal for 16S.\n'
+        for amptype in ['ecoli','myco','lambda','m13']:
+            if amptype in typecounter:
+                _amptype[amptype] = types[amptype]['mono']
+                if _amptype[amptype]:output+='Cluster is monoclonal for '+amptype+'.\n'
+        
 
 	return [output, _its,_16s,return_info,seqdict]#str(cluster_pairs[1][0].cid)+' has '+str(len(cluster_pairs[1]))+' read pairs'
 
