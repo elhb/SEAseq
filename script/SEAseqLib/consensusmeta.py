@@ -166,6 +166,11 @@ def foreachcluster_meta(cluster_pairs):
 	'its monoclonal':None,
 	'16s monoclonal':None
     }
+    for amptype in ['ecioli','myco','lambda','m13']:
+        return_info[amptyupe+' reads'] = None
+        return_info[amptyupe] = None
+        return_info[amptyupe+' monoclonal'] = None
+    
     
     from SEAseqLib.mainLibrary import SEAseqpair, sequence, UIPAC2REGEXP
     adaptercount = 0
@@ -225,6 +230,22 @@ def foreachcluster_meta(cluster_pairs):
 	    #ITS_rev em	CTCTWRMAGCCARGGCATCCACC
 	    #ITS_rev allCTCYDANTGCCSRGGCATCCACC
 	    rev_ITS =  'CTCYDRNWGCCVRGGCATCCACC'
+#>2th_fwd_primer_Escherichia_coli_str._K-12_substr._MG1655_chromosome
+            fwd_ecoli = TGCGAACGCGCGAATCAACTGG
+#>2nd_rev_primer_Escherichia_coli_str._K-12_substr._MG1655_chromosome
+            rev_ecoli = AAGCGCGCGGCTGAATTACTGG
+#>7th_fwd_primer_Enterobacteria_phage_M13
+            fwd_m13 = GCCTCGTTCCGGCTAAGTAACATGGAG
+#>7th_rev_primer_Enterobacteria_phage_M13
+            rev_m13 = AGTTGCGCCGACAATGACAACAACC
+#>3rd_rev_primer_Mycobacterium_tuberculosis_H37Rv_chromosome
+            rev_myco = TTCGTGGCACTTGCCGAACTGG
+#>3th_fwd_primer_Mycobacterium_tuberculosis_H37Rv_chromosome
+            fwd_myco = ATGCCGCAGCCAAGAACGCATC
+#>5th_fwd_primer_Enterobacteria_phage_lambda
+            fwd_lambda = TCAGCTATGCGCCGACCAGAACAC
+#>5th_rev_primer_Enterobacteria_phage_lambda
+            rev_lambda = TTCCATGACCGCACCAACAGGCTC
 
 	    fwd_16S = UIPAC2REGEXP(fwd_16S)
 	    rev_16S = UIPAC2REGEXP(rev_16S)
@@ -233,14 +254,30 @@ def foreachcluster_meta(cluster_pairs):
 	    
 	    #determine fwd primer
 	    pair.p1 = None
-	    p1_16S = re.match( fwd_16S,    pair.r1.seq[pair.handle_end:])
-	    p1_ITS = re.match( fwd_ITS,	   pair.r1.seq[pair.handle_end:])
+	    p1_16S      = re.match( fwd_16S,    pair.r1.seq[pair.handle_end:])
+	    p1_ITS      = re.match( fwd_ITS,	pair.r1.seq[pair.handle_end:])
+            p1_ecoli    = re.match( fwd_ecoli,	pair.r1.seq[pair.handle_end:])
+            p1_m13      = re.match( fwd_m13,	pair.r1.seq[pair.handle_end:])
+            p1_lambda   = re.match( fwd_lambda,	pair.r1.seq[pair.handle_end:])
+            p1_myco     = re.match( fwd_myco,	pair.r1.seq[pair.handle_end:])
 	    if	 p1_16S:
 		if verb >=3: output += '16S\t';
 		pair.p1 = '16S'
 	    elif p1_ITS:
 		if verb >=3: output += 'ITS\t';
 		pair.p1 = 'ITS'
+            elif p1_ecoli:
+		if verb >=3: output += 'ecoli\t';
+		pair.p1 = 'ecoli'
+            elif p1_myco:
+		if verb >=3: output += 'myco\t';
+		pair.p1 = 'myco'
+            elif p1_m13:
+		if verb >=3: output += 'm13\t';
+		pair.p1 = 'm13'
+            elif p1_lambda:
+		if verb >=3: output += 'lambda\t';
+		pair.p1 = 'lambda'                
 	    else:
 		if verb >=3: output += '???\t';
 		pair.p1 = '???'
@@ -249,12 +286,30 @@ def foreachcluster_meta(cluster_pairs):
 	    pair.p2 = None
 	    p2_16S = re.match( rev_16S,pair.r2.seq)
 	    p2_ITS = re.match( rev_ITS,  pair.r2.seq)
+            
+            p2_ecoli = re.match( rev_ecoli,  pair.r2.seq)
+            p2_myco = re.match( rev_myco,  pair.r2.seq)
+            p2_m13 = re.match( rev_m13,  pair.r2.seq)
+            p2_lambda = re.match( rev_lambda,  pair.r2.seq)
+            
 	    if 	 p2_16S:
 		if verb >=3: output += '16S\t';
 		pair.p2 = '16S'
 	    elif p2_ITS:
 		if verb >=3: output += 'ITS\t';
 		pair.p2 = 'ITS'
+	    elif p2_ecoli:
+		if verb >=3: output += 'ecoli\t';
+		pair.p2 = 'ecoli'
+	    elif p2_myco:
+		if verb >=3: output += 'myco\t';
+		pair.p2 = 'myco'
+	    elif p2_m13:
+		if verb >=3: output += 'm13\t';
+		pair.p2 = 'm13'
+	    elif p2_lambda:
+		if verb >=3: output += 'lambda\t';
+		pair.p2 = 'lambda'
 	    else:
 		if verb >=3: output += '???\t';
 		pair.p2 = '???'
@@ -267,6 +322,7 @@ def foreachcluster_meta(cluster_pairs):
 		    output += pair.r1.seq +' '+ pair.r2.seq+'\n'
 		continue 
 
+### this part does nopt care about new amplicons ####
 	    #look for unexpected primer sequences
 	    if pair.p1 == '16S':
 	        fwd16S_in_r2  = re.search( fwd_16S,     pair.r2.seq) #16 fwd in read 2
@@ -296,6 +352,7 @@ def foreachcluster_meta(cluster_pairs):
 			output += pair.r1.seq +' '+ pair.r2.seq+'\n'
 		    #print 'Happened'
 		    continue
+#####################################################
 
 	    #output +='\n'
 	    if verb >=3: output += pair.r1.seq +' '+ pair.r2.seq+'\n'
@@ -303,6 +360,10 @@ def foreachcluster_meta(cluster_pairs):
 	    # prepare for clustering
 	    if   pair.p1 == '16S': tem_seq = pair.r1.seq[pair.handle_end:][20:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-26]
 	    elif pair.p1 == 'ITS': tem_seq = pair.r1.seq[pair.handle_end:][23:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-24]
+            elif pair.p1 == 'ecoli':   tem_seq = pair.r1.seq[pair.handle_end:][len(fwd_ecoli)+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(rev_ecoli)+1)]
+            elif pair.p1 == 'myco':    tem_seq = pair.r1.seq[pair.handle_end:][len(fwd_myco)+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(rev_myco)+1)]
+            elif pair.p1 == 'm13':     tem_seq = pair.r1.seq[pair.handle_end:][len(fwd_m13)+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(rev_m13)+1)]
+            elif pair.p1 == 'lambda':  tem_seq = pair.r1.seq[pair.handle_end:][len(fwd_lambda)+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(rev_lambda)+1)]
 	    int2header[tmpcounter] = pair.header
 	    reads[pair.header] = pair
 	    f.write(
@@ -418,7 +479,7 @@ def foreachcluster_meta(cluster_pairs):
 
 	#make output for alnignments
 	if verb >=2: output += '\n'
-	types = {'ITS':{'total':0},'16S':{'total':0}}
+	types = {'ITS':{'total':0},'16S':{'total':0},'ecoli':{'total':0},'myco':{'total':0},'m13':{'total':0},'lambda':{'total':0}}
 	for consensusid in consensuses:
 	    if  not consensusid: continue
 	    primerpairs = []
@@ -504,6 +565,11 @@ def foreachcluster_meta(cluster_pairs):
 	return_info['16s'] = bool('16S' in typecounter)
 	return_info['its monoclonal'] = types['ITS']['mono']
 	return_info['16s monoclonal'] = types['16S']['mono']
+        for amptype in ['ecioli','myco','lambda','m13']:
+            return_info[amptype+' reads'] = types[amptype]['total']
+            return_info[amptype] = bool(amptype in typecounter)
+            return_info[amptype+' monoclonal'] = types[amptype]['mono']
+
 
 	import os
 	os.remove(config.path+'/sortedReads/temporary.'+str(cid)+'.fa')
