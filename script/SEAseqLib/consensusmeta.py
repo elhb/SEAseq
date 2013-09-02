@@ -48,8 +48,8 @@ def meta(indata):
     processed = 0
     lowread = 0
     onlyjunk = 0
-    typecounter = {'ITS':0,'16S':0,'None':0,'both ITS and 16S':0}
-    monoclonal = {'ITS':0,'16S':0,'None':'NA','both':{'only ITS':0,'only 16S':0,'None':0,'both':0}}
+    typecounter = {'ITS':0,'16S':0,'undefined':0,'both ITS and 16S':0}
+    monoclonal = {'ITS':0,'16S':0,'undefined':'NA','both':{'only ITS':0,'only 16S':0,'None':0,'both':0}}
     for amptype in ['ecoli','myco','lambda','m13']:
         typecounter[amptype] = 0
         monoclonal[amptype] = 0
@@ -89,7 +89,7 @@ def meta(indata):
 		#    if _its and _16s: monoclonal['both']['both'] += 1
 		#    if _its and not _16s: monoclonal['both']['only ITS'] += 1
 		#    if _16s and not _its: monoclonal['both']['only 16S'] += 1
-		#    if not _16s and not _its: monoclonal['both']['None'] += 1
+		#    if not _16s and not _its: monoclonal['both']['undefined'] += 1
 		#elif _its != None:
                     if return_info['its monoclonal'] and return_info['16s monoclonal']: monoclonal['both']['both'] += 1
 		    if return_info['its monoclonal'] and not return_info['16s monoclonal']: monoclonal['both']['only ITS'] += 1
@@ -108,7 +108,7 @@ def meta(indata):
                             typecounter[amptype] +=1
                             if return_info[amptype+' monoclonal']: monoclonal[amptype]+=1
                             nonefound = False;break
-		    if nonefound: typecounter['None'] += 1
+		    if nonefound: typecounter['undefined'] += 1
 
 		# SEQDICT printing to file ONLY for both monoclonal
 		if _its and _16s:
@@ -131,7 +131,7 @@ def meta(indata):
     config.outfile.write(  str(onlyjunk) + ' ('+str(round(100*float(onlyjunk)/float(processed),2))+'%) clusters of only adapter sequences or faulty primers'+'\n')
     config.outfile.write(  str(lowread)  + ' ('+str(round(100*float(lowread)/ float(processed),2))+'%) clusters with to few reads to be analysed'+'\n')
     for name,count in typecounter.iteritems():
-	if name != None and name != 'None':defined_clust += count
+	if name != None and name != 'undefined':defined_clust += count
         if name == 'both ITS and 16S':
 	    config.outfile.write(  str(count)+' ('+str(round(100*float(count)/float(processed),2))+'%) '+ name+' '+ 'whereof:'+'\n')
 	    for name2,count2 in monoclonal['both'].iteritems():
@@ -140,7 +140,7 @@ def meta(indata):
 		config.outfile.write(  '\t'+' '+str(count2)+' ('+str(percentage2)+'%) '+'were monoclonal for'+' '+name2+'\n')
                 if name2 == 'both': defined_clust_mono += count2
 	    continue
-        if name != None and name != 'None':
+        if name != None and name != 'undefined':
             defined_clust_mono += monoclonal[name]
             percentage = 0
             if count: percentage = round(100*float(monoclonal[name])/float(count),2)
