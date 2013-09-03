@@ -94,6 +94,8 @@ def getindata(cmd):
 	argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
 	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
         argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED')
+	argparser.add_argument(	'-trimr1',		dest='trimr1',	metavar='N',				type=int,	required=False,	default=0,	help='Number of bases to trim from 3prime end of r1 (default 0)')
+	argparser.add_argument(	'-trimr2',		dest='trimr2',	metavar='N',				type=int,	required=False,	default=0,	help='Number of bases to trim from 3prime end of r2 (default 0)')
     if cmd == 'meta' or cmd == 'sbatch':
 	argparser.add_argument(	'-mr',			dest='minimum_reads',	metavar='N',				type=int,	required=False,	default=5,	help='minimum number of reads supporting a consensus sequence (default 5).')
 	argparser.add_argument(	'-ms',			dest='minimum_support',	metavar='N',				type=float,	required=False,	default=5.0,	help='minimum percentage of read population supporting a consensus sequence  (default 5).')

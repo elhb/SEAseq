@@ -59,7 +59,7 @@ def sbatch(indata):
             'echo "$(date) Running on: $(hostname)"'+'\n'+
             'cd '+os.getcwd()+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' sortreads -path '+config.path+' -sortfmt '+str(indata.sortfmt)+' -p8'+'\n'
+            sys.argv[0]+' sortreads -path '+config.path+' -sortfmt '+str(indata.sortfmt)+' -p8 -trimr1 '+str(indata.trimr1)+' -trimr2 '+str(indata.trimr2)+'\n'
         )
         f.close()
         

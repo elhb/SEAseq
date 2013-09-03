@@ -106,8 +106,10 @@ def sortreads(indata):
 	    progress.update()
 	    if pair.cid:
 		if config.sortformat == 'fq':
-		    chunk_list[pair.cid/chunksize][pair.cid%chunksize][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r1.seq+'\n+\n'+pair.r1.qual+'\n')
-		    chunk_list[pair.cid/chunksize][pair.cid%chunksize][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r2.seq+'\n+\n'+pair.r2.qual+'\n')
+                    if indata.trimr1:   chunk_list[pair.cid/chunksize][pair.cid%chunksize][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r1.seq[:-indata.trimr1]+'\n+\n'+pair.r1.qual[:-indata.trimr1]+'\n')
+                    else:               chunk_list[pair.cid/chunksize][pair.cid%chunksize][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r1.seq+'\n+\n'+pair.r1.qual+'\n')
+                    if indata.trimr2:   chunk_list[pair.cid/chunksize][pair.cid%chunksize][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r2.seq[:-indata.trimr2]+'\n+\n'+pair.r2.qual[:-indata.trimr2]+'\n')
+                    else:	        chunk_list[pair.cid/chunksize][pair.cid%chunksize][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r2.seq+'\n+\n'+pair.r2.qual+'\n')
 		elif config.sortformat == 'fa':
 		    f1.write('>' + '_'.join(pair.r1.header.split(' ')) + '_r1_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r1.seq+'\n'+
 			     '>' + '_'.join(pair.r2.header.split(' ')) + '_r2_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r2.seq+'\n')
