@@ -453,56 +453,6 @@ class readpair():
 				thread = tntthread(revcomp(self.r2.seq)[exthandle_end:tjhandle_start])
 				self.threads.append(thread)
 
-class tntthread(sequence):
-    #Represents the specific part of a tnt thread without the general handles"""
-
-	def __init__(self,seq):
-		self.seq = seq
-
-	def identifyspecific(self,config,extbyseq,ext_primers,tjbyseq,tj_primers):
-		import re
-		self.extprimer = None
-		self.tjprimer = None
-		try:
-			for ID in extbyseq[self.seq[:19]]:
-				match = re.search('^'+ext_primers[ID], self.seq)
-				if match:
-					self.extprimer= ID;
-		except KeyError: pass
-		try:
-			for ID in tjbyseq[self.seq[-19:]]:
-				match = re.search(tj_primers[ID]+'$', self.seq)
-				if match:
-					self.tjprimer= ID;
-		except KeyError: pass
-		
-		matchfunk = levenshtein
-		
-		if not self.tjprimer and config.primeredit:
-			minedit = [300, 'NA']
-			for primer_id, seq in tj_primers.iteritems():
-				dist = matchfunk(seq,self.seq[-len(seq)::])
-				if dist < minedit[0]: minedit = [dist, primer_id]
-				if minedit[0] <= config.primeredit: break
-			if minedit[0] <= config.primeredit: self.tjprimer = primer_id
-		if not self.extprimer and config.primeredit:
-			minedit = [300, 'NA']
-			for primer_id, seq in ext_primers.iteritems():
-				dist = matchfunk(seq,self.seq[:len(seq)])
-				if dist < minedit[0]: minedit = [dist, primer_id]
-				if minedit[0] <= config.primeredit: break
-			if minedit[0] <= config.primeredit: self.extprimer = primer_id
-		
-		#if not self.extprimer:
-		#	mm=3
-		#	vote=[]
-		#	for i in range(19):
-		#		#print i, self.seq[i], extprimerpositions[i][self.seq[i]]
-		#		for ID in extprimerpositions[i][self.seq[i]]:
-		#			vote.append(ID)
-		#	if vote.count(max(vote)) > 19-mm: print 'update ext:',max(vote)
-		return
-
 def comp(str):
 	return str.replace("A","X").replace("T","A").replace("X","T").replace("G","X").replace("C","G").replace("X","C")
 
@@ -525,58 +475,6 @@ def levenshtein(s1, s2):
 			current_row.append(min(insertions, deletions, substitutions))
 		previous_row = current_row
 	return previous_row[-1]
-
-class Variation():
-	
-	def __init__(self,var_id):
-		self.id = var_id
-		self.threads = []
-		self.reference = sequence(self.id,VARIATIONINFO[self.id]['ref'],VARIATIONINFO[self.id]['ref'])
-		self.snp = VARIATIONINFO[self.id]['snp']
-		self.output = 'No alignment performed'
-
-	
-	def add(self, thread):
-		self.threads.append(thread)
-	
-	@property
-	def len(self):
-		return len(self.threads)
-	
-	def alignthreads(self):
-		
-		from Bio import pairwise2
-		from Bio.SubsMat import MatrixInfo as matlist
-		import re
-		
-		matrix = matlist.genetic
-		gap_open = -10
-		gap_extend = -1.5
-
-		var_pos_bases = {}
-		
-		for thread in self.threads:
-			
-			if 'N' in self.reference.seq: raise ValueError
-			
-			alns = pairwise2.align.localds(self.reference.seq.replace(self.snp,'N'), thread.seq, matrix, gap_open, gap_extend)
-			top_aln = alns[0]
-			#read.aligned_ref, read.aligned_seq, read.aln_score, begin, end = top_aln
-			aligned_ref = top_aln[0]
-			aligned_seq = top_aln[1]
-			aln_score   = top_aln[2]
-			
-			var_aln_pos = re.search('N',aligned_ref)
-			if not var_aln_pos: raise Error
-
-			try: 			var_pos_bases[ aligned_seq[var_aln_pos.start()] ] += 1
-			except KeyError:var_pos_bases[ aligned_seq[var_aln_pos.start()] ] = 1
-		total = sum([count for base,count in var_pos_bases.iteritems()])
-
-		self.output = self.id +'\t' + '/'.join(uipac(self.snp,'bases'))
-		for base,count in var_pos_bases.iteritems():
-			self.output += '\t'+ base + '\t' + str(round(100*float(count)/total,2)) + ' %\t' + str(count)
-		self.output += '\n'
 
 def uipac(bases, back='uipac'): #U	Uracil NOT SUPPORTED!!!
 	if back == 'uipac':
