@@ -3,6 +3,23 @@ import os
 MASTER = os.getpid()
 version = 'ALPHA 1.3'
 
+class BarcodeCluster(object):
+	def __init__(self, id_number, barcode_sequence):
+		self.id = id_number
+		self.barcodesequence = barcode_sequence
+		self.readpairs = []
+		self.consensuses = []
+		self.amplicons = []
+
+class Amplicon(object):
+	def __init__(self, amplicon_type):
+		self.consensuses = []
+		self.type = amplicon_type
+
+class Consensus(object):
+	def __init__(self, amplicon_type):
+		self.readpairs = []
+
 def initiate_file(filename, logfile, mode='w'):
     import os
     
