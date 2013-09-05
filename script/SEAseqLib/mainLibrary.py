@@ -3,100 +3,55 @@ import os
 MASTER = os.getpid()
 version = 'ALPHA 1.3'
 
-class BarcodeCluster(object):
+##### MAIN #####
 
-	def __init__(self, id_number, barcode_sequence):
-		self.id = id_number
-		self.barcodesequence = barcode_sequence
-		self.readpairs = []
-		self.consensuses = []
-		self.amplicons = []
+def lib_main(): pass
 
-	def addreadpair(self, pair):
-		if pair.cid: cluster_id = pair.cid
-		else: cluster_id = int(pair.header.split(':')[-1].split('_')[1])
-		if cluster_id == self.id:
-			self.readpairs.append(pair)
-		else:
-			import sys
-			sys.stderr.write('ERROR: Cluster id from read pair does not match the barcode cluster id.\n')
-			raise ValueError
-	
-	@property
-	def readcount(self):
-		return len(self.readpairs)
+#### CLASSES ####
 
-	@property
-	def ampliconpairs(self):
-		tmp_counter = 0
-		for pair in self.readpairs:
-			if pair.isillumina or pair.primererror: continue
-			tmp_counter += 1
-		return tmp_counter
+class Progress():
 
-class Amplicon(object):
+	def __init__(self,total, verb='full', logfile=sys.stderr, unit='read' ,mem=False, printint=0):
+		import time
+		self.total = total
+		self.current = 0
+		self.type = verb
+		self.logfile = logfile
+		self.ltime = time.time()
+		self.lcurrent = self.current
+		self.lpercentage = 0
+		if verb == 'full': self.printint = 5
+		elif verb == 'minimal':self.printint = 5
+		self.unit = unit
+		self.mem = mem
+		if printint: self.printint = printint
 
-	def __init__(self, amplicon_type):
-		self.consensuses = []
-		self.type = amplicon_type
-		
-	def addconsesnsus(self,consensus ):
-		if consensus.type == self.type: self.consensussses.append(consensus)
-		else:
-			import sys
-			sys.stderr.write('ERROR: Amplicon type does not match the Consensus type.\n')
-			raise ValueError
+	def __enter__(self):
+		if self.type == 'minimal': self.logfile.write('0%                 50%                 100%\n')
+		#                                              ....................................................................................
 
-class Consensus(object):
+	def update(self):
+		import time
+		self.current += 1
+		self.percentage = int(round(100*float(self.current)/self.total))
+		if self.percentage % self.printint == 0 and self.percentage != self.lpercentage:
+			self.stf=int(round((self.total-self.current)/((self.current-self.lcurrent)/(time.time()-self.ltime))))
+			if self.type == 'full': self.logfile.write(
+				'#Progress => '+str(self.percentage)+'%, '+
+				str( round((self.current-self.lcurrent)/(time.time()-self.ltime),2) )+' '+self.unit+'s/second, '+
+				time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+
+				', left: '+str(self.stf/60/60)+'h '+str(self.stf/60%60)+'min '+str(self.stf%60)+'s')
+			if self.mem:
+				import resource
+				self.logfile.write(', using '+str((resource.getrusage(resource.RUSAGE_SELF).ru_maxrss+resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)/1024)+' ('+str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024)+') MB.\n')
+			else:	self.logfile.write('\n')
+			if self.type == 'minimal': self.logfile.write('..')
+			self.ltime = time.time()
+			self.lcurrent = self.current
+			self.lpercentage = self.percentage
 
-	def __init__(self, amplicon_type):
-		self.readpairs = []
-		self.type = amplicon_type
-
-	def addreadpair(self, pair):
-		if pair.p1 == self.type:
-			self.readpairs.append(pair)
-		else:
-			import sys
-			sys.stderr.write('ERROR: Consensus type does not match the readpair fwd primer.\n')
-			raise ValueError
-
-def initiate_file(filename, logfile, mode='w'):
-    import os
-    
-    if type(logfile) == file and mode != 'r': logfile.write('Initiating '+filename+' ...\n')
-    
-    if mode == 'w' and os.path.exists(filename):
-	tmp = filename
-	filename = raw_input('WARNING: the file '+filename+' already excists. Enter an alternative filename (leave empty to overwrite):')
-	if type(logfile) == file and mode != 'r': logfile.write('WARNING: the file '+filename+' already excists. Enter an alternative filename (leave empty to overwrite):')
-	if not filename:
-	    filename = tmp
-	    if type(logfile) == file and mode != 'r': logfile.write('overwriting\n')
-	#else:
-	#    if type(indata.logfile) == file and mode != 'r': config.logfile.write('Creating file '+filename+'.\n')
-    
-    if mode =='ow': mode ='w'
-    import re
-    #if re.search('log',filename):	out = open(filename, mode,0)
-    #else:				out = open(filename, mode,1)
-    out = open(filename, mode,1)
-    
-    if type(logfile) == file and mode != 'r': logfile.write('File '+filename+' sucessfully initiated.\n')
-    
-    return out
-
-def writelogheader(logfile):
-    import sys
-    import time
-    import getpass
-    username = getpass.getuser()
-    logfile.write('----------------\n')
-    logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
-    logfile.write('Version: '+version+'\n')
-    logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
-    logfile.write('Master process id='+str(MASTER)+'\n')
-    logfile.write('Started by user = '+username+'\n')
+	def __exit__(self, *args):
+		self.logfile.write('\n')
 
 class Configuration():
     
@@ -234,84 +189,6 @@ class Configuration():
 	self.config.close()
 	self.config = self.config.name
 
-def lib_main(): pass
-
-def gi2orgname(gi_number):
-	from Bio import Entrez
-	Entrez.email = "erik.borgstrom@scilifelab.se"
-	handle = Entrez.efetch(db="nucleotide", id=gi_number, retmode="xml")
-	records = Entrez.read(handle)
-	assert len(records) == 1
-	return records[0]['GBSeq_organism']
-
-def UIPAC2REGEXP(string):
-    return string.replace('R','[AG]').replace('Y','[CT]').replace('S','[GC]').replace('W','[AT]').replace('K','[GT]').replace('M','[AC]').replace('B','[CGT]').replace('D','[AGT]').replace('H','[ACT]').replace('V','[ACG]').replace('N','.')
-
-class Progress():
-
-	def __init__(self,total, verb='full', logfile=sys.stderr, unit='read' ,mem=False, printint=0):
-		import time
-		self.total = total
-		self.current = 0
-		self.type = verb
-		self.logfile = logfile
-		self.ltime = time.time()
-		self.lcurrent = self.current
-		self.lpercentage = 0
-		if verb == 'full': self.printint = 5
-		elif verb == 'minimal':self.printint = 5
-		self.unit = unit
-		self.mem = mem
-		if printint: self.printint = printint
-
-	def __enter__(self):
-		if self.type == 'minimal': self.logfile.write('0%                 50%                 100%\n')
-		#                                              ....................................................................................
-
-	def update(self):
-		import time
-		self.current += 1
-		self.percentage = int(round(100*float(self.current)/self.total))
-		if self.percentage % self.printint == 0 and self.percentage != self.lpercentage:
-			self.stf=int(round((self.total-self.current)/((self.current-self.lcurrent)/(time.time()-self.ltime))))
-			if self.type == 'full': self.logfile.write(
-				'#Progress => '+str(self.percentage)+'%, '+
-				str( round((self.current-self.lcurrent)/(time.time()-self.ltime),2) )+' '+self.unit+'s/second, '+
-				time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+
-				', left: '+str(self.stf/60/60)+'h '+str(self.stf/60%60)+'min '+str(self.stf%60)+'s')
-			if self.mem:
-				import resource
-				self.logfile.write(', using '+str((resource.getrusage(resource.RUSAGE_SELF).ru_maxrss+resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)/1024)+' ('+str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024)+') MB.\n')
-			else:	self.logfile.write('\n')
-			if self.type == 'minimal': self.logfile.write('..')
-			self.ltime = time.time()
-			self.lcurrent = self.current
-			self.lpercentage = self.percentage
-
-	def __exit__(self, *args):
-		self.logfile.write('\n')
-
-def hamming_distance(s1, s2):
-	assert len(s1) == len(s2), 'Error: '+str(len(s1)) + ' != ' + str(len(s2))
-	return sum(ch1 != ch2 for ch1, ch2 in zip(s1, s2))
-
-def bufcount(filename):
-	""" returns the number of lines in a file
-	"""
-	import gzip
-	if filename.split('.')[-1] in ['gz','gzip']: f = gzip.open(filename)
-	else: f = open(filename)
-	lines = 0
-	buf_size = 1024 * 1024
-	read_f = f.read # loop optimization
-	
-	buf = read_f(buf_size)
-	while buf:
-		lines += buf.count('\n')
-		buf = read_f(buf_size)
-		f.close
-	return lines
-
 class sequence():
 	def __init__(self,header,seq,qual):
 		self.header = header.rstrip()
@@ -344,93 +221,9 @@ class sequence():
 class read(sequence):
     "Represents one of several reads from a DNA fragment"
 
-def getPairs(config):
-	""" yield one readpair at a time from indata
-	"""
-	import re
-	import gzip	
-
-	# choose random reads to analyze from fastq files
-	if config.random:
-		import random
-		numreads=config.randomumreads
-		if config.stop: numreads = config.stop
-		config.logfile.write('Choosing '+str(config.random)+' random pairs to analyze ... ')
-		readNumbersToPrint = {}
-		while len(readNumbersToPrint) < config.random: readNumbersToPrint[random.randint(config.skip+1,numreads)] = True
-		tempo = readNumbersToPrint.keys()
-		tempo.sort()
-		readNumbersToPrint = tempo
-		config.logfile.write('done.\n')
-	
-	# set the counters to initial values
-	counter = 0
-	tmp=0
-	header="NA"
-	if config.skip: skip =True
-
-	# unpack infiles
-	for file1, file2 in zip(config.infiles['r1'],config.infiles['r2']):
-	
-		#check if files are gzipped
-		if file1.split('.')[-1] in ['gz','gzip']: file1 = gzip.open(file1)
-		else: file1 = open(file1,'r')
-		if file2.split('.')[-1] in ['gz','gzip']: file2 = gzip.open(file2)
-		else: file2 = open(file2,'r')
-
-		# itarate through fastq files and return readpairs
-		for r1line in file1:
-			r2line = file2.readline() #get line from  read2 file
-			
-			tmp+=1 # increment linecount
-			
-			#random speedup
-			if config.random and counter != readNumbersToPrint[0]:
-				#print tmp
-				if tmp == 4: tmp = 0;continue
-				elif tmp != 1: continue
-				#elif tmp == 1:
-					#counter+=1 # increase entry counter
-					#print '\t',counter,readNumbersToPrint[0]
-					#continue
-				
-			
-			# skip or stop if option is set on config
-			if config.skip and tmp < (4*config.skip) and skip: continue
-			elif config.skip and tmp == (4*config.skip) and skip: skip=False; tmp =0;continue
-			if config.stop and counter == config.stop: break
-
-			# depending on line number (within entry) do ...	
-			if tmp == 1: #header check match between files
-				counter+=1 # increase entry counter
-				header=r1line
-				if r1line.split(" ")[0] != r2line.split(" ")[0]: config.logfile.write('Error mismatching headers!');raise ValueError #os.kill(MASTER,1);sys.exit(1);#REALLYNOTOPTIMAL
-			elif tmp == 2: # sequence check that its DNA and save sequences till later
-				if counter == 1:
-					config.logfile.write('Checking data type of read 1 in pair 1 ... ')
-					match = re.match("^[AGTCN]+$",r1line.rstrip())
-					if match: config.logfile.write('this is DNA data.\n')
-					else: config.logfile.write(' this is not a DNA sequence ('+r1line.rstrip()+') could something be wrong with your fastq file?.\n\n');raise ValueError#os.kill(MASTER);sys.exit();#REALLYNOTOPTIMAL
-				r1seq = r1line.rstrip()
-				r2seq = r2line.rstrip()
-			elif tmp == 3: # "+"-line do some format check
-					if counter in {1:True,67:True,438:True,9675:True,53678:True,864513:True,1337354:True,317955:True,1226844:True,20389:True,118261:True}:
-						if r1line[0] != r2line[0] or r1line[0] != '+': config.logfile.write('Error Format not fastq!');raise ValueError#os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
-			elif tmp == 4: # quality values and end of entry, reset counter and yeild readpair
-					tmp=0 # reset line counter
-					r1qual = r1line.rstrip() #get qual strings
-					r2qual = r2line.rstrip()
-					
-					#yield readpair
-					if not config.random: yield [readpair(header.rstrip(), read(header.rstrip(),r1seq,r1qual), read(header.rstrip(),r2seq,r2qual)),config]
-					elif counter == readNumbersToPrint[0]:
-						yield [readpair(header.rstrip(), read(header.rstrip(),r1seq,r1qual), read(header.rstrip(),r2seq,r2qual)),config]
-						readNumbersToPrint = readNumbersToPrint[1:]
-						if len(readNumbersToPrint) == 0: break
-
 class readpair():
-    """ object representing an illumina cluster """
-    
+	""" object representing an illumina cluster """
+
 	def __init__(self,header,r1,r2):
 		self.header = header
 		self.r1 = r1 #first read
@@ -499,71 +292,6 @@ class readpair():
 			try: self.cid = config.cid_by_bc[self.n15.seq]
 			except KeyError: self.cid = False
 		else: self.cid = None
-
-
-def comp(str):
-	return str.replace("A","X").replace("T","A").replace("X","T").replace("G","X").replace("C","G").replace("X","C")
-
-def revcomp(str):
-	return comp(str[::-1])
-
-def levenshtein(s1, s2):
-	if len(s1) < len(s2):
-		return levenshtein(s2, s1)
-	if not s1:
-		return len(s2)
-	previous_row = xrange(len(s2) + 1)
-	for i, c1 in enumerate(s1):
-		current_row = [i + 1]
-		for j, c2 in enumerate(s2):
-			insertions = previous_row[j + 1] + 1 # j+1 instead of j since previous_row and current_row are one character longer
-			deletions = current_row[j] + 1       # than s2
-			substitutions = previous_row[j] + (c1 != c2)
-			if c1 == 'N' or c2 == 'N': substitutions -= 1 #if N then no mismatch
-			current_row.append(min(insertions, deletions, substitutions))
-		previous_row = current_row
-	return previous_row[-1]
-
-def uipac(bases, back='uipac'): #U	Uracil NOT SUPPORTED!!!
-	if back == 'uipac':
-		if 'N' in bases: return 'N'
-		uniqbases={}
-		for i in bases:
-			uniqbases[i]=True
-		bases = uniqbases.keys()
-		if 'U' in bases: sys.stderr.write('WARNING in function "uipac(bases)": Uracil NOT SUPPORTED!')
-		if len(bases)==1:
-			if 'A' in bases: return 'A' #A	Adenine
-			if 'C' in bases: return 'C' #C	Cytosine
-			if 'G' in bases: return 'G' #G	Guanine
-			if 'T' in bases: return 'T' #T	Thymine
-			#U	Uracil NOT SUPPORTED!!!
-		if len(bases)==2:
-			if 'A' in bases and 'G' in bases: return 'R' #R	Purine (A or G)
-			if 'C' in bases and 'T' in bases: return 'Y' #Y	Pyrimidine (C, T, or U)
-			if 'A' in bases and 'C' in bases: return 'M' #M	C or A
-			if 'T' in bases and 'G' in bases: return 'K' #K	T, U, or G
-			if 'A' in bases and 'T' in bases: return 'W' #W	T, U, or A
-			if 'C' in bases and 'G' in bases: return 'S' #S	C or G
-		if len(bases)==3:
-			if 'C' in bases and 'T' in bases and 'G' in bases: return 'B' #B	C, T, U, or G (not A)
-			if 'A' in bases and 'T' in bases and 'G' in bases: return 'D' #D	A, T, U, or G (not C)
-			if 'A' in bases and 'T' in bases and 'C' in bases: return 'H' #H	A, T, U, or C (not G)
-			if 'A' in bases and 'C' in bases and 'G' in bases: return 'V' #V	A, C, or G (not T, not U)
-		if len(bases)==4:
-			return 'N' #N	Any base (A, C, G, T, or U)
-	elif back == 'bases':
-		if   bases == 'R': return ['A','G'] 
-		elif bases == 'Y': return ['C','T']
-		elif bases == 'M': return ['A','C']
-		elif bases == 'K': return ['G','T']
-		elif bases == 'W': return ['A','T']
-		elif bases == 'S': return ['C','G']
-		elif bases == 'B': return ['C','T','G']
-		elif bases == 'D': return ['A','T','G']
-		elif bases == 'V': return ['A','C','G']
-		elif bases == 'H': return ['A','C','T']
-		elif bases == 'N': return ['A','G','T','C']
 
 class SEAseqSummary():
 	
@@ -708,6 +436,283 @@ class SEAseqSummary():
 		del clusters
 
 		return
+
+class BarcodeCluster(object):
+
+	def __init__(self, id_number, barcode_sequence):
+		self.id = id_number
+		self.barcodesequence = barcode_sequence
+		self.readpairs = []
+		self.consensuses = []
+		self.amplicons = []
+
+	def addreadpair(self, pair):
+		if pair.cid: cluster_id = pair.cid
+		else: cluster_id = int(pair.header.split(':')[-1].split('_')[1])
+		if cluster_id == self.id:
+			self.readpairs.append(pair)
+		else:
+			import sys
+			sys.stderr.write('ERROR: Cluster id from read pair does not match the barcode cluster id.\n')
+			raise ValueError
+	
+	@property
+	def readcount(self):
+		return len(self.readpairs)
+
+	@property
+	def ampliconpairs(self):
+		tmp_counter = 0
+		for pair in self.readpairs:
+			if pair.isillumina or pair.primererror: continue
+			tmp_counter += 1
+		return tmp_counter
+
+class Amplicon(object):
+
+	def __init__(self, amplicon_type):
+		self.consensuses = []
+		self.type = amplicon_type
+		
+	def addconsesnsus(self,consensus ):
+		if consensus.type == self.type: self.consensussses.append(consensus)
+		else:
+			import sys
+			sys.stderr.write('ERROR: Amplicon type does not match the Consensus type.\n')
+			raise ValueError
+
+class Consensus(object):
+
+	def __init__(self, amplicon_type):
+		self.readpairs = []
+		self.type = amplicon_type
+
+	def addreadpair(self, pair):
+		if pair.p1 == self.type:
+			self.readpairs.append(pair)
+		else:
+			import sys
+			sys.stderr.write('ERROR: Consensus type does not match the readpair fwd primer.\n')
+			raise ValueError
+
+#### FUNCTIONS ####
+
+def initiate_file(filename, logfile, mode='w'):
+    import os
+    
+    if type(logfile) == file and mode != 'r': logfile.write('Initiating '+filename+' ...\n')
+    
+    if mode == 'w' and os.path.exists(filename):
+	tmp = filename
+	filename = raw_input('WARNING: the file '+filename+' already excists. Enter an alternative filename (leave empty to overwrite):')
+	if type(logfile) == file and mode != 'r': logfile.write('WARNING: the file '+filename+' already excists. Enter an alternative filename (leave empty to overwrite):')
+	if not filename:
+	    filename = tmp
+	    if type(logfile) == file and mode != 'r': logfile.write('overwriting\n')
+	#else:
+	#    if type(indata.logfile) == file and mode != 'r': config.logfile.write('Creating file '+filename+'.\n')
+    
+    if mode =='ow': mode ='w'
+    import re
+    #if re.search('log',filename):	out = open(filename, mode,0)
+    #else:				out = open(filename, mode,1)
+    out = open(filename, mode,1)
+    
+    if type(logfile) == file and mode != 'r': logfile.write('File '+filename+' sucessfully initiated.\n')
+    
+    return out
+
+def writelogheader(logfile):
+    import sys
+    import time
+    import getpass
+    username = getpass.getuser()
+    logfile.write('----------------\n')
+    logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
+    logfile.write('Version: '+version+'\n')
+    logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
+    logfile.write('Master process id='+str(MASTER)+'\n')
+    logfile.write('Started by user = '+username+'\n')
+
+def gi2orgname(gi_number):
+	from Bio import Entrez
+	Entrez.email = "erik.borgstrom@scilifelab.se"
+	handle = Entrez.efetch(db="nucleotide", id=gi_number, retmode="xml")
+	records = Entrez.read(handle)
+	assert len(records) == 1
+	return records[0]['GBSeq_organism']
+
+def hamming_distance(s1, s2):
+	assert len(s1) == len(s2), 'Error: '+str(len(s1)) + ' != ' + str(len(s2))
+	return sum(ch1 != ch2 for ch1, ch2 in zip(s1, s2))
+
+def levenshtein(s1, s2):
+	if len(s1) < len(s2):
+		return levenshtein(s2, s1)
+	if not s1:
+		return len(s2)
+	previous_row = xrange(len(s2) + 1)
+	for i, c1 in enumerate(s1):
+		current_row = [i + 1]
+		for j, c2 in enumerate(s2):
+			insertions = previous_row[j + 1] + 1 # j+1 instead of j since previous_row and current_row are one character longer
+			deletions = current_row[j] + 1       # than s2
+			substitutions = previous_row[j] + (c1 != c2)
+			if c1 == 'N' or c2 == 'N': substitutions -= 1 #if N then no mismatch
+			current_row.append(min(insertions, deletions, substitutions))
+		previous_row = current_row
+	return previous_row[-1]
+
+def bufcount(filename):
+	""" returns the number of lines in a file
+	"""
+	import gzip
+	if filename.split('.')[-1] in ['gz','gzip']: f = gzip.open(filename)
+	else: f = open(filename)
+	lines = 0
+	buf_size = 1024 * 1024
+	read_f = f.read # loop optimization
+	
+	buf = read_f(buf_size)
+	while buf:
+		lines += buf.count('\n')
+		buf = read_f(buf_size)
+		f.close
+	return lines
+
+def getPairs(config):
+	""" yield one readpair at a time from indata
+	"""
+	import re
+	import gzip	
+
+	# choose random reads to analyze from fastq files
+	if config.random:
+		import random
+		numreads=config.randomumreads
+		if config.stop: numreads = config.stop
+		config.logfile.write('Choosing '+str(config.random)+' random pairs to analyze ... ')
+		readNumbersToPrint = {}
+		while len(readNumbersToPrint) < config.random: readNumbersToPrint[random.randint(config.skip+1,numreads)] = True
+		tempo = readNumbersToPrint.keys()
+		tempo.sort()
+		readNumbersToPrint = tempo
+		config.logfile.write('done.\n')
+	
+	# set the counters to initial values
+	counter = 0
+	tmp=0
+	header="NA"
+	if config.skip: skip =True
+
+	# unpack infiles
+	for file1, file2 in zip(config.infiles['r1'],config.infiles['r2']):
+	
+		#check if files are gzipped
+		if file1.split('.')[-1] in ['gz','gzip']: file1 = gzip.open(file1)
+		else: file1 = open(file1,'r')
+		if file2.split('.')[-1] in ['gz','gzip']: file2 = gzip.open(file2)
+		else: file2 = open(file2,'r')
+
+		# itarate through fastq files and return readpairs
+		for r1line in file1:
+			r2line = file2.readline() #get line from  read2 file
+			
+			tmp+=1 # increment linecount
+			
+			#random speedup
+			if config.random and counter != readNumbersToPrint[0]:
+				#print tmp
+				if tmp == 4: tmp = 0;continue
+				elif tmp != 1: continue
+				#elif tmp == 1:
+					#counter+=1 # increase entry counter
+					#print '\t',counter,readNumbersToPrint[0]
+					#continue
+				
+			
+			# skip or stop if option is set on config
+			if config.skip and tmp < (4*config.skip) and skip: continue
+			elif config.skip and tmp == (4*config.skip) and skip: skip=False; tmp =0;continue
+			if config.stop and counter == config.stop: break
+
+			# depending on line number (within entry) do ...	
+			if tmp == 1: #header check match between files
+				counter+=1 # increase entry counter
+				header=r1line
+				if r1line.split(" ")[0] != r2line.split(" ")[0]: config.logfile.write('Error mismatching headers!');raise ValueError #os.kill(MASTER,1);sys.exit(1);#REALLYNOTOPTIMAL
+			elif tmp == 2: # sequence check that its DNA and save sequences till later
+				if counter == 1:
+					config.logfile.write('Checking data type of read 1 in pair 1 ... ')
+					match = re.match("^[AGTCN]+$",r1line.rstrip())
+					if match: config.logfile.write('this is DNA data.\n')
+					else: config.logfile.write(' this is not a DNA sequence ('+r1line.rstrip()+') could something be wrong with your fastq file?.\n\n');raise ValueError#os.kill(MASTER);sys.exit();#REALLYNOTOPTIMAL
+				r1seq = r1line.rstrip()
+				r2seq = r2line.rstrip()
+			elif tmp == 3: # "+"-line do some format check
+					if counter in {1:True,67:True,438:True,9675:True,53678:True,864513:True,1337354:True,317955:True,1226844:True,20389:True,118261:True}:
+						if r1line[0] != r2line[0] or r1line[0] != '+': config.logfile.write('Error Format not fastq!');raise ValueError#os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
+			elif tmp == 4: # quality values and end of entry, reset counter and yeild readpair
+					tmp=0 # reset line counter
+					r1qual = r1line.rstrip() #get qual strings
+					r2qual = r2line.rstrip()
+					
+					#yield readpair
+					if not config.random: yield [readpair(header.rstrip(), read(header.rstrip(),r1seq,r1qual), read(header.rstrip(),r2seq,r2qual)),config]
+					elif counter == readNumbersToPrint[0]:
+						yield [readpair(header.rstrip(), read(header.rstrip(),r1seq,r1qual), read(header.rstrip(),r2seq,r2qual)),config]
+						readNumbersToPrint = readNumbersToPrint[1:]
+						if len(readNumbersToPrint) == 0: break
+
+def comp(str):
+	return str.replace("A","X").replace("T","A").replace("X","T").replace("G","X").replace("C","G").replace("X","C")
+
+def revcomp(str):
+	return comp(str[::-1])
+
+def uipac(bases, back='uipac'): #U	Uracil NOT SUPPORTED!!!
+	if back == 'uipac':
+		if 'N' in bases: return 'N'
+		uniqbases={}
+		for i in bases:
+			uniqbases[i]=True
+		bases = uniqbases.keys()
+		if 'U' in bases: sys.stderr.write('WARNING in function "uipac(bases)": Uracil NOT SUPPORTED!')
+		if len(bases)==1:
+			if 'A' in bases: return 'A' #A	Adenine
+			if 'C' in bases: return 'C' #C	Cytosine
+			if 'G' in bases: return 'G' #G	Guanine
+			if 'T' in bases: return 'T' #T	Thymine
+			#U	Uracil NOT SUPPORTED!!!
+		if len(bases)==2:
+			if 'A' in bases and 'G' in bases: return 'R' #R	Purine (A or G)
+			if 'C' in bases and 'T' in bases: return 'Y' #Y	Pyrimidine (C, T, or U)
+			if 'A' in bases and 'C' in bases: return 'M' #M	C or A
+			if 'T' in bases and 'G' in bases: return 'K' #K	T, U, or G
+			if 'A' in bases and 'T' in bases: return 'W' #W	T, U, or A
+			if 'C' in bases and 'G' in bases: return 'S' #S	C or G
+		if len(bases)==3:
+			if 'C' in bases and 'T' in bases and 'G' in bases: return 'B' #B	C, T, U, or G (not A)
+			if 'A' in bases and 'T' in bases and 'G' in bases: return 'D' #D	A, T, U, or G (not C)
+			if 'A' in bases and 'T' in bases and 'C' in bases: return 'H' #H	A, T, U, or C (not G)
+			if 'A' in bases and 'C' in bases and 'G' in bases: return 'V' #V	A, C, or G (not T, not U)
+		if len(bases)==4:
+			return 'N' #N	Any base (A, C, G, T, or U)
+	elif back == 'bases':
+		if   bases == 'R': return ['A','G'] 
+		elif bases == 'Y': return ['C','T']
+		elif bases == 'M': return ['A','C']
+		elif bases == 'K': return ['G','T']
+		elif bases == 'W': return ['A','T']
+		elif bases == 'S': return ['C','G']
+		elif bases == 'B': return ['C','T','G']
+		elif bases == 'D': return ['A','T','G']
+		elif bases == 'V': return ['A','C','G']
+		elif bases == 'H': return ['A','C','T']
+		elif bases == 'N': return ['A','G','T','C']
+
+def UIPAC2REGEXP(string):
+    return string.replace('R','[AG]').replace('Y','[CT]').replace('S','[GC]').replace('W','[AT]').replace('K','[GT]').replace('M','[AC]').replace('B','[CGT]').replace('D','[AGT]').replace('H','[ACT]').replace('V','[ACG]').replace('N','.')
 
 def classify_cluser(config,infile="temporary.cluster.files/1.reads",database="reference/4amplicons/4amplicons.fasta"):
 
