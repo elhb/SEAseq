@@ -4,6 +4,7 @@ MASTER = os.getpid()
 version = 'ALPHA 1.3'
 
 class BarcodeCluster(object):
+
 	def __init__(self, id_number, barcode_sequence):
 		self.id = id_number
 		self.barcodesequence = barcode_sequence
@@ -11,14 +12,54 @@ class BarcodeCluster(object):
 		self.consensuses = []
 		self.amplicons = []
 
+	def addreadpair(self, pair):
+		if pair.cid: cluster_id = pair.cid
+		else: cluster_id = int(pair.header.split(':')[-1].split('_')[1])
+		if cluster_id == self.id:
+			self.readpairs.append(pair)
+		else:
+			import sys
+			sys.stderr.write('ERROR: Cluster id from read pair does not match the barcode cluster id.\n')
+			raise ValueError
+	
+	@property
+	def readcount(self):
+		return len(self.readpairs)
+
+	@property
+	def ampliconpairs(self):
+		tmp_counter = 0
+		for pair in self.readpairs:
+			if pair.isillumina or pair.primererror: continue
+			tmp_counter += 1
+		return tmp_counter
+
 class Amplicon(object):
+
 	def __init__(self, amplicon_type):
 		self.consensuses = []
 		self.type = amplicon_type
+		
+	def addconsesnsus(self,consensus ):
+		if consensus.type == self.type: self.consensussses.append(consensus)
+		else:
+			import sys
+			sys.stderr.write('ERROR: Amplicon type does not match the Consensus type.\n')
+			raise ValueError
 
 class Consensus(object):
+
 	def __init__(self, amplicon_type):
 		self.readpairs = []
+		self.type = amplicon_type
+
+	def addreadpair(self, pair):
+		if pair.p1 == self.type:
+			self.readpairs.append(pair)
+		else:
+			import sys
+			sys.stderr.write('ERROR: Consensus type does not match the readpair fwd primer.\n')
+			raise ValueError
 
 def initiate_file(filename, logfile, mode='w'):
     import os
