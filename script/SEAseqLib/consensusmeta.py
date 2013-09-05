@@ -535,37 +535,34 @@ def getClustersAndPairs(config,clusterq):
     import time
     config.logfile.write('Reader initiated pid='+str(os.getpid())+'.\n')
 
-    currentcluster = 0
+    currentclusterid = 0
+    from SEAseqLib.mainLibrary import BarcodeCluster
+    cluster = BarcodeCluster(currentclusterid)
     pairs = []
     config.infiles['r1'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq']
     config.infiles['r2'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq']
     
-    from SEAseqLib.mainLibrary import getPairs, SEAseqpair
+    from SEAseqLib.mainLibrary import getPairs
     for tmp in getPairs(config):
 
 	pair, config = tmp
 	del tmp
 	
-	# convert to SEAseq readpair
-	pair = SEAseqpair(pair.header, pair.r1, pair.r2)
-	
-	#C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
-	#pair.identify(C_HANDLE, config)
-	#pair.getN15()
-	
 	pair.cid = int(pair.header.split(':')[-1].split('_')[1])
 	
-	if pair.cid == currentcluster:
+	if pair.cid == currentclusterid:
 	    pairs.append(pair)
-	elif pair.cid == currentcluster+1:
+	elif pair.cid == currentclusterid+1:
 	    while clusterq.qsize() > 160 or clusterq.full(): time.sleep(1); #config.logfile.write('waiting for queue ...\n')
-	    clusterq.put([currentcluster,pairs,config])
-	    currentcluster = pair.cid
+	    clusterq.put([currentclusterid,pairs,config])
+	    currentclusterid = pair.cid
+            cluster = BarcodeCluster(currentclusterid)
+            cluster.addreadpair(pair)
 	    pairs = [pair]
 	else:
 	    while clusterq.qsize() > 160 or clusterq.full(): time.sleep(1); #config.logfile.write('waiting for queue ...\n')
-	    clusterq.put([currentcluster,pairs,config])
-	    currentcluster = pair.cid
+	    clusterq.put([currentclusterid,pairs,config])
+	    currentclusterid = pair.cid
 	    pairs = [pair]
 
     clusterq.put('END')

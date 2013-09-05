@@ -3,499 +3,12 @@ import os
 MASTER = os.getpid()
 version = 'ALPHA 1.3'
 
-##### MAIN #####
+######################### MAIN #########################
 
-def lib_main(): pass
+def lib_main():
+	pass
 
-#### CLASSES ####
-
-class Progress():
-
-	def __init__(self,total, verb='full', logfile=sys.stderr, unit='read' ,mem=False, printint=0):
-		import time
-		self.total = total
-		self.current = 0
-		self.type = verb
-		self.logfile = logfile
-		self.ltime = time.time()
-		self.lcurrent = self.current
-		self.lpercentage = 0
-		if verb == 'full': self.printint = 5
-		elif verb == 'minimal':self.printint = 5
-		self.unit = unit
-		self.mem = mem
-		if printint: self.printint = printint
-
-	def __enter__(self):
-		if self.type == 'minimal': self.logfile.write('0%                 50%                 100%\n')
-		#                                              ....................................................................................
-
-	def update(self):
-		import time
-		self.current += 1
-		self.percentage = int(round(100*float(self.current)/self.total))
-		if self.percentage % self.printint == 0 and self.percentage != self.lpercentage:
-			self.stf=int(round((self.total-self.current)/((self.current-self.lcurrent)/(time.time()-self.ltime))))
-			if self.type == 'full': self.logfile.write(
-				'#Progress => '+str(self.percentage)+'%, '+
-				str( round((self.current-self.lcurrent)/(time.time()-self.ltime),2) )+' '+self.unit+'s/second, '+
-				time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+
-				', left: '+str(self.stf/60/60)+'h '+str(self.stf/60%60)+'min '+str(self.stf%60)+'s')
-			if self.mem:
-				import resource
-				self.logfile.write(', using '+str((resource.getrusage(resource.RUSAGE_SELF).ru_maxrss+resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)/1024)+' ('+str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024)+') MB.\n')
-			else:	self.logfile.write('\n')
-			if self.type == 'minimal': self.logfile.write('..')
-			self.ltime = time.time()
-			self.lcurrent = self.current
-			self.lpercentage = self.percentage
-
-	def __exit__(self, *args):
-		self.logfile.write('\n')
-
-class Configuration():
-    
-    def __init__ (self, path, cmd, stop=None, skip=None ,random=None ):
-
-	# permanent
-	self.path 		= path
-	self.config		= self.path+'/'+'config'
-	self.init_logfile	= self.path + '/' + 'init.log.txt'
-	self.init_outfile	= self.path + '/' + 'init.out.txt'
-	self.addfqs_logfile	= self.path + '/' + 'addfqs.log.txt'
-	self.addfqs_outfile	= self.path + '/' + 'addfqs.out.txt'
-	self.cluster_logfile	= self.path + '/' + 'cluster.log.txt'
-	self.cluster_outfile	= self.path + '/' + 'cluster.out.txt'
-	self.sortreads_logfile	= self.path + '/' + 'sort.log.txt'
-	self.sortreads_outfile	= self.path + '/' + 'sort.out.txt'
-	self.meta_logfile	= self.path + '/' + 'meta.log.txt'
-	self.meta_outfile	= self.path + '/' + 'meta.out.txt'
-	self.sbatch_logfile	= self.path + '/' + 'sbatch.log.txt'
-	self.sbatch_outfile	= self.path + '/' + 'sbatch.out.txt'
-	self.metagraph_logfile	= self.path + '/' + 'graph.log.txt'
-	self.metagraph_outfile	= self.path + '/' + 'graph.out.txt'
-	self.classifymeta_logfile= self.path + '/' + 'classify.log.txt'
-	self.classifymeta_outfile= self.path + '/' + 'classify.out.txt'
-	self.clusters_file	= self.path+'/barcode_clusters_dictionary'
-	self.abspath		= None # not loaded or set
-
-	# longlasting
-	self.infiles		= {'r1':[],'r2':[]}
-	self.readcounts		= []
-	self.chandlemissmatch	= None
-	self.barcodemissmatch	= None
-	self.clustercount	= None
-	self.numberofseeds	= None
-
-	# for each run
-	self.cmd		= cmd
-	self.stop		= stop
-	self.skip		= skip
-	self.random		= random
-	self.sortformat		= 'fq'
-	self.read_count_per_barcode_cluster_cutoff = 1
-	
-	
-	if cmd == 'init':
-	    self.logfile = self.init_logfile
-	    self.outfile = self.init_outfile
-	elif cmd == 'addfqs':
-	    self.logfile = self.addfqs_logfile
-	    self.outfile = self.addfqs_outfile
-	elif cmd == 'clusterbarcodes':
-	    self.logfile = self.cluster_logfile
-	    self.outfile = self.cluster_outfile
-	elif cmd == 'sortreads':
-	    self.logfile = self.sortreads_logfile
-	    self.outfile = self.sortreads_outfile
-	elif cmd == 'meta':
-	    self.logfile = self.meta_logfile
-	    self.outfile = self.meta_outfile
-	elif cmd == 'sbatch':
-	    self.logfile = self.sbatch_logfile
-	    self.outfile = self.sbatch_outfile
-	elif cmd == 'metagraph':
-	    self.logfile = self.metagraph_logfile
-	    self.outfile = self.metagraph_outfile
-	elif cmd == 'classifymeta':
-	    self.logfile = self.classifymeta_logfile
-	    self.outfile = self.classifymeta_outfile
-
-    def getreads2process(self, ):
-	
-	self.logfile.write('Getting readcounts ...\n')
-	total = 0
-	for i in range(len(self.readcounts)):
-	    rc = self.readcounts[i]
-	    self.logfile.write(self.infiles['r1'][i]+' -> '+str(rc) +' reads.\n')
-	    total += rc
-	self.logfile.write(str(total)+' read pairs in fastq files.\n');
-	
-	# calculate the number of reads to process
-	self.reads2process = total
-	if self.skip: 	self.reads2process -= self.skip
-	if self.stop: 	self.reads2process = self.stop
-	if self.random:	self.reads2process = self.random
-
-    def set(self,varname, value ):
-	if varname == 'chandlemissmatch':	self.chandlemissmatch	= value
-	elif varname == 'barcodemissmatch':	self.barcodemissmatch	= value
-	elif varname == 'clustercount':		self.clustercount	= value
-	elif varname == 'numberofseeds':	self.numberofseeds	= value
-	elif varname == 'sortformat':		self.sortformat		= value
-	elif varname == 'read_count_per_barcode_cluster_cutoff':self.read_count_per_barcode_cluster_cutoff = value
-	else: raise ValueError
-
-    def load(self, ):
-	self.config = initiate_file(self.config, self.logfile , mode='r')
-	for line in self.config:
-	    if line.rstrip() == '# Absolute path:':
-		self.abspath = self.config.next().rstrip()
-	    if line.rstrip() == '# Infiles dictionary:':
-		self.infiles = eval(self.config.next())
-	    if line.rstrip() == '# Read counts list:':
-		self.readcounts = eval(self.config.next())
-	    if line.rstrip() == '# Number of cluster seeds:':
-		self.numberofseeds = eval(self.config.next().rstrip())
-	    if line.rstrip() == '# Number of barcode clusters identified:':
-		self.clustercount = eval(self.config.next().rstrip())
-	self.config.close()
-	self.config = self.config.name
-
-    def openconnections(self, ):
-	if self.cmd == 'init':
-	    self.outfile = initiate_file(self.outfile, self.logfile)
-	    self.logfile = initiate_file(self.logfile, self.logfile)
-	else:
-	    self.outfile = initiate_file(self.outfile, self.logfile, mode='a')
-	    self.logfile = initiate_file(self.logfile, self.logfile, mode='a')
-
-    def save(self, ):
-
-	if not os.path.exists(self.config):
-	    self.config = initiate_file(self.config, self.logfile)
-	    self.abspath = os.path.abspath(self.path)
-	else:
-	    self.config = initiate_file(self.config, self.logfile, mode='ow')
-
-	self.logfile.write('Writing settings to config file ...\n')
-	self.config.write(
-	    '# Absolute path:\n'+str(self.abspath)+'\n'+
-	    '# Infiles dictionary:\n'+str(self.infiles)+'\n'+
-	    '# Read counts list:\n'+str(self.readcounts)+'\n'+
-	    '# Number of cluster seeds:\n'+str(self.numberofseeds)+'\n'+
-	    '# Number of barcode clusters identified:\n'+str(self.clustercount)+'\n'
-	    )
-	self.config.close()
-	self.config = self.config.name
-
-class sequence():
-	def __init__(self,header,seq,qual):
-		self.header = header.rstrip()
-		self.qual = qual.rstrip()
-		self.seq = seq.rstrip()
-		assert len(self.qual) == len(self.seq), 'Error: qual and seq has different lengths!\n'
-		self.len = len(seq.rstrip())
-	
-	def subseq(self,start,end):
-		return sequence(self.header,self.seq[start:end],self.qual[start:end])
-	
-	def revcomp(self):
-		''' Takes a sequence and reversecomplements it'''
-		complementary = self.comp()
-		return sequence(complementary.header,complementary.seq[::-1],complementary.qual[::-1])
-	
-	def comp(self):
-		''' Takes a sequence and complements it'''
-		complement = {'A':'T','T':'A',
-					  'C':'G','G':'C',
-					  'N':'N',
-					  'R':'Y','Y':'R',
-					  'K':'M','M':'K',
-					  'B':'V','V':'B',
-					  'D':'H','H':'D',
-					  }
-		compseq = "".join([complement.get(nt.upper(), '') for nt in self.seq])
-		return sequence(self.header,compseq,self.qual)
-
-class read(sequence):
-    "Represents one of several reads from a DNA fragment"
-
-class readpair():
-	""" object representing an illumina cluster """
-
-	def __init__(self,header,r1,r2):
-		self.header = header
-		self.r1 = r1 #first read
-		self.r2 = r2 #second read
-		self.threads = []
-
-	def getN15(self):
-		if self.handle_start:self.n15 = self.r1.subseq(0,self.handle_start)
-		else: self.n15 = None
-		return 0
-
-	def identify(self, handle, config):
-		[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
-		self.handle_start = handle_start
-		self.handle_end   = handle_end
-		return 0
-
-	def identifyIllumina(self, config):
-		handle = sequence('illuminaUniversal','AGATCGGAAGAGC','AGATCGGAAGAGC')
-		config.chandlemissmatch = 2
-		#handle = sequence('illumina','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC')
-		[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
-		if handle_start: self.r1.illuminaadapter = True
-		else: self.r1.illuminaadapter = False
-		
-		#handle = sequence('illumina','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT')
-		[handle_start, handle_end] = self.matchHandle(handle, config, self.r2)
-		if handle_start: self.r2.illuminaadapter = True
-		else: self.r2.illuminaadapter = False
-		return 0
-
-	def matchHandle(self, handle, config, read, matchfunk=hamming_distance):
-		
-		import re
-		#matchfunk = hamming_distance
-	
-		handle_start = None
-		handle_end   = None
-	
-		perfect_match = re.search(handle.seq, read.seq)
-		if perfect_match:
-		    handle_start = perfect_match.start()
-		    handle_end = perfect_match.end()
-		
-		elif config.chandlemissmatch:
-			mindist = [10000,-1]
-			for i in range(len(read.seq)):
-			    
-				if i+len(handle.seq) <= len(read.seq):
-					dist = matchfunk(handle.seq,read.seq[i:i+len(handle.seq)])
-				else: dist = 1000
-				
-				if dist < mindist[0]: mindist =[dist,i]
-
-			if mindist[0] < config.chandlemissmatch:
-				handle_start = i
-				handle_end = i+len(handle.seq)
-			else:
-				handle_start = None
-				handle_end = None
-
-		return [handle_start, handle_end]
-
-	def get_cid(self,config):
-		if self.n15 and self.n15.len == 15:
-			try: self.cid = config.cid_by_bc[self.n15.seq]
-			except KeyError: self.cid = False
-		else: self.cid = None
-
-class SEAseqSummary():
-	
-	def __init__(self):
-		self.barcodes = {}
-		self.readcount = 0
-		self.handlefound = 0
-		self.pairs = {}
-		
-	def add(self, pair):
-		self.readcount += 1
-		if pair.handle_start: self.handlefound += 1
-		if pair.n15 and pair.n15.len == 15:
-			try:
-				self.barcodes[pair.n15.seq] += 1
-#				self.pairs[pair.n15.seq].append(pair)
-			except KeyError:
-				self.barcodes[pair.n15.seq] = 1
-#				self.pairs[pair.n15.seq] = [pair]
-		return
-		
-	def part1(self):
-		perc_c = str(round(100*float(self.handlefound)/self.readcount,2))+'%'
-		uniq_n15s = str(len(self.barcodes.keys()))
-		return 'in '+perc_c+' of the reads can the chandle be found, there are '+uniq_n15s+' uniq n15s'
-
-	def loadclusters(self,filename):
-		f = open(filename,'r',)
-		self.clusters = eval(f.read())
-		f.close()
-		#print len(self.clusters)
-		return
-
-	def reducebarcodes(self,config):
-		""" Find most common barcodes in well ( > 10% ??), then try to place other barcodes to this cluster
-		"""
-		
-		config.logfile.write( '\n' )
-		
-		config.minperc = 0
-		maxdist = config.barcodemissmatch
-		matchfunc = hamming_distance
-
-		percentages={}
-		for bc, count in self.barcodes.iteritems():
-			percentage = round(100*float(count)/self.readcount,4)
-			try: percentages[percentage].append(bc)
-			except KeyError:percentages[percentage] = [bc]
-		highest = []
-		perc = percentages.keys()
-		perc.sort(reverse=True)
-		#print perc
-		while len(highest) < config.numberofseeds:
-			try:
-				for bc in percentages[perc[0]]: highest.append(bc)
-			except IndexError: pass
-			perc=perc[1:]
-		tempfile = open(config.path+'/predetermined_cluster_centers.fa','w')
-		for bc in highest: tempfile.write('>'+bc+' '+str(self.barcodes[bc])+' readpairs\n'+bc+'\n')
-		tempfile.close()
-
-		tempfile = open(config.path+'/raw_barcode_sequences.fa','w')
-		for bc in self.barcodes: tempfile.write('>'+bc+' '+str(self.barcodes[bc])+' readpairs\n'+bc+'\n')
-		tempfile.close()
-		del percentages
-
-		# alternatively we could use chdit, though homopolymers seems to be problematic
-		# cd-hit-454 -i tasks/20130805.1_index10/raw_barcode_sequences.fa -o DELETEME -c 0.85 -g 1 -T 8 -gap -6 -gap-ext -2 -AS 2
-		# cdhit-cluster-consensus DELETEME.clstr tasks/20130805.1_index10/raw_barcode_sequences.fa DELETEME.cons DELETEME.aln
-		import subprocess
-		from cStringIO import StringIO
-		import time
-		import multiprocessing
-		tempo = time.time()
-		config.logfile.write('starting '+' '.join(['dnaclust','--similarity',str(1-(float(config.barcodemissmatch)/15)),'--input-file',config.path+'/raw_barcode_sequences.fa','-t',str(multiprocessing.cpu_count()),'--predetermined-cluster-centers',config.path+'/predetermined_cluster_centers.fa'])+'\n')
-		dnaclust =               subprocess.Popen(['dnaclust','--similarity',str(1-(float(config.barcodemissmatch)/15)),'--input-file',config.path+'/raw_barcode_sequences.fa','-t',str(multiprocessing.cpu_count()),'--predetermined-cluster-centers',config.path+'/predetermined_cluster_centers.fa'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-		dnaclust_out, errdata = dnaclust.communicate()
-		if dnaclust.returncode != 0:
-			print 'dnaclust view Error code', dnaclust.returncode, errdata
-			sys.exit()
-		dnaclust_out = StringIO(dnaclust_out)
-		seconds = round(time.time()-tempo,2)
-		config.logfile.write('dnaclust done after '+str(int(seconds/60/60))+'h '+str(int(seconds/60%60))+'min '+str(int(round(seconds%60)))+'s, parsing result ... ')
-		del dnaclust
-
-		clusters={}
-		cc=0
-		for line in dnaclust_out:
-			cc+=1
-			clusters[cc] ={'total':0,'barcodes':{},'highest':[0,'XXXXXXXXXXXXXX']}
-			line = line.rstrip().split('\t')
-			for bc in line:
-				if bc not in clusters[cc]['barcodes']: clusters[cc]['total']+=self.barcodes[bc]
-				clusters[cc]['barcodes'][bc]=self.barcodes[bc]
-				if self.barcodes[bc] > clusters[cc]['highest'][0]: clusters[cc]['highest']=[self.barcodes[bc],bc]
-		config.logfile.write('almost done ... ')
-		del dnaclust_out
-
-		counter = 0
-		reads_in_clusters={}
-		for cc in clusters:
-			try: reads_in_clusters[clusters[cc]['total']]+=1
-			except KeyError: reads_in_clusters[clusters[cc]['total']]=1
-			if int(clusters[cc]['total']) > 1:
-				counter+=1
-				#print cc,clusters[cc]['total'],clusters[cc]['highest'][1],clusters[cc]['highest'][0]
-
-		config.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n\n')
-		config.outfile.write(str( cc)+' clusters whereof '+str(counter)+' has more than one read\n\n')
-
-		temp_x=reads_in_clusters.keys()
-		temp_x.sort()
-		y=[];x =[]
-		for i in xrange(max(temp_x)+1):
-			x.append(i)
-			try: y.append(reads_in_clusters[i])
-			except KeyError: y.append(0)
-		x=x
-		y=y
-		import numpy as np
-		import matplotlib.pyplot as plt
-		for scale in [[0,5000,0,20],[0,1000,0,20]]:
-			plt.figure()
-			plt.axis(scale)
-			#plt.xlabel('Total Number of Reads per Barcode Cluster')
-			#plt.ylabel('Number of Clusters')
-			#pos = np.arange(len(x))
-			#width = 1.0     # gives histogram aspect to the bar diagram
-			#ax = plt.axes()
-			#ax.set_xticks(pos + (width / 2))
-			#ax.set_xticklabels(x,rotation='horizontal')
-			#plt.bar(pos, y, width, color='r')
-			##plt.show()
-			##plt.savefig(pp,format='pdf',bbox_inches=0)
-			plt.plot(x,y)
-			plt.suptitle('Y is Total Number of Clusters with X Reads Pairs per Barcode Cluster.', fontsize=12)
-			plt.savefig(config.path+'/read_pairs_per_barcode_cluster.x_scale_'+str(scale[0])+'-'+str(scale[1])+'.y_scale_'+str(scale[2])+'-'+str(scale[3])+'.pdf')
-			plt.close()
-		config.logfile.write( 'done\n')
-
-		self.clusters = clusters
-		del clusters
-
-		return
-
-class BarcodeCluster(object):
-
-	def __init__(self, id_number, barcode_sequence):
-		self.id = id_number
-		self.barcodesequence = barcode_sequence
-		self.readpairs = []
-		self.consensuses = []
-		self.amplicons = []
-
-	def addreadpair(self, pair):
-		if pair.cid: cluster_id = pair.cid
-		else: cluster_id = int(pair.header.split(':')[-1].split('_')[1])
-		if cluster_id == self.id:
-			self.readpairs.append(pair)
-		else:
-			import sys
-			sys.stderr.write('ERROR: Cluster id from read pair does not match the barcode cluster id.\n')
-			raise ValueError
-	
-	@property
-	def readcount(self):
-		return len(self.readpairs)
-
-	@property
-	def ampliconpairs(self):
-		tmp_counter = 0
-		for pair in self.readpairs:
-			if pair.isillumina or pair.primererror: continue
-			tmp_counter += 1
-		return tmp_counter
-
-class Amplicon(object):
-
-	def __init__(self, amplicon_type):
-		self.consensuses = []
-		self.type = amplicon_type
-		
-	def addconsesnsus(self,consensus ):
-		if consensus.type == self.type: self.consensussses.append(consensus)
-		else:
-			import sys
-			sys.stderr.write('ERROR: Amplicon type does not match the Consensus type.\n')
-			raise ValueError
-
-class Consensus(object):
-
-	def __init__(self, amplicon_type):
-		self.readpairs = []
-		self.type = amplicon_type
-
-	def addreadpair(self, pair):
-		if pair.p1 == self.type:
-			self.readpairs.append(pair)
-		else:
-			import sys
-			sys.stderr.write('ERROR: Consensus type does not match the readpair fwd primer.\n')
-			raise ValueError
-
-#### FUNCTIONS ####
+######################### FUNCTIONS #########################
 
 def initiate_file(filename, logfile, mode='w'):
     import os
@@ -812,5 +325,514 @@ def classify_cluser(config,infile="temporary.cluster.files/1.reads",database="re
 	os.remove(infile+'.'+config.blastid+'.blastout')
 	
 	return results
+
+######################### CLASSES #########################
+
+class Progress():
+
+	def __init__(self,total, verb='full', logfile=sys.stderr, unit='read' ,mem=False, printint=0):
+		import time
+		self.total = total
+		self.current = 0
+		self.type = verb
+		self.logfile = logfile
+		self.ltime = time.time()
+		self.lcurrent = self.current
+		self.lpercentage = 0
+		if verb == 'full': self.printint = 5
+		elif verb == 'minimal':self.printint = 5
+		self.unit = unit
+		self.mem = mem
+		if printint: self.printint = printint
+
+	def __enter__(self):
+		if self.type == 'minimal': self.logfile.write('0%                 50%                 100%\n')
+		#                                              ....................................................................................
+
+	def update(self):
+		import time
+		self.current += 1
+		self.percentage = int(round(100*float(self.current)/self.total))
+		if self.percentage % self.printint == 0 and self.percentage != self.lpercentage:
+			self.stf=int(round((self.total-self.current)/((self.current-self.lcurrent)/(time.time()-self.ltime))))
+			if self.type == 'full': self.logfile.write(
+				'#Progress => '+str(self.percentage)+'%, '+
+				str( round((self.current-self.lcurrent)/(time.time()-self.ltime),2) )+' '+self.unit+'s/second, '+
+				time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+
+				', left: '+str(self.stf/60/60)+'h '+str(self.stf/60%60)+'min '+str(self.stf%60)+'s')
+			if self.mem:
+				import resource
+				self.logfile.write(', using '+str((resource.getrusage(resource.RUSAGE_SELF).ru_maxrss+resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)/1024)+' ('+str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024)+') MB.\n')
+			else:	self.logfile.write('\n')
+			if self.type == 'minimal': self.logfile.write('..')
+			self.ltime = time.time()
+			self.lcurrent = self.current
+			self.lpercentage = self.percentage
+
+	def __exit__(self, *args):
+		self.logfile.write('\n')
+
+class Configuration():
+    
+    def __init__ (self, path, cmd, stop=None, skip=None ,random=None ):
+
+	# permanent
+	self.path 		= path
+	self.config		= self.path+'/'+'config'
+	self.init_logfile	= self.path + '/' + 'init.log.txt'
+	self.init_outfile	= self.path + '/' + 'init.out.txt'
+	self.addfqs_logfile	= self.path + '/' + 'addfqs.log.txt'
+	self.addfqs_outfile	= self.path + '/' + 'addfqs.out.txt'
+	self.cluster_logfile	= self.path + '/' + 'cluster.log.txt'
+	self.cluster_outfile	= self.path + '/' + 'cluster.out.txt'
+	self.sortreads_logfile	= self.path + '/' + 'sort.log.txt'
+	self.sortreads_outfile	= self.path + '/' + 'sort.out.txt'
+	self.meta_logfile	= self.path + '/' + 'meta.log.txt'
+	self.meta_outfile	= self.path + '/' + 'meta.out.txt'
+	self.sbatch_logfile	= self.path + '/' + 'sbatch.log.txt'
+	self.sbatch_outfile	= self.path + '/' + 'sbatch.out.txt'
+	self.metagraph_logfile	= self.path + '/' + 'graph.log.txt'
+	self.metagraph_outfile	= self.path + '/' + 'graph.out.txt'
+	self.classifymeta_logfile= self.path + '/' + 'classify.log.txt'
+	self.classifymeta_outfile= self.path + '/' + 'classify.out.txt'
+	self.clusters_file	= self.path+'/barcode_clusters_dictionary'
+	self.abspath		= None # not loaded or set
+
+	# longlasting
+	self.infiles		= {'r1':[],'r2':[]}
+	self.readcounts		= []
+	self.chandlemissmatch	= None
+	self.barcodemissmatch	= None
+	self.clustercount	= None
+	self.numberofseeds	= None
+
+	# for each run
+	self.cmd		= cmd
+	self.stop		= stop
+	self.skip		= skip
+	self.random		= random
+	self.sortformat		= 'fq'
+	self.read_count_per_barcode_cluster_cutoff = 1
+	
+	
+	if cmd == 'init':
+	    self.logfile = self.init_logfile
+	    self.outfile = self.init_outfile
+	elif cmd == 'addfqs':
+	    self.logfile = self.addfqs_logfile
+	    self.outfile = self.addfqs_outfile
+	elif cmd == 'clusterbarcodes':
+	    self.logfile = self.cluster_logfile
+	    self.outfile = self.cluster_outfile
+	elif cmd == 'sortreads':
+	    self.logfile = self.sortreads_logfile
+	    self.outfile = self.sortreads_outfile
+	elif cmd == 'meta':
+	    self.logfile = self.meta_logfile
+	    self.outfile = self.meta_outfile
+	elif cmd == 'sbatch':
+	    self.logfile = self.sbatch_logfile
+	    self.outfile = self.sbatch_outfile
+	elif cmd == 'metagraph':
+	    self.logfile = self.metagraph_logfile
+	    self.outfile = self.metagraph_outfile
+	elif cmd == 'classifymeta':
+	    self.logfile = self.classifymeta_logfile
+	    self.outfile = self.classifymeta_outfile
+
+    def getreads2process(self, ):
+	
+	self.logfile.write('Getting readcounts ...\n')
+	total = 0
+	for i in range(len(self.readcounts)):
+	    rc = self.readcounts[i]
+	    self.logfile.write(self.infiles['r1'][i]+' -> '+str(rc) +' reads.\n')
+	    total += rc
+	self.logfile.write(str(total)+' read pairs in fastq files.\n');
+	
+	# calculate the number of reads to process
+	self.reads2process = total
+	if self.skip: 	self.reads2process -= self.skip
+	if self.stop: 	self.reads2process = self.stop
+	if self.random:	self.reads2process = self.random
+
+    def set(self,varname, value ):
+	if varname == 'chandlemissmatch':	self.chandlemissmatch	= value
+	elif varname == 'barcodemissmatch':	self.barcodemissmatch	= value
+	elif varname == 'clustercount':		self.clustercount	= value
+	elif varname == 'numberofseeds':	self.numberofseeds	= value
+	elif varname == 'sortformat':		self.sortformat		= value
+	elif varname == 'read_count_per_barcode_cluster_cutoff':self.read_count_per_barcode_cluster_cutoff = value
+	else: raise ValueError
+
+    def load(self, ):
+	self.config = initiate_file(self.config, self.logfile , mode='r')
+	for line in self.config:
+	    if line.rstrip() == '# Absolute path:':
+		self.abspath = self.config.next().rstrip()
+	    if line.rstrip() == '# Infiles dictionary:':
+		self.infiles = eval(self.config.next())
+	    if line.rstrip() == '# Read counts list:':
+		self.readcounts = eval(self.config.next())
+	    if line.rstrip() == '# Number of cluster seeds:':
+		self.numberofseeds = eval(self.config.next().rstrip())
+	    if line.rstrip() == '# Number of barcode clusters identified:':
+		self.clustercount = eval(self.config.next().rstrip())
+	self.config.close()
+	self.config = self.config.name
+
+    def openconnections(self, ):
+	if self.cmd == 'init':
+	    self.outfile = initiate_file(self.outfile, self.logfile)
+	    self.logfile = initiate_file(self.logfile, self.logfile)
+	else:
+	    self.outfile = initiate_file(self.outfile, self.logfile, mode='a')
+	    self.logfile = initiate_file(self.logfile, self.logfile, mode='a')
+
+    def save(self, ):
+
+	if not os.path.exists(self.config):
+	    self.config = initiate_file(self.config, self.logfile)
+	    self.abspath = os.path.abspath(self.path)
+	else:
+	    self.config = initiate_file(self.config, self.logfile, mode='ow')
+
+	self.logfile.write('Writing settings to config file ...\n')
+	self.config.write(
+	    '# Absolute path:\n'+str(self.abspath)+'\n'+
+	    '# Infiles dictionary:\n'+str(self.infiles)+'\n'+
+	    '# Read counts list:\n'+str(self.readcounts)+'\n'+
+	    '# Number of cluster seeds:\n'+str(self.numberofseeds)+'\n'+
+	    '# Number of barcode clusters identified:\n'+str(self.clustercount)+'\n'
+	    )
+	self.config.close()
+	self.config = self.config.name
+
+class sequence():
+	def __init__(self,header,seq,qual):
+		self.header = header.rstrip()
+		self.qual = qual.rstrip()
+		self.seq = seq.rstrip()
+		assert len(self.qual) == len(self.seq), 'Error: qual and seq has different lengths!\n'
+		self.len = len(seq.rstrip())
+	
+	def subseq(self,start,end):
+		return sequence(self.header,self.seq[start:end],self.qual[start:end])
+	
+	def revcomp(self):
+		''' Takes a sequence and reversecomplements it'''
+		complementary = self.comp()
+		return sequence(complementary.header,complementary.seq[::-1],complementary.qual[::-1])
+	
+	def comp(self):
+		''' Takes a sequence and complements it'''
+		complement = {'A':'T','T':'A',
+					  'C':'G','G':'C',
+					  'N':'N',
+					  'R':'Y','Y':'R',
+					  'K':'M','M':'K',
+					  'B':'V','V':'B',
+					  'D':'H','H':'D',
+					  }
+		compseq = "".join([complement.get(nt.upper(), '') for nt in self.seq])
+		return sequence(self.header,compseq,self.qual)
+
+class read(sequence):
+    "Represents one of several reads from a DNA fragment"
+
+class readpair():
+	""" object representing an illumina cluster """
+
+	def __init__(self,header,r1,r2):
+		self.header = header
+		self.r1 = r1 #first read
+		self.r2 = r2 #second read
+		self.threads = []
+
+	def getN15(self):
+		if self.handle_start:self.n15 = self.r1.subseq(0,self.handle_start)
+		else: self.n15 = None
+		return 0
+
+	def identify(self, handle, config):
+		[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
+		self.handle_start = handle_start
+		self.handle_end   = handle_end
+		return 0
+
+	def identifyIllumina(self, config):
+		handle = sequence('illuminaUniversal','AGATCGGAAGAGC','AGATCGGAAGAGC')
+		config.chandlemissmatch = 2
+		#handle = sequence('illumina','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC')
+		[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
+		if handle_start: self.r1.illuminaadapter = True
+		else: self.r1.illuminaadapter = False
+		
+		#handle = sequence('illumina','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT')
+		[handle_start, handle_end] = self.matchHandle(handle, config, self.r2)
+		if handle_start: self.r2.illuminaadapter = True
+		else: self.r2.illuminaadapter = False
+		
+		if self.r1.illuminaadapter or self.r2.illuminaadapter:
+			self.isillumina = True
+		else:	self.isillumina = False
+		return 0
+
+	def matchHandle(self, handle, config, read, matchfunk=hamming_distance):
+		
+		import re
+		#matchfunk = hamming_distance
+	
+		handle_start = None
+		handle_end   = None
+	
+		perfect_match = re.search(handle.seq, read.seq)
+		if perfect_match:
+		    handle_start = perfect_match.start()
+		    handle_end = perfect_match.end()
+		
+		elif config.chandlemissmatch:
+			mindist = [10000,-1]
+			for i in range(len(read.seq)):
+			    
+				if i+len(handle.seq) <= len(read.seq):
+					dist = matchfunk(handle.seq,read.seq[i:i+len(handle.seq)])
+				else: dist = 1000
+				
+				if dist < mindist[0]: mindist =[dist,i]
+
+			if mindist[0] < config.chandlemissmatch:
+				handle_start = i
+				handle_end = i+len(handle.seq)
+			else:
+				handle_start = None
+				handle_end = None
+
+		return [handle_start, handle_end]
+
+	def get_cid(self,config):
+		if self.n15 and self.n15.len == 15:
+			try: self.cid = config.cid_by_bc[self.n15.seq]
+			except KeyError: self.cid = False
+		else: self.cid = None
+
+class SEAseqSummary():
+	
+	def __init__(self):
+		self.barcodes = {}
+		self.readcount = 0
+		self.handlefound = 0
+		self.pairs = {}
+		
+	def add(self, pair):
+		self.readcount += 1
+		if pair.handle_start: self.handlefound += 1
+		if pair.n15 and pair.n15.len == 15:
+			try:
+				self.barcodes[pair.n15.seq] += 1
+#				self.pairs[pair.n15.seq].append(pair)
+			except KeyError:
+				self.barcodes[pair.n15.seq] = 1
+#				self.pairs[pair.n15.seq] = [pair]
+		return
+		
+	def part1(self):
+		perc_c = str(round(100*float(self.handlefound)/self.readcount,2))+'%'
+		uniq_n15s = str(len(self.barcodes.keys()))
+		return 'in '+perc_c+' of the reads can the chandle be found, there are '+uniq_n15s+' uniq n15s'
+
+	def loadclusters(self,filename):
+		f = open(filename,'r',)
+		self.clusters = eval(f.read())
+		f.close()
+		#print len(self.clusters)
+		return
+
+	def reducebarcodes(self,config):
+		""" Find most common barcodes in well ( > 10% ??), then try to place other barcodes to this cluster
+		"""
+		
+		config.logfile.write( '\n' )
+		
+		config.minperc = 0
+		maxdist = config.barcodemissmatch
+		matchfunc = hamming_distance
+
+		percentages={}
+		for bc, count in self.barcodes.iteritems():
+			percentage = round(100*float(count)/self.readcount,4)
+			try: percentages[percentage].append(bc)
+			except KeyError:percentages[percentage] = [bc]
+		highest = []
+		perc = percentages.keys()
+		perc.sort(reverse=True)
+		#print perc
+		while len(highest) < config.numberofseeds:
+			try:
+				for bc in percentages[perc[0]]: highest.append(bc)
+			except IndexError: pass
+			perc=perc[1:]
+		tempfile = open(config.path+'/predetermined_cluster_centers.fa','w')
+		for bc in highest: tempfile.write('>'+bc+' '+str(self.barcodes[bc])+' readpairs\n'+bc+'\n')
+		tempfile.close()
+
+		tempfile = open(config.path+'/raw_barcode_sequences.fa','w')
+		for bc in self.barcodes: tempfile.write('>'+bc+' '+str(self.barcodes[bc])+' readpairs\n'+bc+'\n')
+		tempfile.close()
+		del percentages
+
+		# alternatively we could use chdit, though homopolymers seems to be problematic
+		# cd-hit-454 -i tasks/20130805.1_index10/raw_barcode_sequences.fa -o DELETEME -c 0.85 -g 1 -T 8 -gap -6 -gap-ext -2 -AS 2
+		# cdhit-cluster-consensus DELETEME.clstr tasks/20130805.1_index10/raw_barcode_sequences.fa DELETEME.cons DELETEME.aln
+		import subprocess
+		from cStringIO import StringIO
+		import time
+		import multiprocessing
+		tempo = time.time()
+		config.logfile.write('starting '+' '.join(['dnaclust','--similarity',str(1-(float(config.barcodemissmatch)/15)),'--input-file',config.path+'/raw_barcode_sequences.fa','-t',str(multiprocessing.cpu_count()),'--predetermined-cluster-centers',config.path+'/predetermined_cluster_centers.fa'])+'\n')
+		dnaclust =               subprocess.Popen(['dnaclust','--similarity',str(1-(float(config.barcodemissmatch)/15)),'--input-file',config.path+'/raw_barcode_sequences.fa','-t',str(multiprocessing.cpu_count()),'--predetermined-cluster-centers',config.path+'/predetermined_cluster_centers.fa'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		dnaclust_out, errdata = dnaclust.communicate()
+		if dnaclust.returncode != 0:
+			print 'dnaclust view Error code', dnaclust.returncode, errdata
+			sys.exit()
+		dnaclust_out = StringIO(dnaclust_out)
+		seconds = round(time.time()-tempo,2)
+		config.logfile.write('dnaclust done after '+str(int(seconds/60/60))+'h '+str(int(seconds/60%60))+'min '+str(int(round(seconds%60)))+'s, parsing result ... ')
+		del dnaclust
+
+		clusters={}
+		cc=0
+		for line in dnaclust_out:
+			cc+=1
+			clusters[cc] ={'total':0,'barcodes':{},'highest':[0,'XXXXXXXXXXXXXX']}
+			line = line.rstrip().split('\t')
+			for bc in line:
+				if bc not in clusters[cc]['barcodes']: clusters[cc]['total']+=self.barcodes[bc]
+				clusters[cc]['barcodes'][bc]=self.barcodes[bc]
+				if self.barcodes[bc] > clusters[cc]['highest'][0]: clusters[cc]['highest']=[self.barcodes[bc],bc]
+		config.logfile.write('almost done ... ')
+		del dnaclust_out
+
+		counter = 0
+		reads_in_clusters={}
+		for cc in clusters:
+			try: reads_in_clusters[clusters[cc]['total']]+=1
+			except KeyError: reads_in_clusters[clusters[cc]['total']]=1
+			if int(clusters[cc]['total']) > 1:
+				counter+=1
+				#print cc,clusters[cc]['total'],clusters[cc]['highest'][1],clusters[cc]['highest'][0]
+
+		config.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n\n')
+		config.outfile.write(str( cc)+' clusters whereof '+str(counter)+' has more than one read\n\n')
+
+		temp_x=reads_in_clusters.keys()
+		temp_x.sort()
+		y=[];x =[]
+		for i in xrange(max(temp_x)+1):
+			x.append(i)
+			try: y.append(reads_in_clusters[i])
+			except KeyError: y.append(0)
+		x=x
+		y=y
+		import numpy as np
+		import matplotlib.pyplot as plt
+		for scale in [[0,5000,0,20],[0,1000,0,20]]:
+			plt.figure()
+			plt.axis(scale)
+			#plt.xlabel('Total Number of Reads per Barcode Cluster')
+			#plt.ylabel('Number of Clusters')
+			#pos = np.arange(len(x))
+			#width = 1.0     # gives histogram aspect to the bar diagram
+			#ax = plt.axes()
+			#ax.set_xticks(pos + (width / 2))
+			#ax.set_xticklabels(x,rotation='horizontal')
+			#plt.bar(pos, y, width, color='r')
+			##plt.show()
+			##plt.savefig(pp,format='pdf',bbox_inches=0)
+			plt.plot(x,y)
+			plt.suptitle('Y is Total Number of Clusters with X Reads Pairs per Barcode Cluster.', fontsize=12)
+			plt.savefig(config.path+'/read_pairs_per_barcode_cluster.x_scale_'+str(scale[0])+'-'+str(scale[1])+'.y_scale_'+str(scale[2])+'-'+str(scale[3])+'.pdf')
+			plt.close()
+		config.logfile.write( 'done\n')
+
+		self.clusters = clusters
+		del clusters
+
+		return
+
+class PrimerPair(object):
+	
+	def __init__(self, fwd, rev, name):
+		self.fwd = fwd
+		self.rev = rev
+		self.name = name
+		self.fwdReStr = UIPAC2REGEXP(self.fwd)
+		self.revReStr = UIPAC2REGEXP(self.rev)
+		self.referenceAlleles = []
+
+class BarcodeCluster(object):
+
+	def __init__(self, id_number, barcode_sequence=None):
+		self.id = id_number
+		self.barcodesequence = barcode_sequence
+		self.readpairs = []
+		self.consensuses = []
+		self.amplicons = []
+
+	def addreadpair(self, pair):
+		if pair.cid: cluster_id = pair.cid
+		else: cluster_id = int(pair.header.split(':')[-1].split('_')[1])
+		if cluster_id == self.id:
+			if self.barcodesequence and pair.n15:
+				if pair.n15 != self.barcodesequence:
+					import sys
+					sys.stderr.write('ERROR: Barcode sequence from read pair does not match the barcode in cluster.\n')
+					raise ValueError
+			self.readpairs.append(pair)
+		else:
+			import sys
+			sys.stderr.write('ERROR: Cluster id from read pair does not match the barcode cluster id.\n')
+			raise ValueError
+	
+	@property
+	def readcount(self):
+		return len(self.readpairs)
+
+	@property
+	def ampliconpairs(self):
+		tmp_counter = 0
+		for pair in self.readpairs:
+			if pair.isillumina or pair.primererror: continue
+			tmp_counter += 1
+		return tmp_counter
+
+class Amplicon(object):
+
+	def __init__(self, amplicon_type, primerpair):
+		self.consensuses = []
+		self.type = amplicon_type
+		self.primer = primerpair
+		
+	def addconsesnsus(self,consensus ):
+		if consensus.type == self.type: self.consensussses.append(consensus)
+		else:
+			import sys
+			sys.stderr.write('ERROR: Amplicon type does not match the Consensus type.\n')
+			raise ValueError
+
+class Consensus(object):
+
+	def __init__(self, amplicon_type, primerpair):
+		self.readpairs = []
+		self.type = amplicon_type
+		self.primer = primerpair
+
+	def addreadpair(self, pair):
+		if pair.p1 == self.type:
+			self.readpairs.append(pair)
+		else:
+			import sys
+			sys.stderr.write('ERROR: Consensus type does not match the readpair fwd primer.\n')
+			raise ValueError
 
 if __name__ == "__main__": lib_main()
