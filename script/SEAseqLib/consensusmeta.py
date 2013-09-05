@@ -32,7 +32,7 @@ def meta(indata):
 	results=[] # create holder for processed reads
 	progress = Progress(config.clustercount, logfile=config.logfile) # creates a progress "bar" thingy
 	with progress:
-	    for cluster_pairs in clusteriterator(clusterq):
+	    for cluster_pairs in clusteriterator(clusterq,indata):
 		progress.update()
 		results.append(foreachcluster_meta(cluster_pairs))
 		#config.logfile.write('.');
@@ -167,7 +167,7 @@ def foreachcluster_meta(cluster_pairs):
 	'16s monoclonal':None
     }
     
-    from SEAseqLib.mainLibrary import SEAseqpair, sequence, UIPAC2REGEXP
+    from SEAseqLib.mainLibrary import readpair, sequence, UIPAC2REGEXP
     adaptercount = 0
     primererror = 0
     lowreadcutoff = 1
@@ -187,11 +187,7 @@ def foreachcluster_meta(cluster_pairs):
 	int2header = {}
 	for pair in cluster_pairs[1]:
 		
-	    # convert to SEAseq readpair
-	    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
-	    
 	    tmpcounter += 1
-	    #if verb >=1: output += str(tmpcounter)+'\t'+pair.header +'\t'
 	    if verb >=3: output += str(tmpcounter)+'\t'
 	    
 	    #identify subparts of read
