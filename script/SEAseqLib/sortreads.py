@@ -5,8 +5,8 @@ def foreachread_sort(tmp):
     del tmp
     
     # convert to SEAseq readpair
-    from SEAseqLib.mainLibrary import SEAseqpair, sequence
-    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
+    from SEAseqLib.mainLibrary import sequence
+    #pair = SEAseqpair(pair.header, pair.r1, pair.r2)
     
     C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
     pair.identify(C_HANDLE, config)
@@ -65,8 +65,6 @@ def sortreads(indata):
     import os
     try: os.makedirs(config.path+'/sortedReads')
     except OSError:pass
-    #try: os.makedirs(config.path+'/sortedReads/barcodes')
-    #except OSError:pass
 
     from SEAseqLib.mainLibrary import Progress
     if indata.debug: #single process // serial
@@ -89,9 +87,7 @@ def sortreads(indata):
 
     config.logfile.write('Allocating sorting memory  ...\n')
     chunksize = 5000
-    #out_list = [[i, [],[]] for i in xrange(clustercount+1)]
     chunk_list = [[[cluster+chunk*chunksize,[],[]] for cluster in xrange(chunksize)] for chunk in xrange(config.clustercount/chunksize+1)]
-#    chunk_list[0][0] = [0,None,None]
     config.logfile.write(' done.\n')
 
     if not indata.debug: config.logfile.write('Sorting reads to cluster '+str(indata.cpus)+' processes  ...\n')
@@ -129,8 +125,8 @@ def sortreads(indata):
     if config.sortformat in ['fa','fq']:	f1.close()
     if config.sortformat == 'fq':		f2.close()
 
-    if not indata.debug:WorkerPool.close()
-    if not indata.debug:WorkerPool.join()
+    if not indata.debug: WorkerPool.close()
+    if not indata.debug: WorkerPool.join()
     config.logfile.write('Reads sorted into sortedReads/sorted_by_barcode_cluster.1.fq\n')
     config.logfile.write('Part1: Sorting reads to clusters END\n----------\n')
     config.logfile.close()

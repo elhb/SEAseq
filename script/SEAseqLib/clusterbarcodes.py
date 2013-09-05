@@ -1,13 +1,13 @@
 def foreachread_cluster(tmp):
 
-    from SEAseqLib.mainLibrary import SEAseqpair, sequence
+    from SEAseqLib.mainLibrary import sequence
 
     # unpack info
     pair, config = tmp
     del tmp
     
     # convert to SEAseq readpair
-    pair = SEAseqpair(pair.header, pair.r1, pair.r2)
+    #pair = SEAseqpair(pair.header, pair.r1, pair.r2)
 
     C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
     pair.identify(C_HANDLE, config)
