@@ -19,7 +19,7 @@ def main():
 	sys.stderr.write('Please specify a command, if you need help run SEAseq help.\n')
 	cmd = None
 
-    if cmd not in ['init','addfqs','clusterbarcodes','sortreads','meta','sbatch','metagraph','classifymeta']:sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n');sys.exit()
+    if cmd not in ['Help','help','-help','--help','-h','init','addfqs','clusterbarcodes','sortreads','meta','sbatch','metagraph','classifymeta']:sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n');sys.exit()
 
     if cmd and cmd not in ['Help','help','-help','--help','-h']: indata = getindata(cmd)
     elif not cmd: return 1
