@@ -431,85 +431,75 @@ def getPairs(config):
 class readpair():
     """ object representing an illumina cluster """
     
-    def __init__(self,header,r1,r2):
+	def __init__(self,header,r1,r2):
 		self.header = header
 		self.r1 = r1 #first read
 		self.r2 = r2 #second read
 		self.threads = []
 
-    def identifythreads(self,config):
+	def getN15(self):
+		if self.handle_start:self.n15 = self.r1.subseq(0,self.handle_start)
+		else: self.n15 = None
+		return 0
+
+	def identify(self, handle, config):
+		[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
+		self.handle_start = handle_start
+		self.handle_end   = handle_end
+		return 0
+
+	def identifyIllumina(self, config):
+		handle = sequence('illuminaUniversal','AGATCGGAAGAGC','AGATCGGAAGAGC')
+		config.chandlemissmatch = 2
+		#handle = sequence('illumina','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC')
+		[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
+		if handle_start: self.r1.illuminaadapter = True
+		else: self.r1.illuminaadapter = False
+		
+		#handle = sequence('illumina','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT')
+		[handle_start, handle_end] = self.matchHandle(handle, config, self.r2)
+		if handle_start: self.r2.illuminaadapter = True
+		else: self.r2.illuminaadapter = False
+		return 0
+
+	def matchHandle(self, handle, config, read, matchfunk=hamming_distance):
+		
 		import re
-		# a thread should look like this:
-		# gagctgctgcaccatattcctgaac GACCATCACTTAAATCAGGTCCTCC NNNNNNNNNNN AGAGTCAAGTTATTTAAAAAATCTGGCC gctctgaaggcggtgtatgacatgg
-		# GAGCTGCTGCACCATATTCCTGAAC CAATCTCCCCTATTATTTCTATCCTATGCCACTCCTGCTCATATCTCTAGTG GCTCTGAAGGCGGTGTATGACATGGAGATCGGAAGAGCACACGTCTGAACTCCAGTCACATTCCTTTATCTCGT
-		# gagctgctgcaccatattcctgaac                                                      gctctgaaggcggtgtatgacatgg
-		
-		exthandle_seq = 'gagctgctgcaccatattcctgaac'.upper()
-		tjhandle_seq  = 'gctctgaaggcggtgtatgacatgg'.upper()
-		
-		matchfunk = hamming_distance
+		#matchfunk = hamming_distance
 	
-		#READ1
-		exthandle = None
-		tjhandle =  None
-		exthandle = re.search('^'+exthandle_seq,self.r1.seq)
-		tjhandle =  re.search(tjhandle_seq,self.r1.seq)
-		if exthandle and tjhandle:
-			thread = tntthread(self.r1.seq[exthandle.end():tjhandle.start()])
-			self.threads.append(thread)
-		elif config.chandlemissmatch: # do some kind of fuzzy matching to allow for missmatches
-			if not exthandle: 
-				mindist = [10000,-1]
-				for i in range(len(self.r1.seq)):
-					if i+len(exthandle_seq) <= len(self.r1.seq): dist = matchfunk(exthandle_seq,self.r1.seq[i:i+len(exthandle_seq)])
-					else: dist = 1000
-					if dist < mindist[0]: mindist =[dist,i]
-				if mindist[0] < config.chandlemissmatch: exthandle_end = i+len(exthandle_seq)
-				else: exthandle_end = None
-			else: exthandle_end = exthandle.end()
-			if not tjhandle: 
-				mindist = [10000,-1]
-				for i in range(len(self.r1.seq)):
-					if i+len(tjhandle_seq) <= len(self.r1.seq): dist = matchfunk(tjhandle_seq,self.r1.seq[i:i+len(tjhandle_seq)])
-					else: dist = 1000
-					if dist < mindist[0]: mindist =[dist,i]
-				if mindist[0] < config.chandlemissmatch: tjhandle_start = i
-				else: tjhandle_start = None
-			else: tjhandle_start = tjhandle.start()
-			if tjhandle_start and exthandle_end:
-				thread = tntthread(self.r1.seq[exthandle_end:tjhandle_start])
-				self.threads.append(thread)
+		handle_start = None
+		handle_end   = None
+	
+		perfect_match = re.search(handle.seq, read.seq)
+		if perfect_match:
+		    handle_start = perfect_match.start()
+		    handle_end = perfect_match.end()
 		
-		#READ2
-		exthandle = None
-		tjhandle =  None
-		exthandle = re.search(   revcomp(exthandle_seq),self.r2.seq)
-		tjhandle =  re.search('^'+revcomp(tjhandle_seq),self.r2.seq)
-		if exthandle and tjhandle:
-			thread = tntthread(revcomp(self.r2.seq[tjhandle.end():exthandle.start()]))
-			self.threads.append(thread)
-		elif config.chandlemissmatch: #### do some kind of fuzzy matching to allow for missmatches
-			if not exthandle: 
-				mindist = [10000,-1]
-				for i in range(len(self.r2.seq)):
-					if i+len(exthandle_seq) <= len(self.r2.seq): dist = matchfunk(exthandle_seq,revcomp(self.r2.seq)[i:i+len(exthandle_seq)])
-					else: dist = 1000
-					if dist < mindist[0]: mindist =[dist,i]
-				if mindist[0] < config.chandlemissmatch: exthandle_end = i+len(exthandle_seq)
-				else: exthandle_end = None
-			else: exthandle_end = exthandle.end()
-			if not tjhandle: 
-				mindist = [10000,-1]
-				for i in range(len(self.r2.seq)):
-					if i+len(tjhandle_seq) <= len(self.r2.seq): dist = matchfunk(tjhandle_seq,revcomp(self.r2.seq)[i:i+len(tjhandle_seq)])
-					else: dist = 1000
-					if dist < mindist[0]: mindist =[dist,i]
-				if mindist[0] < config.chandlemissmatch: tjhandle_start = i
-				else: tjhandle_start = None
-			else: tjhandle_start = tjhandle.start()
-			if tjhandle_start and exthandle_end:
-				thread = tntthread(revcomp(self.r2.seq)[exthandle_end:tjhandle_start])
-				self.threads.append(thread)
+		elif config.chandlemissmatch:
+			mindist = [10000,-1]
+			for i in range(len(read.seq)):
+			    
+				if i+len(handle.seq) <= len(read.seq):
+					dist = matchfunk(handle.seq,read.seq[i:i+len(handle.seq)])
+				else: dist = 1000
+				
+				if dist < mindist[0]: mindist =[dist,i]
+
+			if mindist[0] < config.chandlemissmatch:
+				handle_start = i
+				handle_end = i+len(handle.seq)
+			else:
+				handle_start = None
+				handle_end = None
+
+		return [handle_start, handle_end]
+
+	def get_cid(self,config):
+		if self.n15 and self.n15.len == 15:
+			try: self.cid = config.cid_by_bc[self.n15.seq]
+			except KeyError: self.cid = False
+		else: self.cid = None
+
 
 def comp(str):
 	return str.replace("A","X").replace("T","A").replace("X","T").replace("G","X").replace("C","G").replace("X","C")
@@ -574,71 +564,6 @@ def uipac(bases, back='uipac'): #U	Uracil NOT SUPPORTED!!!
 		elif bases == 'V': return ['A','C','G']
 		elif bases == 'H': return ['A','C','T']
 		elif bases == 'N': return ['A','G','T','C']
-
-class SEAseqpair(readpair):
-	
-	def getN15(self):
-		if self.handle_start:self.n15 = self.r1.subseq(0,self.handle_start)
-		else: self.n15 = None
-		return 0
-
-	def identify(self, handle, config):
-		[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
-		self.handle_start = handle_start
-		self.handle_end   = handle_end
-		return 0
-
-	def identifyIllumina(self, config):
-		handle = sequence('illuminaUniversal','AGATCGGAAGAGC','AGATCGGAAGAGC')
-		config.chandlemissmatch = 2
-		#handle = sequence('illumina','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC')
-		[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
-		if handle_start: self.r1.illuminaadapter = True
-		else: self.r1.illuminaadapter = False
-		
-		#handle = sequence('illumina','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT')
-		[handle_start, handle_end] = self.matchHandle(handle, config, self.r2)
-		if handle_start: self.r2.illuminaadapter = True
-		else: self.r2.illuminaadapter = False
-		return 0
-
-	def matchHandle(self, handle, config, read, matchfunk=hamming_distance):
-		
-		import re
-		#matchfunk = hamming_distance
-	
-		handle_start = None
-		handle_end   = None
-	
-		perfect_match = re.search(handle.seq, read.seq)
-		if perfect_match:
-		    handle_start = perfect_match.start()
-		    handle_end = perfect_match.end()
-		
-		elif config.chandlemissmatch:
-			mindist = [10000,-1]
-			for i in range(len(read.seq)):
-			    
-				if i+len(handle.seq) <= len(read.seq):
-					dist = matchfunk(handle.seq,read.seq[i:i+len(handle.seq)])
-				else: dist = 1000
-				
-				if dist < mindist[0]: mindist =[dist,i]
-
-			if mindist[0] < config.chandlemissmatch:
-				handle_start = i
-				handle_end = i+len(handle.seq)
-			else:
-				handle_start = None
-				handle_end = None
-
-		return [handle_start, handle_end]
-
-	def get_cid(self,config):
-		if self.n15 and self.n15.len == 15:
-			try: self.cid = config.cid_by_bc[self.n15.seq]
-			except KeyError: self.cid = False
-		else: self.cid = None
 
 class SEAseqSummary():
 	
