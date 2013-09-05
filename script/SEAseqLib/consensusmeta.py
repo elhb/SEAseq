@@ -32,11 +32,7 @@ def meta(indata):
 	results=[] # create holder for processed reads
 	progress = Progress(config.clustercount, logfile=config.logfile) # creates a progress "bar" thingy
 	with progress:
-<<<<<<< HEAD
-	    for cluster_pairs in clusteriterator(clusterq,indata):
-=======
 	    for cluster_pairs in clusteriterator(clusterq, indata):
->>>>>>> 4genomesmodelsystem
 		progress.update()
 		results.append(foreachcluster_meta(cluster_pairs))
 		#config.logfile.write('.');
