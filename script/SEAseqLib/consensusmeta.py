@@ -1,5 +1,6 @@
 import sys
 
+
 def meta(indata):
 
     from SEAseqLib.mainLibrary import Configuration, writelogheader
@@ -15,6 +16,17 @@ def meta(indata):
     config.logfile.write('Get infiles from config-file.\n')
     config.load()
     config.getreads2process()
+    
+    # set primerpairs
+    from SEAseqLib.mainLibrary import PrimerPair
+    config.primerpairs = {}
+    config.primerpairs['16s']      = PrimerPair('GTGBCAGCMGCCGCGGTAA',         'ACAHBTCACRRCACGAGCTGACGAC',    '16s')
+    config.primerpairs['its']      = PrimerPair('G?GBCTTBTACWCACYGCCCGTC',     'CTCYDRNWGCCVRGGCATCCACC',      'its')
+    config.primerpairs['ecoli']    = PrimerPair('TGCGAACGCGCGAATCAACTGG',      'AAGCGCGCGGCTGAATTACTGG',       'ecoli')
+    config.primerpairs['m13']      = PrimerPair('GCCTCGTTCCGGCTAAGTAACATGGAG', 'AGTTGCGCCGACAATGACAACAACC',    'm13')
+    config.primerpairs['myco']     = PrimerPair('ATGCCGCAGCCAAGAACGCATC',      'TTCGTGGCACTTGCCGAACTGG',       'myco')
+    config.primerpairs['lambda']   = PrimerPair('TCAGCTATGCGCCGACCAGAACAC',    'TTCCATGACCGCACCAACAGGCTC',     'lambda')
+
     
     import multiprocessing as mp
     man = mp.Manager()
@@ -178,10 +190,10 @@ def foreachcluster_meta(cluster_pairs):
     for amptype in ['ecoli','myco','lambda','m13','its','16s']:
         return_info[amptype+' reads'] = None
         return_info[amptype] = None
-        return_info[amptype+' monoclonal'] = None
-    
+        return_info[amptype+' monoclonal'] = None    
     
     from SEAseqLib.mainLibrary import readpair, sequence, UIPAC2REGEXP
+
     adaptercount = 0
     primererror = 0
     lowreadcutoff = 1
@@ -191,18 +203,23 @@ def foreachcluster_meta(cluster_pairs):
 	output += 'Less than '+str(lowreadcutoff)+' read pairs.\n'
 	return ['LOW READ',return_info,output]
     else:
-	reads = {}
-
-	if verb >=3: output += 'PAIRS:\n'
-	import re
 	
-	f = open(config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa','w')
+        import re
+        readsbyheader = {}
 	tmpcounter = 0
 	int2header = {}
+        
+        
+        ############################################################################################
+        #          GO TROUGH ALL READS PAIRS IN CLUSTER NAD PREPARE FOR CONSENSUS CLUSTERING       #
+        ############################################################################################
+	if verb >=3: output += 'PAIRS:\n'
+	f = open(config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa','w')
 	for pair in cluster.readpairs:
-		
+	    
 	    tmpcounter += 1
 	    if verb >=3: output += str(tmpcounter)+'\t'
+            pair.primererror = None
 	    
 	    #identify subparts of read
 	    C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
@@ -211,169 +228,88 @@ def foreachcluster_meta(cluster_pairs):
 	    pair.identifyIllumina(config)
 	    
 	    #match adaptersequence
-	    if (pair.r1.illuminaadapter or pair.r2.illuminaadapter):
+	    if pair.isillumina:
 		adaptercount +=1;
 		if verb >=3: output+='ADAPTER\n';
 		continue
-
-	    #metagenomics PRIMERS				Length	Degeneration degree
-	    #16S_fwd primer	GTGBCAGCMGCCGCGGTAA		19	6
-	    #ITS_fwd primer	GGBCTTGTACWCACYGCCCGTC		22	6
-	    #16S_rev primer	ACAHYTCACRRCACGAGCTGACGAC	25	24
-	    #ITS_rev primer	CTCYDANTGCCSRGGCATCCACC		23	384
-
-	    #2 genom modelsystem=em, realsmples=all
-	    #16S_fwd_em	GTGCCAGCAGCCGCGGTAA
-	    #16S_fwd_allGTGBCAGCMGCCGCGGTAA
-	    fwd_16S =  'GTGBCAGCMGCCGCGGTAA'
-	    #16S_rev_em	ACATKTCACRACACGAGCTGACGAC
-	    #16S_rev_allACAHYTCACRRCACGAGCTGACGAC
-	    rev_16S =  'ACAHBTCACRRCACGAGCTGACGAC'
-	    #ITS_fwd em	 GCCTTGTACACACCGCCCGTC 
-	    #ITS_fwd allGGBCTTGTACWCACYGCCCGTC
-	    fwd_ITS = 'G?GBCTTBTACWCACYGCCCGTC'
-	    #ITS_rev em	CTCTWRMAGCCARGGCATCCACC
-	    #ITS_rev allCTCYDANTGCCSRGGCATCCACC
-	    rev_ITS =  'CTCYDRNWGCCVRGGCATCCACC'
-
-            #new amplicons
-            fwd_ecoli   = 'TGCGAACGCGCGAATCAACTGG'
-            rev_ecoli   = 'AAGCGCGCGGCTGAATTACTGG'
-            fwd_m13     = 'GCCTCGTTCCGGCTAAGTAACATGGAG'
-            rev_m13     = 'AGTTGCGCCGACAATGACAACAACC'
-            rev_myco    = 'TTCGTGGCACTTGCCGAACTGG'
-            fwd_myco    = 'ATGCCGCAGCCAAGAACGCATC'
-            fwd_lambda  = 'TCAGCTATGCGCCGACCAGAACAC'
-            rev_lambda  = 'TTCCATGACCGCACCAACAGGCTC'
-
-	    fwd_16S = UIPAC2REGEXP(fwd_16S)
-	    rev_16S = UIPAC2REGEXP(rev_16S)
-	    fwd_ITS = UIPAC2REGEXP(fwd_ITS)
-	    rev_ITS = UIPAC2REGEXP(rev_ITS)
 	    
-	    #determine fwd primer
-	    pair.p1 = None
-	    p1_16S      = re.match( fwd_16S,    pair.r1.seq[pair.handle_end:])
-	    p1_ITS      = re.match( fwd_ITS,	pair.r1.seq[pair.handle_end:])
-            p1_ecoli    = re.match( fwd_ecoli,	pair.r1.seq[pair.handle_end:])
-            p1_m13      = re.match( fwd_m13,	pair.r1.seq[pair.handle_end:])
-            p1_lambda   = re.match( fwd_lambda,	pair.r1.seq[pair.handle_end:])
-            p1_myco     = re.match( fwd_myco,	pair.r1.seq[pair.handle_end:])
-	    if	 p1_16S:
-		if verb >=3: output += '16S\t';
-		pair.p1 = '16S'
-	    elif p1_ITS:
-		if verb >=3: output += 'ITS\t';
-		pair.p1 = 'ITS'
-            elif p1_ecoli:
-		if verb >=3: output += 'ecoli\t';
-		pair.p1 = 'ecoli'
-            elif p1_myco:
-		if verb >=3: output += 'myco\t';
-		pair.p1 = 'myco'
-            elif p1_m13:
-		if verb >=3: output += 'm13\t';
-		pair.p1 = 'm13'
-            elif p1_lambda:
-		if verb >=3: output += 'lambda\t';
-		pair.p1 = 'lambda'                
-	    else:
-		if verb >=3: output += '???\t';
-		pair.p1 = '???'
-	    
-	    #determine reverse primer
-	    pair.p2 = None
-	    p2_16S = re.match( rev_16S,pair.r2.seq)
-	    p2_ITS = re.match( rev_ITS,  pair.r2.seq)
+            # Match the primer pairs
+            for name, primerpair in config.primerpairs.iteritems():
+                pair.matchprimerpair(primerpair)
+
+            # If only one primer pair match
+            if   len(pair.matchingprimerpairs) == 1:
+                pair.p1 = pair.matchingprimerpairs[0].name
+                pair.p2 = pair.matchingprimerpairs[0].name
+
+            # if no or several pairs match match fwd and rev seperately
+            elif len(pair.matchingprimerpairs) != 1:
+                pair.p1 = ''
+                pair.p2 = ''
+                for name, primerpair in config.primerpairs.iteritems():
+                    if pair.matchfwd(primerpair):
+                        if pair.p1: pair.p1 += '/'
+                        pair.p1 += primerpair.name
+                    if pair.matchrev(primerpair):
+                        if pair.p2: pair.p2 += '/'
+                        pair.p2 += primerpair.name
+                if not pair.p1: pair.p1 = '???'
+                if not pair.p2: pair.p2 = '???'
+            if verb >=3: output += pair.p1+'\t'+pair.p2+'\t';
             
-            p2_ecoli = re.match( rev_ecoli,  pair.r2.seq)
-            p2_myco = re.match( rev_myco,  pair.r2.seq)
-            p2_m13 = re.match( rev_m13,  pair.r2.seq)
-            p2_lambda = re.match( rev_lambda,  pair.r2.seq)
-            
-	    if 	 p2_16S:
-		if verb >=3: output += '16S\t';
-		pair.p2 = '16S'
-	    elif p2_ITS:
-		if verb >=3: output += 'ITS\t';
-		pair.p2 = 'ITS'
-	    elif p2_ecoli:
-		if verb >=3: output += 'ecoli\t';
-		pair.p2 = 'ecoli'
-	    elif p2_myco:
-		if verb >=3: output += 'myco\t';
-		pair.p2 = 'myco'
-	    elif p2_m13:
-		if verb >=3: output += 'm13\t';
-		pair.p2 = 'm13'
-	    elif p2_lambda:
-		if verb >=3: output += 'lambda\t';
-		pair.p2 = 'lambda'
-	    else:
-		if verb >=3: output += '???\t';
-		pair.p2 = '???'
-	    
 	    # check that primers match
-	    if pair.p1 == '???' or pair.p1 != pair.p2:
+	    if pair.p1 == '???' or pair.p1 != pair.p2 or len(pair.matchingprimerpairs) != 1:
 		primererror+=1;
-		if verb >=3:
-		    output+='PRIMER ERROR\t';
+                if pair.p1 == '???':                        pair.primererror = 'primers-not-identifiable'
+                elif pair.p1 != pair.p2:                    pair.primererror = 'fwd-rev-pair-missmatch'
+                elif len(pair.matchingprimerpairs) != 1:    pair.primererror = 'more-than-one-pair-match'
+                if verb >=3:
+		    output+=pair.primererror;
 		    output += pair.r1.seq +' '+ pair.r2.seq+'\n'
-		continue 
+		continue
 
-### this part does nopt care about new amplicons ####
 	    #look for unexpected primer sequences
-	    if pair.p1 == '16S':
-	        fwd16S_in_r2  = re.search( fwd_16S,     pair.r2.seq) #16 fwd in read 2
-		rev16S_in_r1  = re.search( rev_16S,	pair.r1.seq[pair.handle_end:]) #16 rev in read1
-		fwdITS_in_any = re.search( fwd_ITS,   	pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its fwd in any read
-		revITS_in_any = re.search( rev_ITS,  pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) # its rev in any read
-		fwdcount = len(re.findall(fwd_16S,pair.r1.seq[pair.handle_end:]))
-		revcount = len(re.findall(rev_16S,pair.r2.seq))
-		if fwd16S_in_r2 or rev16S_in_r1 or fwdITS_in_any or revITS_in_any or revcount != 1 or fwdcount != 1:
+            matched_primerpair = config.primerpairs[pair.p1]
+            fwd_in_r2 = None
+            rev_in_r1 = None
+            fwdcount = 0
+            revcount = 0
+            other_fwd_in_any = None
+            other_rev_in_any = None
+            for name, primerpair in config.primerpairs.iteritems():
+                if primerpair.name == matched_primerpair.name:
+                    fwd_in_r2  = re.search(     matched_primerpair.fwdReStr,    pair.r2.seq) #fwd in read 2
+                    rev_in_r1  = re.search(     matched_primerpair.revReStr,	pair.r1.seq) #rev in read1
+                    fwdcount = len(re.findall(  matched_primerpair.fwdReStr,    pair.r1.seq))
+                    revcount = len(re.findall(  matched_primerpair.revReStr,    pair.r2.seq))
+                else:
+                    other_fwd_in_any = re.search( primerpair.fwdReStr,   	pair.r1.revcomp().seq + 'NNNNN' + pair.r1.seq + 'NNNNN' + pair.r2.seq + 'NNNNN' + pair.r2.revcomp().seq) # fwd in any read
+                    other_rev_in_any = re.search( primerpair.revReStr,          pair.r1.revcomp().seq + 'NNNNN' + pair.r1.seq + 'NNNNN' + pair.r2.seq + 'NNNNN' + pair.r2.revcomp().seq) # rev in any read
+            if fwd_in_r2 or rev_in_r1 or other_fwd_in_any or other_rev_in_any or revcount != 1 or fwdcount != 1:
 		    primererror+=1;
 		    if verb >=3:
-			output+='PRIMER ERROR\t';
+			output+='PRIMER ODD COMBO\t';
 			output += pair.r1.seq +' '+ pair.r2.seq+'\n'
-		    #print 'Happened'
 		    continue
-	    elif pair.p1 == 'ITS':
-	        fwd16S_in_any = re.search( fwd_16S,     pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) 
-		rev16S_in_any = re.search( rev_16S,	pair.r1.seq[pair.handle_end:]+'NNNNN'+pair.r2.seq) 
-		fwdITS_in_r2  = re.search( fwd_ITS,	pair.r2.seq) 
-		revITS_in_r1  = re.search( rev_ITS,  pair.r1.seq[pair.handle_end:])
-		fwdcount = len(re.findall(fwd_ITS,pair.r1.seq[pair.handle_end:]))
-		revcount = len(re.findall(rev_ITS,pair.r2.seq))
-		if fwd16S_in_any or rev16S_in_any or fwdITS_in_r2 or revITS_in_r1 or revcount != 1 or fwdcount != 1:
-		    primererror+=1;
-		    if verb >=3:
-			output+='PRIMER ERROR\t';
-			output += pair.r1.seq +' '+ pair.r2.seq+'\n'
-		    #print 'Happened'
-		    continue
-#####################################################
 
-	    #output +='\n'
+	    # Add sequences to output
 	    if verb >=3: output += pair.r1.seq +' '+ pair.r2.seq+'\n'
 	    
-	    # prepare for clustering
-	    if   pair.p1 == '16S': tem_seq = pair.r1.seq[pair.handle_end:][20:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-26]
-	    elif pair.p1 == 'ITS': tem_seq = pair.r1.seq[pair.handle_end:][23:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-24]
-            elif pair.p1 == 'ecoli':   tem_seq = pair.r1.seq[pair.handle_end:][len(fwd_ecoli)+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(rev_ecoli)+1)]
-            elif pair.p1 == 'myco':    tem_seq = pair.r1.seq[pair.handle_end:][len(fwd_myco)+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(rev_myco)+1)]
-            elif pair.p1 == 'm13':     tem_seq = pair.r1.seq[pair.handle_end:][len(fwd_m13)+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(rev_m13)+1)]
-            elif pair.p1 == 'lambda':  tem_seq = pair.r1.seq[pair.handle_end:][len(fwd_lambda)+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(rev_lambda)+1)]
-	    int2header[tmpcounter] = pair.header
-	    reads[pair.header] = pair
-	    f.write(
-		#'>'+':'.join(pair.header.split(':')[5:-3])+'.p1='+str(pair.p1)+'.p2='+str(pair.p2)+'\n'+
-		'>'+str(tmpcounter)+'\n'+
-		tem_seq +'\n'
-	    )
+	    # prepare for clustering by writing read pair to tempfile and saving temporary id number and mappinf header to pair-object
+            int2header[tmpcounter] = pair.header
+	    readsbyheader[pair.header] = pair
+            tem_seq = pair.r1.seq[pair.handle_end:][len( config.primerpairs[pair.p1].fwd )+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(    config.primerpairs[pair.p1].rev   )+1)]
+	    f.write('>'+str(tmpcounter)+'\n'+ tem_seq +'\n')
 	f.close()
-	
-	return_info['number of adaper reads'] = adaptercount
+	return_info['number of adaper reads'] = cluster.adaptercount
 	return_info['number of strange primers'] = primererror
+
+        assert adaptercount == cluster.adaptercount, '\n\n\t\t\t######### ERROR-SCHMERROR_1!!!! ##########\n\n'
+        assert primererror  == cluster.primererrors, '\n\n\t\t\t######### ERROR-SCHMERROR_2!!!! ##########\n\n'
+
+        ############################################################################################
+        #                                DO CONSENSUS CLUSTERING                                   #
+        ############################################################################################
 
 	#check that there is data to work with
 	if adaptercount+primererror == cluster.readcount:
@@ -382,25 +318,21 @@ def foreachcluster_meta(cluster_pairs):
 	    os.remove( f.name )
 	    return ['ONLY JUNK',return_info]
 
-	#cluster reads
+	# Cluster Read pairs
 	import subprocess
 	from cStringIO import StringIO
 	import time
 	import multiprocessing
 	tempo = time.time()
-	#config.logfile.write('starting '+' '.join(['cd-hit',''])+'\n')
 	cdhit = subprocess.Popen( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa','-g','1','-c',str(indata.clustering_identity/100.0)], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	cdhit_out, errdata = cdhit.communicate()
 	if cdhit.returncode != 0:
                 print 'cmd: '+' '.join( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa','-g','1','-c',str(indata.clustering_identity/100.0)])
 		print 'cd-hit cluster='+str(cluster.id)+' view Error code', cdhit.returncode, errdata
 		sys.exit()
-	#cd-hit_out = StringIO(cd-hit_out)
-	#print cdhit_out
 	seconds = round(time.time()-tempo,2)
-	#config.logfile.write('cd-hit cluster '+str(cluster_pairs[1][0].cid)+' done after '+str(seconds/60/60)+'h '+str(seconds/60%60)+'min '+str(seconds%60)+'s, parsing result ... ')
 
-	#build consensus
+	# Build consensus sequences for read pair clusters
 	ccc = subprocess.Popen( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.aligned'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	ccc_out, errdata = ccc.communicate()
 	if ccc.returncode != 0:
@@ -409,7 +341,7 @@ def foreachcluster_meta(cluster_pairs):
 		print ccc_out
 		sys.exit()
 
-	# output info
+	# output info from temporary files
 	if verb >=5: 
 	    for info in [
 		[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
@@ -491,9 +423,9 @@ def foreachcluster_meta(cluster_pairs):
 	        if read_id == 'Consensus': continue#output +=read_id+'\t'+seq+'\n'
 	        else:
 		    #if verb >=2: output += str(read_id)+'\t'+int2header[int(read_id)].split('_')[0]+'   \t'+identity+'\t'+reads[int2header[int(read_id)]].p1+'\t'+seq
-		    if verb >=2: output += 'Read pair id = '+str(read_id)+'    \t'+identity+'\t'+reads[int2header[int(read_id)]].p1+'\t'+seq
+		    if verb >=2: output += 'Read pair id = '+str(read_id)+'    \t'+identity+'\t'+readsbyheader[int2header[int(read_id)]].p1+'\t'+seq
 		    if verb >=2: output += '\n'
-		    primerpairs.append(reads[int2header[int(read_id)]].p1)
+		    primerpairs.append(readsbyheader[int2header[int(read_id)]].p1)
 	    if   primerpairs and primerpairs.count(primerpairs[0]) == len(primerpairs):
 		if verb >=2: output += 'consensus is '+primerpairs[0]
 	    elif primerpairs and primerpairs.count(primerpairs[0]) != len(primerpairs):

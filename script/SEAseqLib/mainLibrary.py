@@ -547,7 +547,7 @@ class readpair():
 		self.header = header
 		self.r1 = r1 #first read
 		self.r2 = r2 #second read
-		self.threads = []
+		self.matchingprimerpairs = []
 
 	def getN15(self):
 		if self.handle_start:self.n15 = self.r1.subseq(0,self.handle_start)
@@ -616,6 +616,19 @@ class readpair():
 			except KeyError: self.cid = False
 		else: self.cid = None
 
+	def matchprimerpair(self, primerpair):
+		forwardprimermatch = self.matchfwd(primerpair)
+		reverseprimermatch = self.matchrev(primerpair)
+		if forwardprimermatch and reverseprimermatch: self.matchingprimerpairs.append(primerpair)
+	
+	def matchfwd(self, primerpair):
+		import re
+		return re.match(primerpair.fwdReStr, self.r1.seq[self.handle_end:])
+	
+	def matchrev(self, primerpair):
+		import re
+		return re.match(primerpair.revReStr, self.r2.seq)
+		
 class SEAseqSummary():
 	
 	def __init__(self):
@@ -823,7 +836,7 @@ class BarcodeCluster(object):
 class Amplicon(object):
 
 	def __init__(self, amplicon_type, primerpair):
-		self.consensuses = []
+		self.allels = []#hold the consensus sequences produced
 		self.type = amplicon_type
 		self.primer = primerpair
 		
