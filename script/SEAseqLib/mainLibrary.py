@@ -805,6 +805,20 @@ class BarcodeCluster(object):
 			if pair.isillumina or pair.primererror: continue
 			tmp_counter += 1
 		return tmp_counter
+	
+	@property
+	def adaptercount(self):
+		tmp_counter = 0
+		for pair in self.readpairs:
+			if pair.isillumina: tmp_counter += 1
+		return tmp_counter
+	
+	@property
+	def primererrors(self):
+		tmp_counter = 0
+		for pair in self.readpairs:
+			if pair.primererror: tmp_counter += 1
+		return tmp_counter
 
 class Amplicon(object):
 

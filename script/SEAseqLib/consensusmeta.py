@@ -73,6 +73,8 @@ def meta(indata):
 		processed += 1
 		lowread += 1
 		return_info = tmp[1]
+                output = tmp[2]
+                config.outfile.write( output )
 	    elif tmp[0] == 'ONLY JUNK':
 		processed += 1
 		onlyjunk += 1
@@ -160,36 +162,20 @@ def meta(indata):
     return 0
 
 def foreachcluster_meta(cluster_pairs):
-    if cluster_pairs[0][0] == 0: return 'INITIAL'
     indata = cluster_pairs[1]
-    cluster_pairs = cluster_pairs[0]
-    config = cluster_pairs[2]
-    cid = cluster_pairs[1][0].cid
+    cluster = cluster_pairs[0][0]
+    config = cluster_pairs[0][1]
     verb = 3
-
-    # for each cluster:
-	# remove reads containing illumina adapter sequences
-	# cut the N15 and C-handle
-	# idetify if read primers are 16S, ITS, MIX or unknown
-	# get consensus sequences for each class of primer combos
-	# identify the species corresponding to each consensus
-	# create cluster output/summary
     
     return_info = {
-	'clusterid':cid,
-	'number of reads in total':len(cluster_pairs[1]),
+	'clusterid':cluster.id,
+	'number of reads in total':cluster.readcount,
 	'number of adaper reads':None,
 	'number of strange primers':None,
 	'number of consensus types':None,
-	'number of consensus types with good support':None,
-	'its reads':None,
-	'16s reads':None,
-	'its':None,
-	'16s':None,
-	'its monoclonal':None,
-	'16s monoclonal':None
+	'number of consensus types with good support':None
     }
-    for amptype in ['ecoli','myco','lambda','m13']:
+    for amptype in ['ecoli','myco','lambda','m13','its','16s']:
         return_info[amptype+' reads'] = None
         return_info[amptype] = None
         return_info[amptype+' monoclonal'] = None
@@ -200,20 +186,20 @@ def foreachcluster_meta(cluster_pairs):
     primererror = 0
     lowreadcutoff = 1
     output = ''
-    output =  '\n###--- Cluster number '+str(cluster_pairs[1][0].cid)+' -> '+str(len(cluster_pairs[1]))+' pairs. ---###\n'
-    if len(cluster_pairs[1])<lowreadcutoff:
+    output =  '\n###--- Cluster number '+str(cluster.id)+' -> '+str(cluster.readcount)+' pairs. ---###\n'
+    if cluster.readcount<lowreadcutoff:
 	output += 'Less than '+str(lowreadcutoff)+' read pairs.\n'
-	return ['LOW READ',return_info]
+	return ['LOW READ',return_info,output]
     else:
 	reads = {}
 
 	if verb >=3: output += 'PAIRS:\n'
 	import re
 	
-	f = open(config.path+'/sortedReads/temporary.'+str(cid)+'.fa','w')
+	f = open(config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa','w')
 	tmpcounter = 0
 	int2header = {}
-	for pair in cluster_pairs[1]:
+	for pair in cluster.readpairs:
 		
 	    tmpcounter += 1
 	    if verb >=3: output += str(tmpcounter)+'\t'
@@ -390,7 +376,7 @@ def foreachcluster_meta(cluster_pairs):
 	return_info['number of strange primers'] = primererror
 
 	#check that there is data to work with
-	if adaptercount+primererror == len(cluster_pairs[1]):
+	if adaptercount+primererror == cluster.readcount:
 	    output += 'All adapter and/or primer error.\n'
 	    import os
 	    os.remove( f.name )
@@ -403,11 +389,11 @@ def foreachcluster_meta(cluster_pairs):
 	import multiprocessing
 	tempo = time.time()
 	#config.logfile.write('starting '+' '.join(['cd-hit',''])+'\n')
-	cdhit = subprocess.Popen( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cid)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cid)+'.fa','-g','1','-c',str(indata.clustering_identity/100.0)], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	cdhit = subprocess.Popen( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa','-g','1','-c',str(indata.clustering_identity/100.0)], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	cdhit_out, errdata = cdhit.communicate()
 	if cdhit.returncode != 0:
-                print 'cmd: '+' '.join( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cid)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cid)+'.fa','-g','1','-c',str(indata.clustering_identity/100.0)])
-		print 'cd-hit cluster='+str(cid)+' view Error code', cdhit.returncode, errdata
+                print 'cmd: '+' '.join( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa','-g','1','-c',str(indata.clustering_identity/100.0)])
+		print 'cd-hit cluster='+str(cluster.id)+' view Error code', cdhit.returncode, errdata
 		sys.exit()
 	#cd-hit_out = StringIO(cd-hit_out)
 	#print cdhit_out
@@ -415,20 +401,20 @@ def foreachcluster_meta(cluster_pairs):
 	#config.logfile.write('cd-hit cluster '+str(cluster_pairs[1][0].cid)+' done after '+str(seconds/60/60)+'h '+str(seconds/60%60)+'min '+str(seconds%60)+'s, parsing result ... ')
 
 	#build consensus
-	ccc = subprocess.Popen( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cid)+'.fa',config.path+'/sortedReads/cluster.'+str(cid)+'.consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.aligned'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+	ccc = subprocess.Popen( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.aligned'], stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 	ccc_out, errdata = ccc.communicate()
 	if ccc.returncode != 0:
-                print 'cmd: '+' '.join( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cid)+'.fa',config.path+'/sortedReads/cluster.'+str(cid)+'.consensus',config.path+'/sortedReads/cluster.'+str(cid)+'.aligned'])
-		print 'cluster='+str(cid)+' cdhit-cluster-consensus view Error code', ccc.returncode, errdata
+                print 'cmd: '+' '.join( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.aligned'])
+		print 'cluster='+str(cluster.id)+' cdhit-cluster-consensus view Error code', ccc.returncode, errdata
 		print ccc_out
 		sys.exit()
 
 	# output info
 	if verb >=5: 
 	    for info in [
-		[config.path+'/sortedReads/cluster.'+str(cid)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
-		[config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr','\nClustering details:\n'],
-		[config.path+'/sortedReads/cluster.'+str(cid)+'.aligned','\nAlignment details:\n']
+		[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
+		[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa.clstr','\nClustering details:\n'],
+		[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.aligned','\nAlignment details:\n']
 		]:
 		filename , message =info
 		f = open(filename)
@@ -438,7 +424,7 @@ def foreachcluster_meta(cluster_pairs):
 		f.close()
 	
 	# get alignments from file
-	f = open(config.path+'/sortedReads/cluster.'+str(cid)+'.aligned')
+	f = open(config.path+'/sortedReads/cluster.'+str(cluster.id)+'.aligned')
 	data = f.read()
 	f.close()
 	consensuses = {}
@@ -460,7 +446,7 @@ def foreachcluster_meta(cluster_pairs):
 		    except KeyError:	consensuses[consensusid][read_id] = [seq,'NotSet']
 
 #	get identity from file
-	f = open(config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr')
+	f = open(config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa.clstr')
 	data = f.read()
 	f.close()
 	for consensus_identities in data.split('>Cluster '):
@@ -475,7 +461,7 @@ def foreachcluster_meta(cluster_pairs):
 		    except KeyError:	consensuses[consensusid][read_id] = ['SEQUENCE NOT LOADED',identity]
 
 	##load singelton consensus sequences
-	f = open(config.path+'/sortedReads/cluster.'+str(cid)+'.consensus.fasta')
+	f = open(config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus.fasta')
 	data = f.read()
 	f.close()
 	for consensus_identities in data.split('>')[1:]:
@@ -554,17 +540,17 @@ def foreachcluster_meta(cluster_pairs):
 		output += '\t\tConsensus '+consensus+' supported by '+str(percentage)+'% of readpop ('+str(data['support'])+' reads)\t'+data['sequence'].replace('-','')+'\n'
 		#if percentage >= 95.0: types[cons_type]['mono'] = True
 		try:
-		    seqdict[cons_type][consensus] = '\n>cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r1.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNNN')[0]
-		    seqdict[cons_type][consensus] += '\n>cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r2.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNNN')[1]
+		    seqdict[cons_type][consensus] = '\n>cluster='+str(cluster.id)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r1.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNNN')[0]
+		    seqdict[cons_type][consensus] += '\n>cluster='+str(cluster.id)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r2.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNNN')[1]
 		except IndexError:
-		    output += 'WARNING: consensus sequence not properly splittable into r1 and r2, not dumping this cluster ('+str(cid)+').\n'
+		    output += 'WARNING: consensus sequence not properly splittable into r1 and r2, not dumping this cluster ('+str(cluster.id)+').\n'
 		#    try:
-		#	seqdict[cons_type][consensus] = '\n>cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r1.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNN')[0]
-		#	seqdict[cons_type][consensus] += '\n>cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r2.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNN')[1]
+		#	seqdict[cons_type][consensus] = '\n>cluster='+str(cluster.id)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r1.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNN')[0]
+		#	seqdict[cons_type][consensus] += '\n>cluster='+str(cluster.id)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'_r2.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads\n'+data['sequence'].replace('-','').split('NNNNNNNNN')[1]
 		#    except IndexError:
 		#	print '\n\n###Cluster ==',cid;
 		#	print 'Erro when splitting sequence:'
-		#	print 'cluster='+str(cid)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads'
+		#	print 'cluster='+str(cluster.id)+'.amplicon='+str(cons_type)+'.consensus='+str(consensus)+'.'+str(percentage)+'%_of_'+str(consensuses['total'])+'reads'
 		#	print data['sequence']
 		#	raise ValueError
 		if len(consensuses)-2 == 1: types[cons_type]['mono'] = True
@@ -585,11 +571,11 @@ def foreachcluster_meta(cluster_pairs):
 
 
 	import os
-	os.remove(config.path+'/sortedReads/temporary.'+str(cid)+'.fa')
-	os.remove(config.path+'/sortedReads/cluster.'+str(cid)+'.fa')
-	os.remove(config.path+'/sortedReads/cluster.'+str(cid)+'.fa.clstr')
-	os.remove(config.path+'/sortedReads/cluster.'+str(cid)+'.consensus.fasta')
-	os.remove(config.path+'/sortedReads/cluster.'+str(cid)+'.aligned')
+	os.remove(config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa')
+	os.remove(config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa')
+	os.remove(config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa.clstr')
+	os.remove(config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus.fasta')
+	os.remove(config.path+'/sortedReads/cluster.'+str(cluster.id)+'.aligned')
 
 	_its = None
 	_16s = None
@@ -620,10 +606,10 @@ def getClustersAndPairs(config,clusterq):
     import time
     config.logfile.write('Reader initiated pid='+str(os.getpid())+'.\n')
 
-    currentclusterid = 0
+    currentclusterid = 1
     from SEAseqLib.mainLibrary import BarcodeCluster
     cluster = BarcodeCluster(currentclusterid)
-    pairs = []
+    #pairs = []
     config.infiles['r1'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq']
     config.infiles['r2'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq']
     
@@ -636,19 +622,14 @@ def getClustersAndPairs(config,clusterq):
 	pair.cid = int(pair.header.split(':')[-1].split('_')[1])
 	
 	if pair.cid == currentclusterid:
-	    pairs.append(pair)
+            cluster.addreadpair(pair)
 	elif pair.cid == currentclusterid+1:
 	    while clusterq.qsize() > 160 or clusterq.full(): time.sleep(1); #config.logfile.write('waiting for queue ...\n')
-	    clusterq.put([currentclusterid,pairs,config])
+            clusterq.put([cluster,config])
 	    currentclusterid = pair.cid
             cluster = BarcodeCluster(currentclusterid)
             cluster.addreadpair(pair)
-	    pairs = [pair]
-	else:
-	    while clusterq.qsize() > 160 or clusterq.full(): time.sleep(1); #config.logfile.write('waiting for queue ...\n')
-	    clusterq.put([currentclusterid,pairs,config])
-	    currentclusterid = pair.cid
-	    pairs = [pair]
+	else: sys.stdout.write('ERROR 1979 in consensus creation get clusters and pairs.\n')
 
     clusterq.put('END')
     config.logfile.write('Reader exiting.\n')
