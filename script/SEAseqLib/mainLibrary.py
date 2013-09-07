@@ -548,6 +548,7 @@ class readpair():
 		self.r1 = r1 #first read
 		self.r2 = r2 #second read
 		self.matchingprimerpairs = []
+		self.id = 0
 
 	def getN15(self):
 		if self.handle_start:self.n15 = self.r1.subseq(0,self.handle_start)
@@ -628,7 +629,7 @@ class readpair():
 	def matchrev(self, primerpair):
 		import re
 		return re.match(primerpair.revReStr, self.r2.seq)
-		
+	
 class SEAseqSummary():
 	
 	def __init__(self):
@@ -789,8 +790,10 @@ class BarcodeCluster(object):
 		self.id = id_number
 		self.barcodesequence = barcode_sequence
 		self.readpairs = []
-		self.consensuses = []
+		self.consensuses = {}
 		self.amplicons = []
+		self.readpairbyheader = {}
+		self.headerbyint = {}
 
 	def addreadpair(self, pair):
 		if pair.cid: cluster_id = pair.cid
@@ -833,6 +836,235 @@ class BarcodeCluster(object):
 			if pair.primererror: tmp_counter += 1
 		return tmp_counter
 
+	def createtempfile(self, config, verb=True):
+
+		tmpcounter = 0
+		if verb: output = 'PAIRS:\n'
+		f = open(config.path+'/sortedReads/temporary.'+str(self.id)+'.fa','w')
+		
+		for pair in self.readpairs:
+		    
+		    tmpcounter += 1
+		    pair.id = tmpcounter
+		    self.headerbyint[pair.id] = pair.header
+		    self.readpairbyheader[pair.header] = pair
+		    if verb: output += str(pair.id)+'\t'
+		    pair.primererror = None
+		    
+		    #identify subparts of read
+		    C_HANDLE = sequence('c handle',"CTAAGTCCATCCGCACTCCT","CTAAGTCCATCCGCACTCCT")
+		    pair.identify(C_HANDLE, config)
+		    pair.getN15()
+		    pair.identifyIllumina(config)
+		    
+		    #check if read is adaptersequence
+		    if pair.isillumina:
+			if verb: output+='illumina adapter in read pair\n';
+			continue
+		    
+		    # Match the primer pairs
+		    for name, primerpair in config.primerpairs.iteritems(): pair.matchprimerpair(primerpair)
+	
+		    # If only one primer pair match
+		    if   len(pair.matchingprimerpairs) == 1:
+			pair.p1 = pair.matchingprimerpairs[0].name
+			pair.p2 = pair.matchingprimerpairs[0].name
+	
+		    # if no or several pairs match match fwd and rev seperately
+		    elif len(pair.matchingprimerpairs) != 1:
+			pair.p1 = ''
+			pair.p2 = ''
+			for name, primerpair in config.primerpairs.iteritems():
+			    if pair.matchfwd(primerpair):
+				if pair.p1: pair.p1 += '/'
+				pair.p1 += primerpair.name
+			    if pair.matchrev(primerpair):
+				if pair.p2: pair.p2 += '/'
+				pair.p2 += primerpair.name
+			if not pair.p1: pair.p1 = '???'
+			if not pair.p2: pair.p2 = '???'
+		    if verb: output += pair.p1+'\t'+pair.p2+'\t';
+		    
+		    # check that primers match
+		    if pair.p1 == '???' or pair.p1 != pair.p2 or len(pair.matchingprimerpairs) != 1:
+			if pair.p1 == '???':                        pair.primererror = 'primers-not-identifiable'
+			elif pair.p1 != pair.p2:                    pair.primererror = 'fwd-rev-pair-missmatch'
+			elif len(pair.matchingprimerpairs) != 1:    pair.primererror = 'more-than-one-pair-match'
+			if verb:
+			    output += pair.primererror+'\t'+pair.r1.seq +' '+ pair.r2.seq+'\n'
+			continue
+	
+		    #look for unexpected primer sequences
+		    import re
+		    matched_primerpair = config.primerpairs[pair.p1]
+		    fwd_in_r2 = None
+		    rev_in_r1 = None
+		    fwdcount = 0
+		    revcount = 0
+		    other_fwd_in_any = None
+		    other_rev_in_any = None
+		    for name, primerpair in config.primerpairs.iteritems():
+			if primerpair.name == matched_primerpair.name:
+			    fwd_in_r2  = re.search(     matched_primerpair.fwdReStr,    pair.r2.seq) #fwd in read 2
+			    rev_in_r1  = re.search(     matched_primerpair.revReStr,	pair.r1.seq) #rev in read1
+			    fwdcount = len(re.findall(  matched_primerpair.fwdReStr,    pair.r1.seq))
+			    revcount = len(re.findall(  matched_primerpair.revReStr,    pair.r2.seq))
+			else:
+			    other_fwd_in_any = re.search( primerpair.fwdReStr,   	pair.r1.revcomp().seq + 'NNNNN' + pair.r1.seq + 'NNNNN' + pair.r2.seq + 'NNNNN' + pair.r2.revcomp().seq) # fwd in any read
+			    other_rev_in_any = re.search( primerpair.revReStr,          pair.r1.revcomp().seq + 'NNNNN' + pair.r1.seq + 'NNNNN' + pair.r2.seq + 'NNNNN' + pair.r2.revcomp().seq) # rev in any read
+		    if fwd_in_r2 or rev_in_r1 or other_fwd_in_any or other_rev_in_any or revcount != 1 or fwdcount != 1:
+			    primererror+=1;
+			    if verb:
+				output+='PRIMER ODD COMBO\t';
+				output += pair.r1.seq +' '+ pair.r2.seq+'\n'
+			    continue
+	
+		    # Add sequences to output
+		    if verb: output += pair.r1.seq +' '+ pair.r2.seq+'\n'
+		    
+		    # prepare for clustering by writing read pair to tempfile and saving temporary id number and mappinf header to pair-object
+		    tem_seq = pair.r1.seq[pair.handle_end:][len( config.primerpairs[pair.p1].fwd )+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(    config.primerpairs[pair.p1].rev   )+1)]
+		    f.write('>'+str(pair.id)+'\n'+ tem_seq +'\n')
+		
+		f.close()
+		
+		if verb:return output
+	
+	def clusterreadpairs(self, config, indata, verb=False):
+		
+		#check that there is data to work with
+		if self.adaptercount+self.primererrors == self.readcount:
+		    import os
+		    os.remove( config.path+'/sortedReads/temporary.'+str(self.id)+'.fa' )
+		    return 'All adapter and/or primer error.\n'#['ONLY JUNK',return_info]
+	
+		# Cluster Read pairs
+		import subprocess
+		from cStringIO import StringIO
+		cdhit = subprocess.Popen(
+			[	'cd-hit-454',
+				'-i',config.path+'/sortedReads/temporary.'+str(self.id)+'.fa',
+				'-o',config.path+'/sortedReads/cluster.'+str(self.id)+'.fa',
+				'-g','1',
+				'-c',str(indata.clustering_identity/100.0)
+				],
+			stdout=subprocess.PIPE,
+			stderr=subprocess.PIPE )
+		cdhit_out, errdata = cdhit.communicate()
+		if cdhit.returncode != 0:
+			print 'cmd: '+' '.join( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa','-g','1','-c',str(indata.clustering_identity/100.0)])
+			print 'cd-hit cluster='+str(cluster.id)+' view Error code', cdhit.returncode, errdata
+			sys.exit()
+	
+		# Build consensus sequences for read pair clusters
+		ccc = subprocess.Popen(
+			[	'cdhit-cluster-consensus',
+				config.path+'/sortedReads/cluster.'+str(self.id)+'.fa.clstr',
+				config.path+'/sortedReads/temporary.'+str(self.id)+'.fa',
+				config.path+'/sortedReads/cluster.'+str(self.id)+'.consensus',
+				config.path+'/sortedReads/cluster.'+str(self.id)+'.aligned'
+				],
+			stdout=subprocess.PIPE,
+			stderr=subprocess.PIPE )
+		ccc_out, errdata = ccc.communicate()
+		if ccc.returncode != 0:
+			print 'cmd: '+' '.join( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.aligned'])
+			print 'cluster='+str(cluster.id)+' cdhit-cluster-consensus view Error code', ccc.returncode, errdata
+			print ccc_out
+			sys.exit()
+	
+		# output info from temporary files
+		if verb:
+			output = ''
+			for info in [
+				[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
+				[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa.clstr','\nClustering details:\n'],
+				[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.aligned','\nAlignment details:\n']
+				]:
+				filename , message = info
+				f = open(filename)
+				tmp = f.read()
+				output += message
+				output += tmp
+				f.close()
+			return output
+
+	def removetempfiles(self, config):
+		import os
+		os.remove(config.path + '/sortedReads/temporary.' + str(self.id) + '.fa')
+		os.remove(config.path + '/sortedReads/cluster.'   + str(self.id) + '.fa')
+		os.remove(config.path + '/sortedReads/cluster.'   + str(self.id) + '.fa.clstr')
+		os.remove(config.path + '/sortedReads/cluster.'   + str(self.id) + '.consensus.fasta')
+		os.remove(config.path + '/sortedReads/cluster.'   + str(self.id) + '.aligned')
+
+	def loadconsensuses(self, config):
+
+	#	get identity from file
+		f = open(config.path+'/sortedReads/cluster.'+str(self.id)+'.fa.clstr')
+		data = f.read()
+		f.close()
+		for consensus_identities in data.split('>Cluster '):
+			consensusid = consensus_identities.split('\n')[0]
+			consensus = Consensus(consensusid)
+			for line in consensus_identities.split('\n')[1:]:
+			    line=line.rstrip()
+			    if not line: continue
+			    read_id     = int(line.split('>')[1].split('.')[0])
+			    identity = line.split('/')[-1]
+			    pair = self.readpairbyheader[self.headerbyint[read_id]]
+			    consensus.addreadpair(pair,identity)
+			self.consensuses[consensus.id] = consensus
+
+	def loadconsensusalignemnts(self, config):
+		# get alignments from file
+		f = open(config.path+'/sortedReads/cluster.'+str(self.id)+'.aligned')
+		data = f.read()
+		f.close()
+		consensus = None
+		for cluster_aln in data.split('===========================================\n'):
+			consensusalignment = ''
+			tmpseqs = {}
+			for part in cluster_aln.split('\n\n'):
+				for line in part.split('\n'):
+				    line=line.rstrip()
+				    if not line: continue
+				    if line[0] == 'A':
+					consensusid=line.split(' ')[-1].split(':')[0];
+					consensus = self.consensuses[consensusid]
+					consensus.alignmentStr = ''
+					continue
+				    read_id = line.split(':  +  ')[0]
+				    seq     = line.split(':  +  ')[1]
+				    if read_id == 'Consensus': consensus.alignmentStr += seq.split(' ')[0]
+				    else:
+					try: 		 tmpseqs[read_id] += seq
+					except KeyError: tmpseqs[read_id]  = seq
+			for readid, seq in tmpseqs.iteritems():
+				consensus.readpairs[int(read_id)].alignmentStr = seq
+	
+	def loadconsensussequences(self, config):
+		##load singelton consensus sequences
+		f = open(config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus.fasta')
+		data = f.read()
+		f.close()
+		consensusid = None
+		for consensus_identities in data.split('>')[1:]:
+			if   consensus_identities[0] == 'c':
+				consensusid = consensus_identities.split(' ')[0].split('_')[-1]
+				readcount  = int(consensus_identities.split(' ')[2])
+				assert self.consensuses[consensusid].readcount == readcount,	'ERRORSHMERROR 1'
+			elif consensus_identities[0] == 's':
+				consensusid = consensus_identities.split(' ')[0].split('_')[-1]
+				read_id     = consensus_identities.split(' ')[1].split('\n')[0]
+				assert self.consensuses[consensusid].readcount  == 1,		'ERRORSHMERROR 2'
+				assert self.consensuses[consensusid].seedpairid == read_id,	'ERRORSHMERROR 3'
+			consensus = self.consensuses[consensusid]
+			tmpseq = ''
+			for line in consensus_identities.split('\n')[1:]:
+			    line=line.rstrip()
+			    tmpseq += line
+			consensus.sequence = sequence(consensus.id,tmpseq,tmpseq)
+
 class Amplicon(object):
 
 	def __init__(self, amplicon_type, primerpair):
@@ -840,7 +1072,7 @@ class Amplicon(object):
 		self.type = amplicon_type
 		self.primer = primerpair
 		
-	def addconsesnsus(self,consensus ):
+	def addallele(self,consensus ):
 		if consensus.type == self.type: self.consensussses.append(consensus)
 		else:
 			import sys
@@ -849,17 +1081,63 @@ class Amplicon(object):
 
 class Consensus(object):
 
-	def __init__(self, amplicon_type, primerpair):
-		self.readpairs = []
+	def __init__(self, idnumber, amplicon_type=None, primerpair=None, sequence=None):
+		self.readpairs = {}
 		self.type = amplicon_type
 		self.primer = primerpair
+		self.id = idnumber
+		self.sequence = sequence
 
-	def addreadpair(self, pair):
+	@property
+	def readcount(self):
+		return len(self.readpairs)
+
+	def addreadpair(self, pair, identity):
+		if identity[-1] == '*':
+			identity = 'SEED'
+			self.seedpairid = pair.id
+		pair.consensusidentity = identity
+		if self.type == None:
+			self.type = pair.p1
+			self.primer = pair.matchingprimerpairs[0]
 		if pair.p1 == self.type:
-			self.readpairs.append(pair)
+			self.readpairs[pair.id] = pair
 		else:
 			import sys
 			sys.stderr.write('ERROR: Consensus type does not match the readpair fwd primer.\n')
 			raise ValueError
+
+	def output(self, config):
+		#make output for alnignments
+		if verb >=2: output = ''
+		types = {'ITS':{'total':0},'16S':{'total':0},'ecoli':{'total':0},'myco':{'total':0},'m13':{'total':0},'lambda':{'total':0}}
+		for consensusid in consensuses:
+		    if  not consensusid: continue
+		    primerpairs = []
+		    if 'Consensus' in consensuses[consensusid]:
+			if verb >=2: output += 'Consensus number '+consensusid+' from '+str(len(consensuses[consensusid])-1)+' read pairs'
+			if verb >=2: output += ':\t'+consensuses[consensusid]['Consensus'][0]+'\n'
+		    for read_id, tmp in consensuses[consensusid].iteritems():
+			[seq, identity] = tmp
+			if read_id == 'Consensus': continue#output +=read_id+'\t'+seq+'\n'
+			else:
+			    #if verb >=2: output += str(read_id)+'\t'+int2header[int(read_id)].split('_')[0]+'   \t'+identity+'\t'+reads[int2header[int(read_id)]].p1+'\t'+seq
+			    if verb >=2: output += 'Read pair id = '+str(read_id)+'    \t'+identity+'\t'+readsbyheader[int2header[int(read_id)]].p1+'\t'+seq
+			    if verb >=2: output += '\n'
+			    primerpairs.append(readsbyheader[int2header[int(read_id)]].p1)
+		    if   primerpairs and primerpairs.count(primerpairs[0]) == len(primerpairs):
+			if verb >=2: output += 'consensus is '+primerpairs[0]
+		    elif primerpairs and primerpairs.count(primerpairs[0]) != len(primerpairs):
+			if verb >=2: output += 'WARNING: mixed consensus clustering!'
+		    try:
+			types[primerpairs[0]][consensusid]={'sequence':consensuses[consensusid]['Consensus'][0], 'support':len(consensuses[consensusid])-1}
+			types[primerpairs[0]]['total']+=len(consensuses[consensusid])-1
+		    except KeyError: raise ERIKERROR
+	#		types[primerpairs[0]] = {consensusid:{'sequence':consensuses[consensusid]['Consensus'][0], 'support':len(consensuses[consensusid])-1}}
+	#		types[primerpairs[0]]['total']=len(consensuses[consensusid])-1
+		    if verb >=2: output += '\n\n'
+		
+		return output
+	
 
 if __name__ == "__main__": lib_main()
