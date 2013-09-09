@@ -21,7 +21,7 @@ class RunStatCounter(object):
         if cluster.ampliconpairs == 0:
             self.junkclusters +=1
             return
-        if cluster.definedamplicons < 1:
+        if cluster.definedampliconcount < 1:
             self.undefinedclusters += 1
             return
         
@@ -34,13 +34,13 @@ class RunStatCounter(object):
         try:
             self.ampliconcombinations[ampliconcombo]['count'] += 1
         except KeyError:
-            self.ampliconcombinations[ampliconcombo]['count'] = 1
+            self.ampliconcombinations[ampliconcombo] = {'count':1}
             self.ampliconcombinations[ampliconcombo]['monos'] = {'All'+'Mono':0}
         
         # count combo of monoclonal amplicons
         monoAmps = {}
         for ampname, amplicon in cluster.definedamplicons.iteritems():
-            if amplicon.monoclonal: monoAmps[amplicon.name] = amplicon.monoclonal
+            if amplicon.monoclonal: monoAmps[amplicon.type] = amplicon.monoclonal
         
         mononames = monoAmps.keys()
         mononames.sort()
@@ -53,7 +53,7 @@ class RunStatCounter(object):
             self.ampliconcombinations[ampliconcombo]['monos']['All'+'Mono'] += 1
             self.definedclustersMono += 1
     
-    def createsummary(self, ):
+    def createsummary(self, indata):
         output = ''
         output += ('##### SUMMARY #####'+'\n')
         output += (  str(self.clustercount)   +' clusters processed, out of these were:'+'\n')
@@ -163,7 +163,7 @@ def meta(indata):
     reader.join()
     	
     # create a nice run summary
-    config.outfile.write(counter.createsummary())
+    config.outfile.write(counter.createsummary(indata))
     
     config.logfile.write('Done.\n')
     return 0
@@ -194,19 +194,19 @@ def foreachcluster_meta(cluster_pairs):
         cluster.consensusesToAmplicons(config)
 	
         aligmnmentsOut = ''
-        for amplicon in cluster.amlicons.values():
-            for consensus in amplicon.allels.values(): aligmnmentsOut += consensus.alignmentoutput()
+        for amplicon in cluster.amplicons.values():
+            for consensus in amplicon.allels: aligmnmentsOut += consensus.alignmentoutput(config)
 
         perAmpOut = ''
-        for amplicon in cluster.amlicons.values(): perAmpOut += amplicon.checkmono(indata)
+        for amplicon in cluster.amplicons.values(): perAmpOut += amplicon.checkmono(indata)
         cluster.getDefinedAmplicons()
         
         output += pairsOut
         output += filesOut
         output += aligmnmentsOut
         output += 'There are '+str(cluster.adaptercount)+' illumina adapter reads.\n'
-	output += 'There are '+str(cluster.primererror)+' primer missmatch reads.\n'
-        output += str(cluster.definedamplicons)+' amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads):\n'
+	output += 'There are '+str(cluster.primererrors)+' primer missmatch reads.\n'
+        output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads):\n'
         output += perAmpOut
 
         cluster.removetempfiles(config)

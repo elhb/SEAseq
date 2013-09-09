@@ -842,9 +842,9 @@ class BarcodeCluster(object):
 		return len(self.amplicons)
 
 	@property
-	def definedamplicons(self):
+	def definedampliconcount(self):
 		tmp_counter = 0
-		for amplicon in self.amplicons.values:
+		for amplicon in self.amplicons.values():
 			if amplicon.allelecount >= 1: tmp_counter += 1
 		return tmp_counter
 
@@ -1000,6 +1000,7 @@ class BarcodeCluster(object):
 				output += tmp
 				f.close()
 			return output
+		return ''
 
 	def removetempfiles(self, config):
 		import os
@@ -1015,8 +1016,9 @@ class BarcodeCluster(object):
 		f = open(config.path+'/sortedReads/cluster.'+str(self.id)+'.fa.clstr')
 		data = f.read()
 		f.close()
-		for consensus_identities in data.split('>Cluster '):
+		for consensus_identities in data.split('>Cluster ')[1:]:
 			consensusid = consensus_identities.split('\n')[0]
+			if not consensusid: print data.split('>Cluster ')
 			consensus = Consensus(consensusid)
 			for line in consensus_identities.split('\n')[1:]:
 			    line=line.rstrip()
@@ -1026,6 +1028,7 @@ class BarcodeCluster(object):
 			    pair = self.readpairbyheader[self.headerbyint[read_id]]
 			    consensus.addreadpair(pair,identity)
 			self.consensuses[consensus.id] = consensus
+			if consensus.id == '': raise ValueError
 			
 	def consensusesToAmplicons(self, config):
 		for consensusid, consensus in self.consensuses.iteritems():
@@ -1040,33 +1043,32 @@ class BarcodeCluster(object):
 		data = f.read()
 		f.close()
 		consensus = None
-		for cluster_aln in data.split('===========================================\n'):
-			consensusalignment = ''
+		for cluster_aln in data.split('===========================================\n')[1:]:
 			tmpseqs = {}
+			tmpcons = ''
 			for part in cluster_aln.split('\n\n'):
 				for line in part.split('\n'):
-				    line=line.rstrip()
-				    if not line: continue
-				    if line[0] == 'A':
-					consensusid=line.split(' ')[-1].split(':')[0];
-					consensus = self.consensuses[consensusid]
-					consensus.alignmentStr = ''
-					continue
-				    read_id = line.split(':  +  ')[0]
-				    seq     = line.split(':  +  ')[1]
-				    if read_id == 'Consensus': consensus.alignmentStr += seq.split(' ')[0]
-				    else:
-					try: 		 tmpseqs[read_id] += seq
-					except KeyError: tmpseqs[read_id]  = seq
+					line=line.rstrip()
+					if not line: continue
+					if line[0] == 'A':
+						consensusid=line.split(' ')[-1].split(':')[0];
+						continue
+					read_id = line.split(':  +  ')[0]
+					seq     = line.split(':  +  ')[1]
+					if read_id == 'Consensus':
+						tmpcons += seq.split(' ')[0];
+					else:
+						try: 		 tmpseqs[read_id] += seq
+						except KeyError: tmpseqs[read_id]  = seq
+			self.consensuses[consensusid].alignmentStr = tmpcons
 			for readid, seq in tmpseqs.iteritems():
-				consensus.readpairs[int(read_id)].alignmentStr = seq
+				self.consensuses[consensusid].readpairs[int(read_id)].alignmentStr = seq
 	
 	def loadconsensussequences(self, config):
 		##load singelton consensus sequences
-		f = open(config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus.fasta')
+		f = open(config.path+'/sortedReads/cluster.'+str(self.id)+'.consensus.fasta')
 		data = f.read()
 		f.close()
-		consensusid = None
 		for consensus_identities in data.split('>')[1:]:
 			if   consensus_identities[0] == 'c':
 				consensusid = consensus_identities.split(' ')[0].split('_')[-1]
@@ -1074,20 +1076,22 @@ class BarcodeCluster(object):
 				assert self.consensuses[consensusid].readcount == readcount,	'ERRORSHMERROR 1'
 			elif consensus_identities[0] == 's':
 				consensusid = consensus_identities.split(' ')[0].split('_')[-1]
-				read_id     = consensus_identities.split(' ')[1].split('\n')[0]
+				read_id     = int(consensus_identities.split(' ')[1].split('\n')[0])
 				assert self.consensuses[consensusid].readcount  == 1,		'ERRORSHMERROR 2'
-				assert self.consensuses[consensusid].seedpairid == read_id,	'ERRORSHMERROR 3'
+				assert self.consensuses[consensusid].seedpairid == read_id,	'ERRORSHMERROR 3, '+str(self.consensuses[consensusid].seedpairid)+' != '+str(read_id)
 			consensus = self.consensuses[consensusid]
 			tmpseq = ''
 			for line in consensus_identities.split('\n')[1:]:
 			    line=line.rstrip()
 			    tmpseq += line
 			consensus.sequence = sequence(consensus.id,tmpseq,tmpseq)
+			if self.consensuses[consensusid].readcount  == 1:
+				self.consensuses[consensusid].alignmentStr = tmpseq
+				self.consensuses[consensusid].readpairs[self.consensuses[consensusid].seedpairid].alignmentStr = tmpseq
 
 	def getDefinedAmplicons(self, ):
 		for amplicon in self.amplicons.values():
 			if amplicon.allelecount >= 1: self.definedamplicons[amplicon.type] = amplicon	
-	
 
 class Amplicon(object):
 
@@ -1102,7 +1106,7 @@ class Amplicon(object):
 		return sum([consensus.readcount for consensus in self.allels])
 		
 	def addallele(self,consensus ):
-		if consensus.type == self.type: self.consensussses.append(consensus)
+		if consensus.type == self.type: self.allels.append(consensus)
 		else:
 			import sys
 			sys.stderr.write('ERROR: Amplicon type does not match the Consensus type.\n')
@@ -1116,7 +1120,7 @@ class Amplicon(object):
 		
 		for consensus in self.allels:
 			consensus.percentagesupport = 100*float(consensus.readcount)/float(self.readcount)
-			output += '\t\tConsensus '+consensus.id+' supported by '+str(consensus.percentagesupport)+'% of readpop ('+str(consensus.readcount)+' reads)\t'+consensus.sequence+'\n'
+			output += '\t\tConsensus '+consensus.id+' supported by '+str(consensus.percentagesupport)+'% of readpop ('+str(consensus.readcount)+' reads)\t'+consensus.sequence.seq+'\n'
 			if  consensus.percentagesupport >= indata.minimum_support and consensus.readcount > indata.minimum_reads:
 				self.allelecount += 1
 		
@@ -1138,6 +1142,7 @@ class Consensus(object):
 		self.primer = primerpair
 		self.id = idnumber
 		self.sequence = sequence
+		self.alignmentStr = None
 
 	@property
 	def readcount(self):
@@ -1164,7 +1169,8 @@ class Consensus(object):
 		output = ''
 		output += 'Consensus number '+self.id+' from '+str(self.readcount)+' read pairs\t'+self.alignmentStr
 		for readid, pair in self.readpairs.iteritems():
-			output += 'Read pair id = '+str(pair.id)+'    \t'+pair.consensusidentity+'\t'+pair.p1+'\t'+pair.alignmentStr +'\n'		
+			try:			output += 'Read pair id = '+str(pair.id)+'    \t'+pair.consensusidentity+'\t'+pair.p1+'\t'+pair.alignmentStr +'\n'
+			except AttributeError:	output += 'Read pair id = '+str(pair.id)+'    \t'+pair.consensusidentity+'\t'+pair.p1+'\tAlignmentStr not available.\n'
 		return output
 	
 
