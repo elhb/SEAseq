@@ -35,7 +35,7 @@ class RunStatCounter(object):
             self.ampliconcombinations[ampliconcombo]['count'] += 1
         except KeyError:
             self.ampliconcombinations[ampliconcombo]['count'] = 1
-            self.ampliconcombinations[ampliconcombo]['All'+'Mono'] = 0
+            self.ampliconcombinations[ampliconcombo]['monos'] = {'All'+'Mono':0}
         
         # count combo of monoclonal amplicons
         monoAmps = {}
@@ -46,45 +46,34 @@ class RunStatCounter(object):
         mononames.sort()
         monoCombo = '/'.join(mononames)
         try:
-            self.ampliconcombinations[ampliconcombo][monoCombo+'Mono'] += 1
+            self.ampliconcombinations[ampliconcombo]['monos'][monoCombo+'Mono'] += 1
         except KeyError:
-            self.ampliconcombinations[ampliconcombo][monoCombo+'Mono'] = 1
+            self.ampliconcombinations[ampliconcombo]['monos'][monoCombo+'Mono'] = 1
         if monoCombo == ampliconcombo:
-            self.ampliconcombinations[ampliconcombo]['All'+'Mono']
+            self.ampliconcombinations[ampliconcombo]['monos']['All'+'Mono'] += 1
+            self.definedclustersMono += 1
     
     def createsummary(self, ):
-        defined_clust = 0
-        defined_clust_mono = 0
-        config.outfile.write('##### SUMMARY #####'+'\n')
-        config.outfile.write(  str(self.clustercount)   +' clusters processed, out of these were:'+'\n')
-        config.outfile.write(  str(self.junkclusters)   +' ('+str(round(100*float(self.junkclusters   )/float(self.clustercount),2))+'%) clusters of only adapter sequences or faulty primers'+'\n')
-        config.outfile.write(  str(self.lowreadclusters)+' ('+str(round(100*float(self.lowreadclusters)/float(self.clustercount),2))+'%) clusters with to few reads to be analysed'+'\n')
-        config.outfile.write(  str(self.definedclusters)+' ('+str(round(100*float(self.definedclusters)/float(self.clustercount),2))+'%) clusters had defined amplicons'+'\n')
-        
-        for name,count in typecounter.iteritems():
-            if name != None and name != 'undefined':defined_clust += count
-            if name == 'both ITS and 16S':
-                config.outfile.write(  str(count)+' ('+str(round(100*float(count)/float(processed),2))+'%) '+ name+' '+ 'whereof:'+'\n')
-                for name2,count2 in monoclonal['both'].iteritems():
-                    percentage2 = 0
-                    if count != 0: percentage2 = round(100*float(count2)/float(count),2)
-                    config.outfile.write(  '\t'+' '+str(count2)+' ('+str(percentage2)+'%) '+'were monoclonal for'+' '+name2+'\n')
-                    if name2 == 'both': defined_clust_mono += count2
-                continue
-            if name != None and name != 'undefined':
-                defined_clust_mono += monoclonal[name]
-                percentage = 0
-                if count: percentage = round(100*float(monoclonal[name])/float(count),2)
-                config.outfile.write(  str(count)+' ('+str(round(100*float(count)/float(processed),2))+'%) '+ name+' '+ 'whereof'+' '+ str(monoclonal[name])+' ('+str(percentage)+'%) were monoclonal'+'\n')
-            else:config.outfile.write(  str(count)+' ('+str(round(100*float(count)/float(processed),2))+'%) '+ name+' '+ 'whereof'+' '+ str(monoclonal[name])+' ( NA %) were monoclonal'+'\n')
-    
+        output = ''
+        output += ('##### SUMMARY #####'+'\n')
+        output += (  str(self.clustercount)   +' clusters processed, out of these were:'+'\n')
+        output += (  str(self.junkclusters)   +' ('+str(round(100*float(self.junkclusters   )/float(self.clustercount),2))+'%) clusters of only adapter sequences or faulty primers'+'\n')
+        output += (  str(self.lowreadclusters)+' ('+str(round(100*float(self.lowreadclusters)/float(self.clustercount),2))+'%) clusters with to few reads to be analysed'+'\n')
+        output += (  str(self.definedclusters)+' ('+str(round(100*float(self.definedclusters)/float(self.clustercount),2))+'%) clusters had defined amplicons'+'\n')
+
+        for ampliconcombo, data in self.ampliconcombinations.iteritems():
+            count = data['count']
+            output += (  str(count)+' ('+str(round(100*float(count)/float(self.clustercount),2))+'%) '+ ampliconcombo+' '+ 'whereof:'+'\n')
+            for monoCombo, count2 in data['monos'].iteritems():
+                output += (  '\t'+' '+str(count2)+' ('+str(round(100*float(count2)/float(count),2))+'%) '+'were monoclonal for'+' '+monoCombo+'\n')
         
         tmppercentage = 0
-        if defined_clust: tmppercentage = round(100*float(defined_clust_mono)/float(defined_clust),2)
-        config.outfile.write(
-            str(defined_clust)+' ('+str(round(100*float(defined_clust)/float(processed),2))+'%) has at least one defined amplicon out of these are '+str(defined_clust_mono)+' ('+str(tmppercentage)+'%) monoclonal for the defined amplicon(s)\n'+
+        if self.definedclusters: tmppercentage = round(100*float(self.definedclustersMono)/float(self.definedclusters),2)
+        output += (
+            str(self.definedclusters)+' ('+str(round(100*float(self.definedclusters)/float(self.clustercount),2))+'%) has at least one defined amplicon out of these are '+str(self.definedclustersMono)+' ('+str(tmppercentage)+'%) monoclonal for the defined amplicon(s)\n'+
             '(ie there is only one consensus sequence of that type with more than '+str(indata.minimum_reads)+' reads and '+str(indata.minimum_support)+'% support, clustering done with '+str(indata.clustering_identity)+'% identity cutoff)\n'
             )
+        return output
 
 def meta(indata):
 
