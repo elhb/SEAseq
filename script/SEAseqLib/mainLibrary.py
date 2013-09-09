@@ -791,7 +791,8 @@ class BarcodeCluster(object):
 		self.barcodesequence = barcode_sequence
 		self.readpairs = []
 		self.consensuses = {}
-		self.amplicons = []
+		self.amplicons = {}
+		self.definedamplicons = {}
 		self.readpairbyheader = {}
 		self.headerbyint = {}
 
@@ -834,6 +835,17 @@ class BarcodeCluster(object):
 		tmp_counter = 0
 		for pair in self.readpairs:
 			if pair.primererror: tmp_counter += 1
+		return tmp_counter
+
+	@property
+	def ampliconcount(self):
+		return len(self.amplicons)
+
+	@property
+	def definedamplicons(self):
+		tmp_counter = 0
+		for amplicon in self.amplicons.values:
+			if amplicon.allelecount >= 1: tmp_counter += 1
 		return tmp_counter
 
 	def createtempfile(self, config, verb=True):
@@ -1014,6 +1026,13 @@ class BarcodeCluster(object):
 			    pair = self.readpairbyheader[self.headerbyint[read_id]]
 			    consensus.addreadpair(pair,identity)
 			self.consensuses[consensus.id] = consensus
+			
+	def consensusesToAmplicons(self, config):
+		for consensusid, consensus in self.consensuses.iteritems():
+			try: self.amplicons[consensus.type].addallele(consensus)
+			except KeyError:
+				self.amplicons[consensus.type] = Amplicon(consensus.type, consensus.primer)
+				self.amplicons[consensus.type].addallele(consensus)
 
 	def loadconsensusalignemnts(self, config):
 		# get alignments from file
@@ -1065,12 +1084,22 @@ class BarcodeCluster(object):
 			    tmpseq += line
 			consensus.sequence = sequence(consensus.id,tmpseq,tmpseq)
 
+	def getDefinedAmplicons(self, ):
+		for amplicon in self.amplicons.values():
+			if amplicon.allelecount >= 1: self.definedamplicons[amplicon.type] = amplicon	
+	
+
 class Amplicon(object):
 
 	def __init__(self, amplicon_type, primerpair):
 		self.allels = []#hold the consensus sequences produced
 		self.type = amplicon_type
 		self.primer = primerpair
+		self.allelecount = None
+
+	@property
+	def readcount(self):
+		return sum([consensus.readcount for consensus in self.allels])
 		
 	def addallele(self,consensus ):
 		if consensus.type == self.type: self.consensussses.append(consensus)
@@ -1078,6 +1107,28 @@ class Amplicon(object):
 			import sys
 			sys.stderr.write('ERROR: Amplicon type does not match the Consensus type.\n')
 			raise ValueError
+
+	def checkmono(self, indata):
+		output = ''
+		output += '\t'+self.type+' '+str(self.readcount)+' reads in total.\n'
+		self.allelecount = 0
+		self.monoclonal = None
+		
+		for consensus in self.allels:
+			consensus.percentagesupport = 100*float(consensus.readcount)/float(self.readcount)
+			output += '\t\tConsensus '+consensus.id+' supported by '+str(consensus.percentagesupport)+'% of readpop ('+str(consensus.readcount)+' reads)\t'+consensus.sequence+'\n'
+			if  consensus.percentagesupport >= indata.minimum_support and consensus.readcount > indata.minimum_reads:
+				self.allelecount += 1
+		
+		if self.allelecount == 1:
+			self.monoclonal = True
+			output += 'Monoclonal for '+self.type
+		elif self.allelecount >1:
+			self.monoclonal = False
+			output += 'Polyclonal for '+self.type
+		else:   output += 'No "good allels" found for '+self.type
+		
+		return output
 
 class Consensus(object):
 
@@ -1105,38 +1156,15 @@ class Consensus(object):
 		else:
 			import sys
 			sys.stderr.write('ERROR: Consensus type does not match the readpair fwd primer.\n')
+			sys.stderr.write('WARNING: mixed consensus clustering!\n')
 			raise ValueError
 
-	def output(self, config):
+	def alignmentoutput(self, config):
 		#make output for alnignments
-		if verb >=2: output = ''
-		types = {'ITS':{'total':0},'16S':{'total':0},'ecoli':{'total':0},'myco':{'total':0},'m13':{'total':0},'lambda':{'total':0}}
-		for consensusid in consensuses:
-		    if  not consensusid: continue
-		    primerpairs = []
-		    if 'Consensus' in consensuses[consensusid]:
-			if verb >=2: output += 'Consensus number '+consensusid+' from '+str(len(consensuses[consensusid])-1)+' read pairs'
-			if verb >=2: output += ':\t'+consensuses[consensusid]['Consensus'][0]+'\n'
-		    for read_id, tmp in consensuses[consensusid].iteritems():
-			[seq, identity] = tmp
-			if read_id == 'Consensus': continue#output +=read_id+'\t'+seq+'\n'
-			else:
-			    #if verb >=2: output += str(read_id)+'\t'+int2header[int(read_id)].split('_')[0]+'   \t'+identity+'\t'+reads[int2header[int(read_id)]].p1+'\t'+seq
-			    if verb >=2: output += 'Read pair id = '+str(read_id)+'    \t'+identity+'\t'+readsbyheader[int2header[int(read_id)]].p1+'\t'+seq
-			    if verb >=2: output += '\n'
-			    primerpairs.append(readsbyheader[int2header[int(read_id)]].p1)
-		    if   primerpairs and primerpairs.count(primerpairs[0]) == len(primerpairs):
-			if verb >=2: output += 'consensus is '+primerpairs[0]
-		    elif primerpairs and primerpairs.count(primerpairs[0]) != len(primerpairs):
-			if verb >=2: output += 'WARNING: mixed consensus clustering!'
-		    try:
-			types[primerpairs[0]][consensusid]={'sequence':consensuses[consensusid]['Consensus'][0], 'support':len(consensuses[consensusid])-1}
-			types[primerpairs[0]]['total']+=len(consensuses[consensusid])-1
-		    except KeyError: raise ERIKERROR
-	#		types[primerpairs[0]] = {consensusid:{'sequence':consensuses[consensusid]['Consensus'][0], 'support':len(consensuses[consensusid])-1}}
-	#		types[primerpairs[0]]['total']=len(consensuses[consensusid])-1
-		    if verb >=2: output += '\n\n'
-		
+		output = ''
+		output += 'Consensus number '+self.id+' from '+str(self.readcount)+' read pairs\t'+self.alignmentStr
+		for readid, pair in self.readpairs.iteritems():
+			output += 'Read pair id = '+str(pair.id)+'    \t'+pair.consensusidentity+'\t'+pair.p1+'\t'+pair.alignmentStr +'\n'		
 		return output
 	
 
