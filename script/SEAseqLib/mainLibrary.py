@@ -871,7 +871,7 @@ class BarcodeCluster(object):
 		    
 		    #check if read is adaptersequence
 		    if pair.isillumina:
-			if verb: output+='illumina adapter in read pair\n';
+			if verb: output+='---\t---\tillumina adapter in read pair\n';
 			continue
 		    
 		    # Match the primer pairs
@@ -899,9 +899,9 @@ class BarcodeCluster(object):
 		    
 		    # check that primers match
 		    if pair.p1 == '???' or pair.p1 != pair.p2 or len(pair.matchingprimerpairs) != 1:
-			if pair.p1 == '???':                        pair.primererror = 'primers-not-identifiable'
-			elif pair.p1 != pair.p2:                    pair.primererror = 'fwd-rev-pair-missmatch'
-			elif len(pair.matchingprimerpairs) != 1:    pair.primererror = 'more-than-one-pair-match'
+			if pair.p1 == '???' and pair.p1 == pair.p2:	pair.primererror = 'primers-not-identifiable'
+			if pair.p1 != pair.p2:				pair.primererror = 'fwd-rev-primer-missmatch'
+			if len(pair.matchingprimerpairs) > 1:		pair.primererror = 'more-than-one-pair-match'
 			if verb:
 			    output += pair.primererror+'\t'+pair.r1.seq +' '+ pair.r2.seq+'\n'
 			continue
@@ -932,7 +932,7 @@ class BarcodeCluster(object):
 			    continue
 	
 		    # Add sequences to output
-		    if verb: output += pair.r1.seq +' '+ pair.r2.seq+'\n'
+		    if verb: output += '                        \t'+pair.r1.seq +' '+ pair.r2.seq+'\n'
 		    
 		    # prepare for clustering by writing read pair to tempfile and saving temporary id number and mappinf header to pair-object
 		    tem_seq = pair.r1.seq[pair.handle_end:][len( config.primerpairs[pair.p1].fwd )+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(    config.primerpairs[pair.p1].rev   )+1)]
