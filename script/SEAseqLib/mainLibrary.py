@@ -1120,17 +1120,18 @@ class Amplicon(object):
 		
 		for consensus in self.allels:
 			consensus.percentagesupport = 100*float(consensus.readcount)/float(self.readcount)
-			output += '\t\tConsensus '+consensus.id+' supported by '+str(consensus.percentagesupport)+'% of readpop ('+str(consensus.readcount)+' reads)\t'+consensus.sequence.seq+'\n'
+			if consensus.readcount > 1:
+				output += '\t\tConsensus '+consensus.id+' supported by '+str(round(consensus.percentagesupport,2))+'% of readpop ('+str(consensus.readcount)+' reads)\t'+consensus.sequence.seq+'\n'
 			if  consensus.percentagesupport >= indata.minimum_support and consensus.readcount > indata.minimum_reads:
 				self.allelecount += 1
 		
 		if self.allelecount == 1:
 			self.monoclonal = True
-			output += 'Monoclonal for '+self.type
+			output += '\tMonoclonal for '+self.type + '\n'
 		elif self.allelecount >1:
 			self.monoclonal = False
-			output += 'Polyclonal for '+self.type
-		else:   output += 'No "good allels" found for '+self.type
+			output += '\tPolyclonal for '+self.type + '\n'
+		else:   output += '\tNo "good allels" found for '+self.type + '\n'
 		
 		return output
 
