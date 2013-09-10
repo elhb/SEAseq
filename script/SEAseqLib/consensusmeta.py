@@ -35,23 +35,28 @@ class RunStatCounter(object):
             self.ampliconcombinations[ampliconcombo]['count'] += 1
         except KeyError:
             self.ampliconcombinations[ampliconcombo] = {'count':1}
-            self.ampliconcombinations[ampliconcombo]['monos'] = {'All'+'Mono':0}
+            #self.ampliconcombinations[ampliconcombo]['monos'] = {'All':0}
+            self.ampliconcombinations[ampliconcombo]['monos'] = {}
+            self.ampliconcombinations[ampliconcombo]['poly'] = 0
         
         # count combo of monoclonal amplicons
         monoAmps = {}
         for ampname, amplicon in cluster.definedamplicons.iteritems():
             if amplicon.monoclonal: monoAmps[amplicon.type] = amplicon.monoclonal
         
-        mononames = monoAmps.keys()
-        mononames.sort()
-        monoCombo = '/'.join(mononames)
-        try:
-            self.ampliconcombinations[ampliconcombo]['monos'][monoCombo+'Mono'] += 1
-        except KeyError:
-            self.ampliconcombinations[ampliconcombo]['monos'][monoCombo+'Mono'] = 1
-        if monoCombo == ampliconcombo:
-            self.ampliconcombinations[ampliconcombo]['monos']['All'+'Mono'] += 1
-            self.definedclustersMono += 1
+        if not monoAmps.keys():
+            self.ampliconcombinations[ampliconcombo]['poly'] += 1
+        else:
+            mononames = monoAmps.keys()
+            mononames.sort()
+            monoCombo = '/'.join(mononames)
+            try:
+                self.ampliconcombinations[ampliconcombo]['monos'][monoCombo] += 1
+            except KeyError:
+                self.ampliconcombinations[ampliconcombo]['monos'][monoCombo] = 1
+            if monoCombo == ampliconcombo:
+                #self.ampliconcombinations[ampliconcombo]['monos']['All'] += 1
+                self.definedclustersMono += 1
     
     def createsummary(self, indata):
         output = ''
@@ -66,6 +71,7 @@ class RunStatCounter(object):
             output += (  str(count)+' ('+str(round(100*float(count)/float(self.clustercount),2))+'%) '+ ampliconcombo+' '+ 'whereof:'+'\n')
             for monoCombo, count2 in data['monos'].iteritems():
                 output += (  '\t'+' '+str(count2)+' ('+str(round(100*float(count2)/float(count),2))+'%) '+'were monoclonal for'+' '+monoCombo+'\n')
+            output += (  '\t'+' '+str(data['poly'])+' ('+str(round(100*float(data['poly'])/float(count),2))+'%) '+'were polyclonal\n')
         
         tmppercentage = 0
         if self.definedclusters: tmppercentage = round(100*float(self.definedclustersMono)/float(self.definedclusters),2)
@@ -205,6 +211,7 @@ def foreachcluster_meta(cluster_pairs):
 	output += 'There are '+str(cluster.primererrors)+' primer missmatch reads.\n'
         output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads):\n'
         output += perAmpOut + '\n'
+        output += '# Details:\n'
         output += aligmnmentsOut + '\n'
         output += pairsOut + '\n'
         output += filesOut + '\n'
