@@ -71,7 +71,7 @@ class RunStatCounter(object):
             output += (  str(count)+' ('+str(round(100*float(count)/float(self.clustercount),2))+'%) '+ ampliconcombo+' '+ 'whereof:'+'\n')
             for monoCombo, count2 in data['monos'].iteritems():
                 output += (  '\t'+' '+str(count2)+' ('+str(round(100*float(count2)/float(count),2))+'%) '+'were monoclonal for'+' '+monoCombo+'\n')
-            output += (  '\t'+' '+str(data['poly'])+' ('+str(round(100*float(data['poly'])/float(count),2))+'%) '+'were polyclonal\n')
+            output += (  '\t'+' '+str(data['poly'])+' ('+str(round(100*float(data['poly'])/float(count),2))+'%) '+'were polyclonal for the defined amplicon(s)\n')
         
         tmppercentage = 0
         if self.definedclusters: tmppercentage = round(100*float(self.definedclustersMono)/float(self.definedclusters),2)
@@ -189,9 +189,12 @@ def foreachcluster_meta(cluster_pairs):
 	return [output,cluster]
     
     else:
-        cluster.lowread = False
+        cluster.lowread = True
         
         pairsOut = cluster.createtempfile(config)
+        import os;
+        os.remove(config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa')
+        return [output,cluster]
         filesOut = cluster.clusterreadpairs(config, indata)
         
         aligmnmentsOut = ''
@@ -239,6 +242,7 @@ def getClustersAndPairs(config,clusterq):
     import os
     import time
     config.logfile.write('Reader initiated pid='+str(os.getpid())+'.\n')
+    tmpcounter = 0
 
     currentclusterid = 1
     from SEAseqLib.mainLibrary import BarcodeCluster
@@ -260,10 +264,11 @@ def getClustersAndPairs(config,clusterq):
 	elif pair.cid == currentclusterid+1:
 	    while clusterq.qsize() > 160 or clusterq.full(): time.sleep(1); #config.logfile.write('waiting for queue ...\n')
             clusterq.put([cluster,config])
+            tmpcounter += 1
 	    currentclusterid = pair.cid
             cluster = BarcodeCluster(currentclusterid)
             cluster.addreadpair(pair)
 	else: sys.stdout.write('ERROR 1979 in consensus creation get clusters and pairs.\n')
 
     clusterq.put('END')
-    config.logfile.write('Reader exiting.\n')
+    config.logfile.write('Reader exiting after adding '+str(tmpcounter)+' clusters to queue.\n')

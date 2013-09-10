@@ -378,7 +378,7 @@ class Configuration():
 
 	# permanent
 	self.path 		= path
-	self.config		= self.path+'/'+'config'
+	self.config		= self.path + '/'+'config'
 	self.init_logfile	= self.path + '/' + 'init.log.txt'
 	self.init_outfile	= self.path + '/' + 'init.out.txt'
 	self.addfqs_logfile	= self.path + '/' + 'addfqs.log.txt'
@@ -852,8 +852,8 @@ class BarcodeCluster(object):
 
 		tmpcounter = 0
 		if verb: output = 'PAIRS:\n'
-		f = open(config.path+'/sortedReads/temporary.'+str(self.id)+'.fa','w')
 		
+		tofilestr = ''
 		for pair in self.readpairs:
 		    
 		    tmpcounter += 1
@@ -935,8 +935,10 @@ class BarcodeCluster(object):
 		    
 		    # prepare for clustering by writing read pair to tempfile and saving temporary id number and mappinf header to pair-object
 		    tem_seq = pair.r1.seq[pair.handle_end:][len( config.primerpairs[pair.p1].fwd )+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(    config.primerpairs[pair.p1].rev   )+1)]
-		    f.write('>'+str(pair.id)+'\n'+ tem_seq +'\n')
+		    tofilestr += '>'+str(pair.id)+'\n'+ tem_seq +'\n'
 		
+		f = open(config.path+'/sortedReads/temporary.'+str(self.id)+'.fa','w')
+		f.write(tofilestr)
 		f.close()
 		
 		if verb:return output
