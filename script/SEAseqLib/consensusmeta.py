@@ -217,14 +217,14 @@ def foreachcluster_meta(cluster_pairs):
             output += '0 amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads)\n'
         if cluster.ampliconpairs > 0:
             output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads):\n'
-            output += perAmpOut + '\n'
-            output += '# Details:\n'
-            output += '# Alignemnts:\n'
-            output += aligmnmentsOut + '\n'
-            output += '# Pairs:\n'
-            output += pairsOut + '\n'
-            output += '# Original cdhit data:\n'
-            output += filesOut + '\n'
+        output += perAmpOut + '\n'
+        output += '# Details:\n'
+        output += '# Alignemnts:\n'
+        output += aligmnmentsOut + '\n'
+        output += '# Pairs:\n'
+        output += pairsOut + '\n'
+        output += '# Original cdhit data:\n'
+        output += filesOut + '\n'
 
 	return [output, cluster]
 
