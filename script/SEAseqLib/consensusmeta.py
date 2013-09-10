@@ -197,7 +197,7 @@ def foreachcluster_meta(cluster_pairs):
         aligmnmentsOut = ''
         perAmpOut = ''
         
-        if cluster.ampliconpairs < 0:
+        if cluster.ampliconpairs > 0:
             cluster.loadconsensuses(config)
             cluster.loadconsensusalignemnts(config)
             cluster.loadconsensussequences(config)
