@@ -925,7 +925,6 @@ class BarcodeCluster(object):
 			    other_fwd_in_any = re.search( primerpair.fwdReStr,   	pair.r1.revcomp().seq + 'NNNNN' + pair.r1.seq + 'NNNNN' + pair.r2.seq + 'NNNNN' + pair.r2.revcomp().seq) # fwd in any read
 			    other_rev_in_any = re.search( primerpair.revReStr,          pair.r1.revcomp().seq + 'NNNNN' + pair.r1.seq + 'NNNNN' + pair.r2.seq + 'NNNNN' + pair.r2.revcomp().seq) # rev in any read
 		    if fwd_in_r2 or rev_in_r1 or other_fwd_in_any or other_rev_in_any or revcount != 1 or fwdcount != 1:
-			    primererror+=1;
 			    if verb:
 				output+='PRIMER ODD COMBO\t';
 				output += pair.r1.seq +' '+ pair.r2.seq+'\n'
