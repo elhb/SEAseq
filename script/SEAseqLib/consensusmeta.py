@@ -201,9 +201,9 @@ def foreachcluster_meta(cluster_pairs):
         for amplicon in cluster.amplicons.values(): perAmpOut += amplicon.checkmono(indata)
         cluster.getDefinedAmplicons()
         
-        output += pairsOut
-        output += filesOut
-        output += aligmnmentsOut
+        output += pairsOut + '\n\n'
+        output += filesOut + '\n\n'
+        output += aligmnmentsOut + '\n\n'
         output += 'There are '+str(cluster.adaptercount)+' illumina adapter reads.\n'
 	output += 'There are '+str(cluster.primererrors)+' primer missmatch reads.\n'
         output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads):\n'

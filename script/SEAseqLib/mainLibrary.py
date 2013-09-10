@@ -1062,7 +1062,7 @@ class BarcodeCluster(object):
 						except KeyError: tmpseqs[read_id]  = seq
 			self.consensuses[consensusid].alignmentStr = tmpcons
 			for readid, seq in tmpseqs.iteritems():
-				self.consensuses[consensusid].readpairs[int(read_id)].alignmentStr = seq
+				self.consensuses[consensusid].readpairs[int(readid)].alignmentStr = seq
 	
 	def loadconsensussequences(self, config):
 		##load singelton consensus sequences
@@ -1149,13 +1149,16 @@ class Consensus(object):
 		return len(self.readpairs)
 
 	def addreadpair(self, pair, identity):
+		
 		if identity[-1] == '*':
 			identity = 'SEED'
 			self.seedpairid = pair.id
 		pair.consensusidentity = identity
+		
 		if self.type == None:
 			self.type = pair.p1
 			self.primer = pair.matchingprimerpairs[0]
+		
 		if pair.p1 == self.type:
 			self.readpairs[pair.id] = pair
 		else:
@@ -1164,14 +1167,21 @@ class Consensus(object):
 			sys.stderr.write('WARNING: mixed consensus clustering!\n')
 			raise ValueError
 
-	def alignmentoutput(self, config):
+	def alignmentoutput(self, config, verb = 1):
 		#make output for alnignments
 		output = ''
-		output += 'Consensus number '+self.id+' from '+str(self.readcount)+' read pairs\t'+self.alignmentStr
+		output += 'Consensus number '+self.id+' from '+str(self.readcount)+' read pairs\t'+self.alignmentStr+'\n'
+		withalnstr = ''
+		withoutstr = ''
+		pair = self.readpairs[self.seedpairid]
+		try:			withalnstr += 'Read pair id = '+str(self.seedpairid)+'    \t'+pair.consensusidentity+'\t'+pair.p1+'\t'+pair.alignmentStr +'\n'
+		except AttributeError:	withoutstr += 'Read pair id = '+str(self.seedpairid)+'    \t'+pair.consensusidentity+'\t'+pair.p1+'\tAlignmentStr not available.\n'
 		for readid, pair in self.readpairs.iteritems():
-			try:			output += 'Read pair id = '+str(pair.id)+'    \t'+pair.consensusidentity+'\t'+pair.p1+'\t'+pair.alignmentStr +'\n'
-			except AttributeError:	output += 'Read pair id = '+str(pair.id)+'    \t'+pair.consensusidentity+'\t'+pair.p1+'\tAlignmentStr not available.\n'
-		return output
+			if readid == self.seedpairid: continue
+			try:			withalnstr += 'Read pair id = '+str(pair.id)+'    \t'+pair.consensusidentity+'\t'+pair.p1+'\t'+pair.alignmentStr +'\n'
+			except AttributeError:	withoutstr += 'Read pair id = '+str(pair.id)+'    \t'+pair.consensusidentity+'\t'+pair.p1+'\tAlignmentStr not available.\n'
+		if verb < 2: withoutstr = ''
+		if verb: return output + withalnstr + withoutstr + '\n'
 	
 
 if __name__ == "__main__": lib_main()
