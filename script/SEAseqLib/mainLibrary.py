@@ -871,7 +871,7 @@ class BarcodeCluster(object):
 		    
 		    #check if read is adaptersequence
 		    if pair.isillumina:
-			if verb: output+='---\t---\tillumina adapter in read pair\n';
+			if verb: output+='---\t---\tillumina adapter in read pair\t'+pair.r1.seq +' '+ pair.r2.seq+'\n';
 			continue
 		    
 		    # Match the primer pairs
@@ -1120,7 +1120,7 @@ class Amplicon(object):
 		
 		for consensus in self.allels:
 			consensus.percentagesupport = 100*float(consensus.readcount)/float(self.readcount)
-			if consensus.readcount > 1:
+			if consensus.readcount > 1 and consensus.percentagesupport > 1:
 				output += '\t\tConsensus '+consensus.id+' supported by '+str(round(consensus.percentagesupport,2))+'% of readpop ('+str(consensus.readcount)+' reads)\t'+consensus.sequence.seq+'\n'
 			if  consensus.percentagesupport >= indata.minimum_support and consensus.readcount > indata.minimum_reads:
 				self.allelecount += 1

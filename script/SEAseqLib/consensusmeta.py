@@ -193,30 +193,35 @@ def foreachcluster_meta(cluster_pairs):
         
         pairsOut = cluster.createtempfile(config)
         filesOut = cluster.clusterreadpairs(config, indata)
-
-        cluster.loadconsensuses(config)
-        cluster.loadconsensusalignemnts(config)
-        cluster.loadconsensussequences(config)
-        cluster.consensusesToAmplicons(config)
-	
+        
         aligmnmentsOut = ''
-        for amplicon in cluster.amplicons.values():
-            for consensus in amplicon.allels: aligmnmentsOut += consensus.alignmentoutput(config)
-
         perAmpOut = ''
-        for amplicon in cluster.amplicons.values(): perAmpOut += amplicon.checkmono(indata)
-        cluster.getDefinedAmplicons()
+        
+        if cluster.ampliconpairs < 0:
+            cluster.loadconsensuses(config)
+            cluster.loadconsensusalignemnts(config)
+            cluster.loadconsensussequences(config)
+            cluster.consensusesToAmplicons(config)
+
+            for amplicon in cluster.amplicons.values():
+                for consensus in amplicon.allels: aligmnmentsOut += consensus.alignmentoutput(config)
+    
+            for amplicon in cluster.amplicons.values(): perAmpOut += amplicon.checkmono(indata)
+            cluster.getDefinedAmplicons()
+            
+            cluster.removetempfiles(config)
         
         output += 'There are '+str(cluster.adaptercount)+' illumina adapter reads.\n'
 	output += 'There are '+str(cluster.primererrors)+' primer missmatch reads.\n'
-        output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads):\n'
-        output += perAmpOut + '\n'
-        output += '# Details:\n'
-        output += aligmnmentsOut + '\n'
-        output += pairsOut + '\n'
-        output += filesOut + '\n'
-
-        cluster.removetempfiles(config)
+        if cluster.ampliconpairs == 0:
+            output += '0 amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads)\n'
+        if cluster.ampliconpairs > 0:
+            output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads):\n'
+            output += perAmpOut + '\n'
+            output += '# Details:\n'
+            output += aligmnmentsOut + '\n'
+            output += pairsOut + '\n'
+            output += filesOut + '\n'
 
 	return [output, cluster]
 
