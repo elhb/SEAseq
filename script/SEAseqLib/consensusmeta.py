@@ -189,12 +189,12 @@ def foreachcluster_meta(cluster_pairs):
 	return [output,cluster]
     
     else:
-        cluster.lowread = True
+        cluster.lowread = False
         
         pairsOut = cluster.createtempfile(config)
-        import os;
-        os.remove(config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa')
-        return [output,cluster]
+        #import os;
+        #os.remove(config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa')
+        #return [output,cluster]
         filesOut = cluster.clusterreadpairs(config, indata)
         
         aligmnmentsOut = ''
