@@ -848,7 +848,7 @@ class BarcodeCluster(object):
 			if amplicon.allelecount >= 1: tmp_counter += 1
 		return tmp_counter
 
-	def createtempfile(self, config, verb=True):
+	def createtempfile(self, config, indata, verb=True):
 
 		tmpcounter = 0
 		if verb: output = 'PAIRS:\n'
@@ -937,7 +937,12 @@ class BarcodeCluster(object):
 		    tem_seq = pair.r1.seq[pair.handle_end:][len( config.primerpairs[pair.p1].fwd )+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(    config.primerpairs[pair.p1].rev   )+1)]
 		    tofilestr += '>'+str(pair.id)+'\n'+ tem_seq +'\n'
 		
-		f = open(config.path+'/sortedReads/temporary.'+str(self.id)+'.fa','w')
+		if indata.tempfilefolder:
+			import os
+			try: os.mkdir(indata.tempfilefolder+'/SEAseqtemp')
+			except: pass
+			f = open(indata.tempfilefolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa','w')
+		else: 	f = open(config.path+'/sortedReads/temporary.'+str(self.id)+'.fa','w')
 		f.write(tofilestr)
 		f.close()
 		
@@ -948,40 +953,58 @@ class BarcodeCluster(object):
 		#check that there is data to work with
 		if self.adaptercount+self.primererrors == self.readcount:
 		    import os
-		    os.remove( config.path+'/sortedReads/temporary.'+str(self.id)+'.fa' )
+		    if indata.tempfilefolder: os.remove( indata.tempfilefolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa')
+		    else: os.remove( config.path+'/sortedReads/temporary.'+str(self.id)+'.fa' )
 		    return 'All adapter and/or primer error.\n'#['ONLY JUNK',return_info]
 	
 		# Cluster Read pairs
 		import subprocess
 		from cStringIO import StringIO
-		cdhit = subprocess.Popen(
-			[	'cd-hit-454',
+		if indata.tempfilefolder:
+			command = [	'cd-hit-454',
+				'-i',indata.tempfilefolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa',
+				'-o',indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa',
+				'-g','1',
+				'-c',str(indata.clustering_identity/100.0)
+				]
+		else:	command = [	'cd-hit-454',
 				'-i',config.path+'/sortedReads/temporary.'+str(self.id)+'.fa',
 				'-o',config.path+'/sortedReads/cluster.'+str(self.id)+'.fa',
 				'-g','1',
 				'-c',str(indata.clustering_identity/100.0)
-				],
+				]
+
+		cdhit = subprocess.Popen(
+			command,
 			stdout=subprocess.PIPE,
 			stderr=subprocess.PIPE )
 		cdhit_out, errdata = cdhit.communicate()
 		if cdhit.returncode != 0:
-			print 'cmd: '+' '.join( ['cd-hit-454','-i',config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa','-o',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa','-g','1','-c',str(indata.clustering_identity/100.0)])
+			print 'cmd: '+' '.join( command )
 			print 'cd-hit cluster='+str(cluster.id)+' view Error code', cdhit.returncode, errdata
 			sys.exit()
 	
 		# Build consensus sequences for read pair clusters
-		ccc = subprocess.Popen(
-			[	'cdhit-cluster-consensus',
+		if indata.tempfilefolder:
+			command = ['cdhit-cluster-consensus',
+				indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa.clstr',
+				indata.tempfilefolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa',
+				indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.consensus',
+				indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.aligned'
+				]
+		else:	command =['cdhit-cluster-consensus',
 				config.path+'/sortedReads/cluster.'+str(self.id)+'.fa.clstr',
 				config.path+'/sortedReads/temporary.'+str(self.id)+'.fa',
 				config.path+'/sortedReads/cluster.'+str(self.id)+'.consensus',
 				config.path+'/sortedReads/cluster.'+str(self.id)+'.aligned'
-				],
+				] 
+		ccc = subprocess.Popen(
+			command,
 			stdout=subprocess.PIPE,
 			stderr=subprocess.PIPE )
 		ccc_out, errdata = ccc.communicate()
 		if ccc.returncode != 0:
-			print 'cmd: '+' '.join( ['cdhit-cluster-consensus',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa.clstr',config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus',config.path+'/sortedReads/cluster.'+str(cluster.id)+'.aligned'])
+			print 'cmd: '+' '.join( command )
 			print 'cluster='+str(cluster.id)+' cdhit-cluster-consensus view Error code', ccc.returncode, errdata
 			print ccc_out
 			sys.exit()
@@ -989,11 +1012,18 @@ class BarcodeCluster(object):
 		# output info from temporary files
 		if verb:
 			output = ''
-			for info in [
+			if indata.tempfilefolder:
+				datacombos = [
+				[indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(cluster.id)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
+				[indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(cluster.id)+'.fa.clstr','\nClustering details:\n'],
+				[indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(cluster.id)+'.aligned','\nAlignment details:\n']
+				]
+			else:	datacombos = [
 				[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
 				[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa.clstr','\nClustering details:\n'],
 				[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.aligned','\nAlignment details:\n']
-				]:
+				]
+			for info in datacombos:
 				filename , message = info
 				f = open(filename)
 				tmp = f.read()
@@ -1003,18 +1033,27 @@ class BarcodeCluster(object):
 			return output
 		return ''
 
-	def removetempfiles(self, config):
+	def removetempfiles(self, config, indata):
 		import os
-		os.remove(config.path + '/sortedReads/temporary.' + str(self.id) + '.fa')
-		os.remove(config.path + '/sortedReads/cluster.'   + str(self.id) + '.fa')
-		os.remove(config.path + '/sortedReads/cluster.'   + str(self.id) + '.fa.clstr')
-		os.remove(config.path + '/sortedReads/cluster.'   + str(self.id) + '.consensus.fasta')
-		os.remove(config.path + '/sortedReads/cluster.'   + str(self.id) + '.aligned')
+		if indata.tempfilefolder:
+			os.remove(indata.tempfilefolder+'/SEAseqtemp/temporary.' + str(self.id) + '.fa')
+			os.remove(indata.tempfilefolder+'/SEAseqtemp/cluster.'   + str(self.id) + '.fa')
+			os.remove(indata.tempfilefolder+'/SEAseqtemp/cluster.'   + str(self.id) + '.fa.clstr')
+			os.remove(indata.tempfilefolder+'/SEAseqtemp/cluster.'   + str(self.id) + '.consensus.fasta')
+			os.remove(indata.tempfilefolder+'/SEAseqtemp/cluster.'   + str(self.id) + '.aligned')
 
-	def loadconsensuses(self, config):
+		else: 
+			os.remove(config.path + '/sortedReads/temporary.' + str(self.id) + '.fa')
+			os.remove(config.path + '/sortedReads/cluster.'   + str(self.id) + '.fa')
+			os.remove(config.path + '/sortedReads/cluster.'   + str(self.id) + '.fa.clstr')
+			os.remove(config.path + '/sortedReads/cluster.'   + str(self.id) + '.consensus.fasta')
+			os.remove(config.path + '/sortedReads/cluster.'   + str(self.id) + '.aligned')
+
+	def loadconsensuses(self, config, indata):
 
 	#	get identity from file
-		f = open(config.path+'/sortedReads/cluster.'+str(self.id)+'.fa.clstr')
+		if indata.tempfilefolder: f = open(indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa.clstr')
+		else: f = open(config.path+'/sortedReads/cluster.'+str(self.id)+'.fa.clstr')
 		data = f.read()
 		f.close()
 		for consensus_identities in data.split('>Cluster ')[1:]:
@@ -1038,9 +1077,10 @@ class BarcodeCluster(object):
 				self.amplicons[consensus.type] = Amplicon(consensus.type, consensus.primer)
 				self.amplicons[consensus.type].addallele(consensus)
 
-	def loadconsensusalignemnts(self, config):
+	def loadconsensusalignemnts(self, config, indata):
 		# get alignments from file
-		f = open(config.path+'/sortedReads/cluster.'+str(self.id)+'.aligned')
+		if indata.tempfilefolder: f = open(indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.aligned')
+		else: f = open(config.path+'/sortedReads/cluster.'+str(self.id)+'.aligned')
 		data = f.read()
 		f.close()
 		consensus = None
@@ -1065,9 +1105,10 @@ class BarcodeCluster(object):
 			for readid, seq in tmpseqs.iteritems():
 				self.consensuses[consensusid].readpairs[int(readid)].alignmentStr = seq
 	
-	def loadconsensussequences(self, config):
+	def loadconsensussequences(self, config, indata):
 		##load singelton consensus sequences
-		f = open(config.path+'/sortedReads/cluster.'+str(self.id)+'.consensus.fasta')
+		if indata.tempfilefolder: f = open(indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.consensus.fasta')
+		else: f = open(config.path+'/sortedReads/cluster.'+str(self.id)+'.consensus.fasta')
 		data = f.read()
 		f.close()
 		for consensus_identities in data.split('>')[1:]:

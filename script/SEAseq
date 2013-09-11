@@ -75,6 +75,7 @@ def getindata(cmd):
     argparser.add_argument('--debug',	dest='debug', 	action='store_true', 			required=False,	default=False,	help='Debug (run as regular single process python script).')
     argparser.add_argument('-path',	dest='path',	metavar='<path>',	type=str,	required=True,	default=False,	help='Set the analysis path.')
     argparser.add_argument('--src',	dest='skipreadcounting', 	action='store_true', 			required=False,	default=False,	help='Skip read counting (for speeding up debug runs, sets readcount to 30M/infile).')
+    argparser.add_argument('-tmp',	dest='tempfilefolder',metavar='<path>',	type=str,required=False,	default=False,	help='path to folder where temporary files should be written to (default False)')
     if cmd == 'init': pass
     if cmd == 'sbatch':
 	argparser.add_argument('-jobname',	dest='jobname',	metavar='NAME',			type=str,	required=False,	default='',	help='Name be able to identify sample, only 11first char will be visible for jobinfo (default "")')

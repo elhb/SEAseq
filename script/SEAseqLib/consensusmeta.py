@@ -191,7 +191,7 @@ def foreachcluster_meta(cluster_pairs):
     else:
         cluster.lowread = False
         
-        pairsOut = cluster.createtempfile(config)
+        pairsOut = cluster.createtempfile(config, indata)
         #import os;
         #os.remove(config.path+'/sortedReads/temporary.'+str(cluster.id)+'.fa')
         #return [output,cluster]
@@ -201,9 +201,9 @@ def foreachcluster_meta(cluster_pairs):
         perAmpOut = ''
         
         if cluster.ampliconpairs > 0:
-            cluster.loadconsensuses(config)
-            cluster.loadconsensusalignemnts(config)
-            cluster.loadconsensussequences(config)
+            cluster.loadconsensuses(config, indata)
+            cluster.loadconsensusalignemnts(config, indata)
+            cluster.loadconsensussequences(config, indata)
             cluster.consensusesToAmplicons(config)
 
             for amplicon in cluster.amplicons.values():
@@ -212,7 +212,7 @@ def foreachcluster_meta(cluster_pairs):
             for amplicon in cluster.amplicons.values(): perAmpOut += amplicon.checkmono(indata)
             cluster.getDefinedAmplicons()
             
-            cluster.removetempfiles(config)
+            cluster.removetempfiles(config, indata)
         
         output += 'There are '+str(cluster.adaptercount)+' illumina adapter reads.\n'
 	output += 'There are '+str(cluster.primererrors)+' primer missmatch reads.\n'
