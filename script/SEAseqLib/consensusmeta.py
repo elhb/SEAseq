@@ -144,7 +144,10 @@ def meta(indata):
     for amptype in ['ecoli','myco','lambda','m13']: statsheader.append(amptype+' reads');statsheader.append(amptype+' monoclonal');statsheader.append(amptype)
     statstable.write('\t'.join(statsheader))
 
-    seqdump = open(config.path+'/meta.sequences.fa','w',1)
+    import gzip
+    clusterdump = gzip.open(config.path+'/meta.clusters.pickle.gz','wb',9)
+    
+    import cPickle
 
     with progress:
 	for tmp in results:
@@ -155,16 +158,33 @@ def meta(indata):
 
             config.outfile.write(output)
 
-            # SEQDICT printing to file ONLY for both monoclonal
-            #if _its and _16s:
-            #    for cons_type in seqdict:
-            #	for consensus in seqdict[cons_type]:
-            #	    seqdump.write(seqdict[cons_type][consensus])
+            # Dump clusters to file
+            #clusterdump.write(repr(cPickle.dumps(cluster))+'\n')
+            cPickle.dump(cluster,clusterdump)
 
-	    #if return_info:
-		#statstable.write( '\n'+'\t'.join([str(return_info[stat]) for stat in statsheader]) )
-		#assert len(return_info) == len(statsheader)
-	seqdump.close()
+	    #print to stats info file
+            #NOTE: ONLY for 16s its stuff!!!
+	    statstable.write( '\n')
+            statstable.write(str(cluster.id                                     )+'\t')#'clusterid'
+            statstable.write(str(cluster.readcount                              )+'\t')#'number of reads in total'
+            statstable.write(str(cluster.adaptercount                           )+'\t')#'number of adaper reads'
+            statstable.write(str(cluster.primererrors                           )+'\t')#'number of strange primers'
+            try:            statstable.write(str(cluster.amplicons['its'].readcount             )+'\t')#'its reads',
+            except KeyError:statstable.write(str(0                                              )+'\t')#'its reads',
+            try:            statstable.write(str(cluster.amplicons['16s'].readcount             )+'\t')#'16s reads',
+            except KeyError:statstable.write(str(0                                              )+'\t')#'16s reads',
+            try:            statstable.write(str(bool(cluster.amplicons['its'].allelecount)     )+'\t')#'its'
+            except KeyError:statstable.write(str(False                                          )+'\t')#'its'
+            try:            statstable.write(str(bool(cluster.amplicons['16s'].allelecount)     )+'\t')#'16s'
+            except KeyError:statstable.write(str(False                                          )+'\t')#'16s'
+            try:            statstable.write(str(cluster.amplicons['its'].monoclonal            )+'\t')#'its monoclonal'
+            except KeyError:statstable.write(str(False                                          )+'\t')#'its monoclonal'
+            try:            statstable.write(str(cluster.amplicons['16s'].monoclonal            )+'\t')#'16s monoclonal'
+            except KeyError:statstable.write(str(False                                          )+'\t')#'16s monoclonal'
+            statstable.write(str(cluster.ampliconcount                          )+'\t')#'number of consensus types'
+            statstable.write(str(cluster.definedampliconcount                   )+'\n')#'number of consensus types with good support'
+	    
+	clusterdump.close()
 	statstable.close()
 
     reader.join()

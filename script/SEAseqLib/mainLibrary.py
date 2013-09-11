@@ -907,6 +907,7 @@ class BarcodeCluster(object):
 			continue
 	
 		    #look for unexpected primer sequences
+		    # this part could be improved and more verbose when searching for reverse complement primers
 		    import re
 		    matched_primerpair = config.primerpairs[pair.p1]
 		    fwd_in_r2 = None
@@ -916,7 +917,7 @@ class BarcodeCluster(object):
 		    other_fwd_in_any = None
 		    other_rev_in_any = None
 		    for name, primerpair in config.primerpairs.iteritems():
-			if primerpair.name == matched_primerpair.name:
+			if primerpair.name == matched_primerpair.name: # could imrpove here by searching for revcomp of fwd and rev though should be carefull with finding correct primers in small inserts, could be tagged as small insert amplicon?
 				fwd_in_r2  = re.search(     matched_primerpair.fwdReStr,pair.r2.seq) #fwd in read 2
 				rev_in_r1  = re.search(     matched_primerpair.revReStr,pair.r1.seq) #rev in read1
 				fwdcount = len(re.findall(  matched_primerpair.fwdReStr,pair.r1.seq))
@@ -925,16 +926,16 @@ class BarcodeCluster(object):
 				if rev_in_r1: 		pair.primererror = primerpair.name+'_'+'rev_in_r1'+''.join(['-' for i in xrange(len('strange-primerpair-combo')-len(primerpair.name+'_'+'rev_in_r1'))])
 				if revcount != 1: 	pair.primererror = primerpair.name+'_'+'revcount='+str(revcount)+''.join(['-' for i in xrange(len('strange-primerpair-combo')-len(primerpair.name+'_'+'revcount='+str(revcount)))])
 				if fwdcount != 1: 	pair.primererror = primerpair.name+'_'+'fwdcount='+str(fwdcount)+''.join(['-' for i in xrange(len('strange-primerpair-combo')-len(primerpair.name+'_'+'fwdcount='+str(fwdcount)))])
-			else:
+			else: # could imrpove verbosity here by telling if we found "reverse complementery" and in which read
 				other_fwd_in_any = re.search( primerpair.fwdReStr,   	pair.r1.revcomp().seq + 'NNNNN' + pair.r1.seq + 'NNNNN' + pair.r2.seq + 'NNNNN' + pair.r2.revcomp().seq) # fwd in any read
 				other_rev_in_any = re.search( primerpair.revReStr,      pair.r1.revcomp().seq + 'NNNNN' + pair.r1.seq + 'NNNNN' + pair.r2.seq + 'NNNNN' + pair.r2.revcomp().seq) # rev in any read
 				if other_fwd_in_any: 	pair.primererror = primerpair.name+'_fwd_in_any'+''.join(['-' for i in xrange(len('strange-primerpair-combo')-len(primerpair.name+'_fwd_in_any'))])
 				if other_rev_in_any: 	pair.primererror = primerpair.name+'_rev_in_any'+''.join(['-' for i in xrange(len('strange-primerpair-combo')-len(primerpair.name+'_rev_in_any'))])
 		    if pair.primererror:
-			    if verb:
+			if verb:
 				#pair.primererror = 'strange-primerpair-combo'
 				output += pair.primererror+'\t'+pair.r1.seq +' '+ pair.r2.seq+'\n'
-			    continue
+			continue
 	
 		    # Add sequences to output
 		    if verb: output += '                        \t'+pair.r1.seq +' '+ pair.r2.seq+'\n'
