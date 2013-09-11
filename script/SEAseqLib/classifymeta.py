@@ -1,3 +1,94 @@
+def clusterGenerator(config):
+    
+    import cPickle
+    import gzip
+    
+    filename=config.path+'/meta.clusters.pickle.gz'
+    clusterdump = gzip.open(filename,'rb')
+    
+    while True:
+        try:
+            cluster = cPickle.load(clusterdump)
+            yield cluster
+        except EOFError:
+            config.logfile.write('All clusters read from file.\n')
+            break
+
+def foreachCluster(cluster,indata,config):
+    perAmpOut = ''
+    output = '######## Cluster '+str(cluster.id)+' ###################\n'
+    indata.minimum_reads = 5
+    indata.minimum_support = 5
+    for amplicon in cluster.amplicons.values(): perAmpOut += amplicon.checkmono(indata)
+    output += 'There are '+str(cluster.adaptercount)+' illumina adapter reads.\n'
+    output += 'There are '+str(cluster.primererrors)+' primer missmatch reads.\n'
+    if cluster.ampliconpairs == 0:
+        output += '0 amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads)\n'
+    if cluster.ampliconpairs > 0:
+        output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads):\n'
+    output += perAmpOut + '\n'
+
+    if indata.tempfilefolder:
+        import os
+        try: os.mkdir(indata.tempfilefolder+'/SEAseqtemp')
+        except: pass
+        blastfile = open(indata.tempfilefolder+'/SEAseqtemp/blastinput.'+str(cluster.id)+'.fa','w')
+    else:blastfile= open(         config.path+'/sortedReads/blastinput.'+str(cluster.id)+'.fa','w')
+    
+    print 'making fasta'
+    for amplicon in cluster.definedamplicons.values():
+        for consensus in amplicon.goodalleles:
+            r1 = consensus.sequence.seq.split('NNNNNNNNNN')[0]
+            r2 = consensus.sequence.seq.split('NNNNNNNNNN')[1]
+            blastfile.write('>'+amplicon.type+'.'+str(consensus.id)+'.r1\n'+r1+'\n'+
+                            '>'+amplicon.type+'.'+str(consensus.id)+'.r2\n'+r2+'\n')
+    blastfile.close()
+    print 'done'
+
+    from Bio.Blast.Applications import NcbiblastnCommandline
+    from Bio.Blast import NCBIXML
+    from cStringIO import StringIO
+    import time
+
+    #setting up blast
+    BLAST_identity = indata.identity
+
+    database = indata.database
+    cline = NcbiblastnCommandline(query=blastfile.name, db=database ,evalue=0.001, outfmt=5, num_threads=8,perc_identity=BLAST_identity)#, out=infile+'.blastout')
+    #cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn', out=infile+'.'+config.blastid+'.blastout')
+
+    print ( 'Starting BLAST')
+    blast_handle = cline.__call__()
+    print cluster.id, str(blast_handle)[0:100].replace('\n','--NEWLINE--')
+    print ('BLAST search done')    
+
+    blast_handle = StringIO(blast_handle[0])
+    blast_handle.seek(0)
+    records = NCBIXML.parse(blast_handle)
+    
+    from SEAseqLib.mainLibrary import gi2orgname
+    local_gi2org = {}
+    
+    identity_cutoff = 99
+    alignment_length_cutoff = 95
+    for blast_record in records:
+        print blast_record.query
+        for alignment in blast_record.alignments[:10]:
+            for hsp in alignment.hsps[:1]:
+                perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
+                perc_coverage = float(hsp.align_length)	/	float(blast_record.query_letters)	*100
+                gi_number = alignment.title.split(' ')[1].split('|')[1]
+                try:
+                    organism = local_gi2org[gi_number]
+                except KeyError:
+                    organism = gi2orgname(gi_number)
+                    local_gi2org[gi_number] = organism
+                if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff:
+                    print perc_identity,perc_coverage,organism
+        
+    return output
+
+
 def classifymeta(indata):
 
     from SEAseqLib.mainLibrary import Configuration, writelogheader
@@ -9,31 +100,15 @@ def classifymeta(indata):
 
     # settings
     config.load()
+    
+    for cluster in clusterGenerator(config):
+            print foreachCluster(cluster,indata,config)
 
-    #database="../reference/4amplicons/4amplicons.fasta"
-    from Bio.Blast.Applications import NcbiblastnCommandline
-    from Bio.Blast import NCBIXML
-    from cStringIO import StringIO
-    import time
+    import sys
+    sys.exit(0)
 
-    #setting up blast
-    #BLAST_identity = 99
-    BLAST_identity = indata.identity
-    database='/bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.fa'
-    database = indata.database
-    #database='/bubo/proj/b2011011/SEAseq/reference/NCBI_HUMAN_MICROBIOM_ALL/all.fa'
-    #database='/bubo/proj/b2011011/SEAseq/references/NCBI_BACTERIA_ALL/all.fa'
-    infile = config.path+'/meta.sequences.fa'
-    cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, num_threads=8,perc_identity=BLAST_identity)#, out=infile+'.blastout')
-    #cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn', out=infile+'.'+config.blastid+'.blastout')
+    #CUTTNIG AND PASTING FROMHERE:::
 
-    config.logfile.write( 'Starting BLAST\n')
-    #Blasting all reads
-    blast_handle = cline.__call__()
-    config.logfile.write('BLAST search done\n')
-
-    blast_handle = StringIO(blast_handle[0])
-    blast_handle.seek(0)
 
     #f = open(infile+'.'+config.blastid+'.blastout')
     #records = NCBIXML.parse(f)

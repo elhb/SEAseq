@@ -39,13 +39,18 @@ def writelogheader(logfile):
     import sys
     import time
     import getpass
+    import commands
+    from socket import gethostname
     username = getpass.getuser()
+    computer = gethostname()
     logfile.write('----------------\n')
     logfile.write('Running program: '+' '.join(sys.argv)+'.\n')
     logfile.write('Version: '+version+'\n')
     logfile.write('time: '+time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\n')
     logfile.write('Master process id='+str(MASTER)+'\n')
-    logfile.write('Started by user = '+username+'\n')
+    logfile.write('Started by user = '+username+' on host = '+computer+'\n')
+    if gethostname().split('.')[1] == 'uppmax':
+        logfile.write('Program is run on uppmax, temporary files will be placed in '+commands.getoutput('echo $SNIC_TMP')+' .\n')
 
 def gi2orgname(gi_number):
 	from Bio import Entrez
@@ -1149,6 +1154,7 @@ class Amplicon(object):
 		self.type = amplicon_type
 		self.primer = primerpair
 		self.allelecount = None
+		self.goodalleles = []
 
 	@property
 	def readcount(self):
@@ -1171,8 +1177,9 @@ class Amplicon(object):
 			consensus.percentagesupport = 100*float(consensus.readcount)/float(self.readcount)
 			if consensus.readcount > 1 and consensus.percentagesupport > 1:
 				output += '\t\tConsensus '+consensus.id+' supported by '+str(round(consensus.percentagesupport,2))+'% of readpop ('+str(consensus.readcount)+' reads)\t'+consensus.sequence.seq+'\n'
-			if  consensus.percentagesupport >= indata.minimum_support and consensus.readcount > indata.minimum_reads:
+			if  consensus.percentagesupport >= indata.minimum_support and consensus.readcount >= indata.minimum_reads:
 				self.allelecount += 1
+				self.goodalleles.append(consensus)
 		
 		if self.allelecount == 1:
 			self.monoclonal = True
