@@ -917,16 +917,22 @@ class BarcodeCluster(object):
 		    other_rev_in_any = None
 		    for name, primerpair in config.primerpairs.iteritems():
 			if primerpair.name == matched_primerpair.name:
-			    fwd_in_r2  = re.search(     matched_primerpair.fwdReStr,    pair.r2.seq) #fwd in read 2
-			    rev_in_r1  = re.search(     matched_primerpair.revReStr,	pair.r1.seq) #rev in read1
-			    fwdcount = len(re.findall(  matched_primerpair.fwdReStr,    pair.r1.seq))
-			    revcount = len(re.findall(  matched_primerpair.revReStr,    pair.r2.seq))
+				fwd_in_r2  = re.search(     matched_primerpair.fwdReStr,pair.r2.seq) #fwd in read 2
+				rev_in_r1  = re.search(     matched_primerpair.revReStr,pair.r1.seq) #rev in read1
+				fwdcount = len(re.findall(  matched_primerpair.fwdReStr,pair.r1.seq))
+				revcount = len(re.findall(  matched_primerpair.revReStr,pair.r2.seq))
+				if fwd_in_r2: 		pair.primererror = primerpair.name+'_'+'fwd_in_r2'+''.join(['-' for i in xrange(len('strange-primerpair-combo')-len(primerpair.name+'_'+'fwd_in_r2'))])
+				if rev_in_r1: 		pair.primererror = primerpair.name+'_'+'rev_in_r1'+''.join(['-' for i in xrange(len('strange-primerpair-combo')-len(primerpair.name+'_'+'rev_in_r1'))])
+				if revcount != 1: 	pair.primererror = primerpair.name+'_'+'revcount='+str(revcount)+''.join(['-' for i in xrange(len('strange-primerpair-combo')-len(primerpair.name+'_'+'revcount='+str(revcount)))])
+				if fwdcount != 1: 	pair.primererror = primerpair.name+'_'+'fwdcount='+str(fwdcount)+''.join(['-' for i in xrange(len('strange-primerpair-combo')-len(primerpair.name+'_'+'fwdcount='+str(fwdcount)))])
 			else:
-			    other_fwd_in_any = re.search( primerpair.fwdReStr,   	pair.r1.revcomp().seq + 'NNNNN' + pair.r1.seq + 'NNNNN' + pair.r2.seq + 'NNNNN' + pair.r2.revcomp().seq) # fwd in any read
-			    other_rev_in_any = re.search( primerpair.revReStr,          pair.r1.revcomp().seq + 'NNNNN' + pair.r1.seq + 'NNNNN' + pair.r2.seq + 'NNNNN' + pair.r2.revcomp().seq) # rev in any read
-		    if fwd_in_r2 or rev_in_r1 or other_fwd_in_any or other_rev_in_any or revcount != 1 or fwdcount != 1:
+				other_fwd_in_any = re.search( primerpair.fwdReStr,   	pair.r1.revcomp().seq + 'NNNNN' + pair.r1.seq + 'NNNNN' + pair.r2.seq + 'NNNNN' + pair.r2.revcomp().seq) # fwd in any read
+				other_rev_in_any = re.search( primerpair.revReStr,      pair.r1.revcomp().seq + 'NNNNN' + pair.r1.seq + 'NNNNN' + pair.r2.seq + 'NNNNN' + pair.r2.revcomp().seq) # rev in any read
+				if other_fwd_in_any: 	pair.primererror = primerpair.name+'_fwd_in_any'+''.join(['-' for i in xrange(len('strange-primerpair-combo')-len(primerpair.name+'_fwd_in_any'))])
+				if other_rev_in_any: 	pair.primererror = primerpair.name+'_rev_in_any'+''.join(['-' for i in xrange(len('strange-primerpair-combo')-len(primerpair.name+'_rev_in_any'))])
+		    if pair.primererror:
 			    if verb:
-				pair.primererror = 'strange-primerpair-combo'
+				#pair.primererror = 'strange-primerpair-combo'
 				output += pair.primererror+'\t'+pair.r1.seq +' '+ pair.r2.seq+'\n'
 			    continue
 	
