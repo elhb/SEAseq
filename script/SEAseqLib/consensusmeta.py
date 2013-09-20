@@ -133,7 +133,7 @@ def meta(indata):
 	import multiprocessing
 	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
 	results = WorkerPool.imap_unordered(foreachcluster_meta,clusteriterator(clusterq,indata),chunksize=10)
-	#results = WorkerPool.imap(foreachcluster_meta,clusteriterator(clusterq, indata),chunksize=10)
+	#results = WorkerPool.imap(          foreachcluster_meta,clusteriterator(clusterq, indata),chunksize=1)
 
     if not indata.debug: config.logfile.write('Part1: Per cluster action '+str(indata.cpus)+' processes  ...\n')
     progress = Progress(config.clustercount, logfile=config.logfile, unit='cluster',mem=True)
@@ -141,26 +141,26 @@ def meta(indata):
     
     statstable = open(config.path+'/meta.statstable','w',1)
     statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support']
-    for amptype in ['ecoli','myco','lambda','m13']: statsheader.append(amptype+' reads');statsheader.append(amptype+' monoclonal');statsheader.append(amptype)
+    #for amptype in ['ecoli','myco','lambda','m13']: statsheader.append(amptype+' reads');statsheader.append(amptype+' monoclonal');statsheader.append(amptype)
     statstable.write('\t'.join(statsheader))
 
-    import gzip
-    clusterdump = gzip.open(config.path+'/meta.clusters.pickle.gz','wb',9)
+    #compressing takes forever skip this and do later if needed
+    #import gzip
+    #clusterdump = gzip.open(config.path+'/meta.clusters.pickle.gz','wb',9)
+    if indata.tempfilefolder: clusterdump = open(indata.tempfilefolder+'/SEAseqtemp/meta.clusters.pickle','w')
+    else:                     clusterdump = open(config.path+'/meta.clusters.pickle','w')
     
-    import cPickle
+    #import cPickle
 
     with progress:
 	for tmp in results:
 	    progress.update()
-            [output, cluster] = tmp
+            [output, cluster,picklestring] = tmp
             
-            counter.addcluster(cluster)
-
-            config.outfile.write(output)
-
             # Dump clusters to file
             #clusterdump.write(repr(cPickle.dumps(cluster))+'\n')
-            cPickle.dump(cluster,clusterdump)
+            #cPickle.dump(cluster,clusterdump)
+            clusterdump.write(picklestring)
 
 	    #print to stats info file
             #NOTE: ONLY for 16s its stuff!!!
@@ -183,8 +183,16 @@ def meta(indata):
             except KeyError:statstable.write(str(False                                          )+'\t')#'16s monoclonal'
             statstable.write(str(cluster.ampliconcount                          )+'\t')#'number of consensus types'
             statstable.write(str(cluster.definedampliconcount                   )+'\n')#'number of consensus types with good support'
+
+            # do the pivkling on subprocess process only print here ...
+            counter.addcluster(cluster)
+            config.outfile.write(output)
+
 	    
 	clusterdump.close()
+        if indata.tempfilefolder:
+            import shutil
+            shutil.move(indata.tempfilefolder+'/SEAseqtemp/meta.clusters.pickle',config.path+'/meta.clusters.pickle')
 	statstable.close()
 
     reader.join()
@@ -250,7 +258,8 @@ def foreachcluster_meta(cluster_pairs):
         output += '# Original cdhit data:\n'
         output += filesOut + '\n'
 
-	return [output, cluster]
+        import cPickle
+	return [output, cluster, cPickle.dumps(cluster)]
 
 def clusteriterator(clusterq, indata):  # a generator that yields clusters from queue until it finds a cluster = END
     while True:
@@ -265,9 +274,8 @@ def getClustersAndPairs(config,clusterq):
     config.logfile.write('Reader initiated pid='+str(os.getpid())+'.\n')
     tmpcounter = 0
 
-    currentclusterid = 1
     from SEAseqLib.mainLibrary import BarcodeCluster
-    cluster = BarcodeCluster(currentclusterid)
+    cluster = BarcodeCluster(1)
     #pairs = []
     config.infiles['r1'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq']
     config.infiles['r2'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq']
@@ -280,14 +288,13 @@ def getClustersAndPairs(config,clusterq):
 	
 	pair.cid = int(pair.header.split(':')[-1].split('_')[1])
 	
-	if pair.cid == currentclusterid:
+	if pair.cid == cluster.id:
             cluster.addreadpair(pair)
-	elif pair.cid == currentclusterid+1:
+	elif pair.cid == cluster.id+1:
 	    while clusterq.qsize() > 160 or clusterq.full(): time.sleep(1); #config.logfile.write('waiting for queue ...\n')
             clusterq.put([cluster,config])
             tmpcounter += 1
-	    currentclusterid = pair.cid
-            cluster = BarcodeCluster(currentclusterid)
+            cluster = BarcodeCluster(pair.cid)
             cluster.addreadpair(pair)
 	else: sys.stdout.write('ERROR 1979 in consensus creation get clusters and pairs.\n')
 

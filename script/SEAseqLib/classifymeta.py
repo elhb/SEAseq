@@ -1,20 +1,23 @@
-def clusterGenerator(config):
+def clusterGenerator(config,indata):
     
     import cPickle
     import gzip
     
-    filename=config.path+'/meta.clusters.pickle.gz'
-    clusterdump = gzip.open(filename,'rb')
+    #filename=config.path+'/meta.clusters.pickle.gz'
+    filename=config.path+'/meta.clusters.pickle'
+    #clusterdump = gzip.open(filename,'rb')
+    clusterdump = open(filename)
     
     while True:
         try:
             cluster = cPickle.load(clusterdump)
-            yield cluster
+            yield [cluster,config,indata]
         except EOFError:
             config.logfile.write('All clusters read from file.\n')
             break
 
-def foreachCluster(cluster,indata,config):
+def foreachCluster(tmp):
+    cluster,config,indata = tmp
     perAmpOut = ''
     output = '######## Cluster '+str(cluster.id)+' ###################\n'
     indata.minimum_reads = 5
@@ -35,15 +38,27 @@ def foreachCluster(cluster,indata,config):
         blastfile = open(indata.tempfilefolder+'/SEAseqtemp/blastinput.'+str(cluster.id)+'.fa','w')
     else:blastfile= open(         config.path+'/sortedReads/blastinput.'+str(cluster.id)+'.fa','w')
     
-    print 'making fasta'
+    output+= 'making fasta '+str(cluster.id)+'\n'
+    fastaentries = 0
+    amplicons = {}
     for amplicon in cluster.definedamplicons.values():
+        amplicons[amplicon.type] = {}
         for consensus in amplicon.goodalleles:
+            amplicons[amplicon.type][str(consensus.id)] = {'1':None,'2':None}
             r1 = consensus.sequence.seq.split('NNNNNNNNNN')[0]
             r2 = consensus.sequence.seq.split('NNNNNNNNNN')[1]
             blastfile.write('>'+amplicon.type+'.'+str(consensus.id)+'.r1\n'+r1+'\n'+
                             '>'+amplicon.type+'.'+str(consensus.id)+'.r2\n'+r2+'\n')
+            fastaentries +=1
     blastfile.close()
-    print 'done'
+    output+=  'done '+str(cluster.id)+'\n'
+    
+    if fastaentries == 0:
+        import os
+        os.remove(blastfile.name)
+        output += 'No reads in fasta file '+str(cluster.id)+'\n'
+        return output
+
 
     from Bio.Blast.Applications import NcbiblastnCommandline
     from Bio.Blast import NCBIXML
@@ -56,11 +71,14 @@ def foreachCluster(cluster,indata,config):
     database = indata.database
     cline = NcbiblastnCommandline(query=blastfile.name, db=database ,evalue=0.001, outfmt=5, num_threads=8,perc_identity=BLAST_identity)#, out=infile+'.blastout')
     #cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn', out=infile+'.'+config.blastid+'.blastout')
-
-    print ( 'Starting BLAST')
+    
+    output+='Starting BLAST '+str(cluster.id)+'\n'
     blast_handle = cline.__call__()
-    print cluster.id, str(blast_handle)[0:100].replace('\n','--NEWLINE--')
-    print ('BLAST search done')    
+    output+=str(cluster.id)+' '+ str(blast_handle)[0:100].replace('\n','--NEWLINE--')+'\n'
+    output+='BLAST search done '+str(cluster.id)+'\n'
+
+    import os
+    os.remove(blastfile.name)
 
     blast_handle = StringIO(blast_handle[0])
     blast_handle.seek(0)
@@ -68,24 +86,124 @@ def foreachCluster(cluster,indata,config):
     
     from SEAseqLib.mainLibrary import gi2orgname
     local_gi2org = {}
+
+    #for the random match estimation
+    tmp_matches = {}
+
+    if indata.gidatabase:
+	tmp_file = open(indata.gidatabase)
+	tmp_string = tmp_file.read()
+	tmp_file.close()
+	local_gi2org = eval(tmp_string)
+    else:local_gi2org = {}
     
     identity_cutoff = 99
     alignment_length_cutoff = 95
     for blast_record in records:
-        print blast_record.query
-        for alignment in blast_record.alignments[:10]:
-            for hsp in alignment.hsps[:1]:
-                perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
-                perc_coverage = float(hsp.align_length)	/	float(blast_record.query_letters)	*100
-                gi_number = alignment.title.split(' ')[1].split('|')[1]
-                try:
-                    organism = local_gi2org[gi_number]
-                except KeyError:
-                    organism = gi2orgname(gi_number)
-                    local_gi2org[gi_number] = organism
-                if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff:
-                    print perc_identity,perc_coverage,organism
+
+        amptype = blast_record.query.split('.')[0]
+        allele =blast_record.query.split('.')[1]
+        readnumber =blast_record.query.split('.')[2]
         
+        amplicons[amptype][allele][readnumber] = blast_record
+        if blast_record == None: output += amptype+' '+allele+' '+readnumber+'ajajajaj\n'
+        
+        #for alignment in blast_record.alignments[:10]:
+        #    for hsp in alignment.hsps[:1]:
+        #        perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
+        #        perc_coverage = float(hsp.align_length)	/	float(blast_record.query_letters)	*100
+        #        gi_number = alignment.title.split(' ')[1].split('|')[1]
+        #        try:
+        #            organism = local_gi2org[gi_number]
+        #        except KeyError:
+        #            organism = gi2orgname(gi_number)
+        #            local_gi2org[gi_number] = organism
+        #        if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff:
+        #            print perc_identity,perc_coverage,organism
+    
+    for amplicon in amplicons:
+        broken = False
+        consensuses = amplicons[amplicon]
+
+        output += '\t'+amplicon     +'\n'
+
+        for consensus in consensuses:
+            try:
+                r1 = consensuses[consensus]['1']
+                if r1 == None:
+                    output += '\t\tno read1 matches\n'
+                    continue
+            except KeyError:
+                output += '\t\tConsensus cannot be read as read 1 sequence are not available from infile\n'
+                output += 'WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?\n'
+                continue
+            try:
+                r2 = consensuses[consensus]['2']
+                if r2 == None:
+                    output += '\t\tno read2 matches\n'
+                    continue
+            except KeyError:
+                output += '\t\tConsensus cannot be read as read 2 sequence are not available from infile\n'
+                output += 'WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?\n'
+                continue
+
+            #amplicon	= 	r1.query.split('.')[1].split('=')[1]
+            #support	= float(r1.query.split('r1.')[-1].split('_')[0].replace('%','')	)
+            #readpop = int(r1.query.split('r1.')[-1].split('_')[-1].replace('reads','')	)
+
+            output +=       '\t\tConsensus '+str(consensus)+': '+amplicon+' supported by '+str(support) +'% ('+str(readpop)+')'     +'\n'
+
+            in_r1 = {}
+            for alignment in r1.alignments:
+                for hsp in alignment.hsps:
+                    perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
+                    perc_coverage = float(hsp.align_length)	/	float(r1.query_letters)	*100
+                    gi_number = alignment.title.split(' ')[1].split('|')[1]
+                    try:
+                        organism = local_gi2org[gi_number]
+                    except KeyError:
+                        organism = gi2orgname(gi_number)
+                        local_gi2org[gi_number] = organism
+                    #print organism
+                    output += organism
+                    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r1[organism] = alignment
+
+            in_r2 = {}
+            for alignment in r2.alignments:
+                for hsp in alignment.hsps:
+                    perc_identity = float(hsp.identities)	/	float(hsp.align_length)	*100
+                    perc_coverage = float(hsp.align_length)	/	float(r2.query_letters)	*100
+                    gi_number = alignment.title.split(' ')[1].split('|')[1]
+                    try:
+                        organism = local_gi2org[gi_number]
+                    except KeyError:
+                        organism = gi2orgname(gi_number)
+                        local_gi2org[gi_number] = organism
+                    #print organism
+                    output += organism
+                    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r2[organism] = alignment
+
+
+            for organism in in_r1:
+                if organism in in_r2:
+                    in_both_reads[amplicon].append(organism)
+
+            for organism in in_both_reads[amplicon]:
+                output +=       '\t\t\t'+organism     +'\n'
+                tmp_matches[amplicon][organism] = True
+            if not in_both_reads[amplicon]:
+                output +=       '\t\t\tNo alignment supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage'     +'\n'
+                if amplicon == '16S':
+                    noblasthit_16s +=1
+                    broken = True;
+                elif amplicon == 'ITS':
+                    noblasthit_its += 1
+                    broken = True;
+                    break;
+        if broken: break
+    
+    
+    
     return output
 
 
@@ -100,64 +218,51 @@ def classifymeta(indata):
 
     # settings
     config.load()
-    
-    for cluster in clusterGenerator(config):
-            print foreachCluster(cluster,indata,config)
+
+    if indata.debug: #single process // serial
+	config.logfile.write('debugging: ');
+        import sys
+	sys.stdout.write('debugging: ')
+	config.logfile.write('Running in debug mode ')
+	results=[] # create holder for processed reads
+	#progress = Progress(config.clustercount, logfile=config.logfile) # creates a progress "bar" thingy
+	#with progress:
+        tmcounter = 0
+	for cluster in clusterGenerator(config, indata):
+		#progress.update()
+		results.append(foreachCluster(cluster))
+                tmcounter +=1
+                if tmcounter == 20: break
+	config.logfile.write('finished, making summary ... \n')
+    else: # multiple processes in parallel
+	import multiprocessing
+	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
+	results = WorkerPool.imap_unordered(foreachCluster,clusterGenerator(config,indata),chunksize=1)
+	#results = WorkerPool.imap(          foreachcluster,clusterGenerator(config),chunksize=1)
+
+    # will paralellise this when stuff works
+    tmcounter = 0
+    for cluster in results:
+        print cluster
+        tmcounter +=1
+        if tmcounter == 20: break
+
+    #for the random match estimation
+    matches = {}
+
+    #from SEAseqLib.mainLibrary import Progress
+    #config.logfile.write('Parsing BLASTreport ....\n')
+    #progress = Progress(len(data),unit='cluster',logfile=config.logfile)
+    #with progress:
 
     import sys
     sys.exit(0)
 
     #CUTTNIG AND PASTING FROMHERE:::
 
-
-    #f = open(infile+'.'+config.blastid+'.blastout')
-    #records = NCBIXML.parse(f)
-    records = NCBIXML.parse(blast_handle)
-
-    config.printblast = True
-    if config.printblast: pass
-    
-    config.logfile.write('Reformatting BLAST output to enable clusterwise parsing\n')
-    data = {}
-    for blast_record in records:
-
-	#>cluster=1.amplicon=ITS.consensus=83_r1.27.08%_of_2626reads
-	splitted = blast_record.query.split('.')
-	cluster	= int(	splitted[0].split('=')[1]	)
-	amplicon	= splitted[1].split('=')[1]
-	consensus	= int(	splitted[2].split('=')[1].split('_')[0]	)
-	readnumber	= int(	splitted[2].split('=')[1].split('_')[1].split('r')[1]	)
-	
-	if cluster not in data: data[cluster] = {'ITS':{},'16S':{}}
-
-	try:			data[cluster][amplicon][consensus][readnumber] = blast_record
-	except KeyError:	data[cluster][amplicon][consensus] = { readnumber : blast_record }
-    config.logfile.write('Done' +'\n')
-
-    #for the random match estimation
-    matches = {}
-    
-    # initiating vars
-    noblasthit_its = 0
-    noblasthit_16s = 0
-    blasthitsagree = 0
-    hitsdonotagree = 0
-    
-    if indata.gidatabase:
-	tmp_file = open(indata.gidatabase)
-	tmp_string = tmp_file.read()
-	tmp_file.close()
-	local_gi2org = eval(tmp_string)
-    else:local_gi2org = {}
-    
-    from SEAseqLib.mainLibrary import Progress
-    config.logfile.write('Parsing BLASTreport ....\n')
-    progress = Progress(len(data),unit='cluster',logfile=config.logfile)
-    with progress:
+    for pelleplut in list:
 	for cluster_id, amplicons in data.iteritems():
 	    
-	    #for the random match estimation
-	    tmp_matches = {'ITS':{},'16S':{}}
 	    
 	    progress.update()
 
@@ -167,82 +272,7 @@ def classifymeta(indata):
 
 	    #for amplicon, consensuses in amplicons.iteritems():
 	    in_both_reads = {'ITS':[],'16S':[]}
-	    for amplicon in ['ITS','16S']:
-		broken = False
-		consensuses = amplicons[amplicon]
-		config.outfile.write(      '\t'+amplicon     +'\n')
-		if not consensuses:
-		    config.outfile.write(      '\t\tNo support'     +'\n')
-		    if amplicon == 'ITS': break
-		if len(consensuses) != 1:
-		    config.outfile.write('\t\tNot monoclonal'+'\n');
-		    break
 
-		for consensus in consensuses:
-
-		    try: r1 = consensuses[consensus][1]
-		    except KeyError:
-			config.outfile.write('\t\tConsensus cannot be read as read 1 sequence are not available from infile\n')
-			config.logfile.write('WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?\n')
-			continue
-		    try: r2 = consensuses[consensus][2]
-		    except KeyError:
-			config.outfile.write('\t\tConsensus cannot be read as read 2 sequence are not available from infile\n')
-			config.logfile.write('WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?\n')
-			continue
-
-		    amplicon	= 	r1.query.split('.')[1].split('=')[1]
-		    support	= float(r1.query.split('r1.')[-1].split('_')[0].replace('%','')	)
-		    readpop = int(r1.query.split('r1.')[-1].split('_')[-1].replace('reads','')	)
-
-		    config.outfile.write(      '\t\tConsensus '+str(consensus)+': '+amplicon+' supported by '+str(support) +'% ('+str(readpop)+')'     +'\n')
-
-		    in_r1 = {}
-		    for alignment in r1.alignments:
-			for hsp in alignment.hsps:
-			    perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
-			    perc_coverage = float(hsp.align_length)	/	float(r1.query_letters)	*100
-			    gi_number = alignment.title.split(' ')[1].split('|')[1]
-			    try:
-				organism = local_gi2org[gi_number]
-			    except KeyError:
-				organism = gi2orgname(gi_number)
-				local_gi2org[gi_number] = organism
-			    #print organism
-			    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r1[organism] = alignment
-
-		    in_r2 = {}
-		    for alignment in r2.alignments:
-			for hsp in alignment.hsps:
-			    perc_identity = float(hsp.identities)	/	float(hsp.align_length)	*100
-			    perc_coverage = float(hsp.align_length)	/	float(r2.query_letters)	*100
-			    gi_number = alignment.title.split(' ')[1].split('|')[1]
-			    try:
-				organism = local_gi2org[gi_number]
-			    except KeyError:
-				organism = gi2orgname(gi_number)
-				local_gi2org[gi_number] = organism
-			    #print organism
-			    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r2[organism] = alignment
-
-
-		    for organism in in_r1:
-			if organism in in_r2:
-			    in_both_reads[amplicon].append(organism)
-
-		    for organism in in_both_reads[amplicon]:
-			config.outfile.write(      '\t\t\t'+organism     +'\n')
-			tmp_matches[amplicon][organism] = True
-		    if not in_both_reads[amplicon]:
-			config.outfile.write(      '\t\t\tNo alignment supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage'     +'\n')
-			if amplicon == '16S':
-			    noblasthit_16s +=1
-			    broken = True;
-			elif amplicon == 'ITS':
-			    noblasthit_its += 1
-			    broken = True;
-			    break;
-		if broken: break
 
 	    if tmp_matches['ITS'] and tmp_matches['16S']:
 		matches[cluster_id] = tmp_matches

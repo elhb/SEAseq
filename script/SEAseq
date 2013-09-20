@@ -93,8 +93,9 @@ def getindata(cmd):
         argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq]',			type=str,	required=False,	default='fq',	help='Format to output reads to fa=fasta or fq=fastq(default fastq)')
 	argparser.add_argument(	'-trimr1',		dest='trimr1',	metavar='N',				type=int,	required=False,	default=0,	help='Number of bases to trim from 3prime end of r1 (default 0)')
 	argparser.add_argument(	'-trimr2',		dest='trimr2',	metavar='N',				type=int,	required=False,	default=0,	help='Number of bases to trim from 3prime end of r2 (default 0)')
-    if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta':
+    if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta' or cmd == 'classifymeta':
 	argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to run in parallel (default 1).')
+    if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta':
 	argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='Skip the first N read pairs in files (default 0).')
 	argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
 	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
@@ -140,7 +141,12 @@ def getindata(cmd):
 
     from socket import gethostname;
     import commands
-    if gethostname().split('.')[1] == 'uppmax': indata.tempfilefolder = commands.getoutput('echo $SNIC_TMP')
+    if gethostname().split('.')[1] == 'uppmax':
+	indata.tempfilefolder = commands.getoutput('echo $SNIC_TMP')
+        import os
+        try: os.mkdir(indata.tempfilefolder+'/SEAseqtemp')
+        except: pass
+
 
     return indata
 

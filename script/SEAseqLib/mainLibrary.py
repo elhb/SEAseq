@@ -567,14 +567,16 @@ class readpair():
 		return 0
 
 	def identifyIllumina(self, config):
-		handle = sequence('illuminaUniversal','AGATCGGAAGAGC','AGATCGGAAGAGC')
-		config.chandlemissmatch = 2
+		#handle = sequence('illuminaUniversal','AGATCGGAAGAGC','AGATCGGAAGAGC')
+		config.chandlemissmatch = 3
 		#handle = sequence('illumina','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC')
+		handle = sequence('illumina','AGATCGGAAGAGCACACGTCT','AGATCGGAAGAGCACACGTCT')
 		[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
 		if handle_start: self.r1.illuminaadapter = True
 		else: self.r1.illuminaadapter = False
 		
 		#handle = sequence('illumina','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT','AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT')
+		handle = sequence('illumina','AGATCGGAAGAGCGTCGTGT','AGATCGGAAGAGCGTCGTGT')
 		[handle_start, handle_end] = self.matchHandle(handle, config, self.r2)
 		if handle_start: self.r2.illuminaadapter = True
 		else: self.r2.illuminaadapter = False
