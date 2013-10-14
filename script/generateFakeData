@@ -1,0 +1,77 @@
+#! /bin/env python
+
+import sys
+numberOfPairs = int(sys.argv[1])
+errorRate = float(sys.argv[2])
+import random
+readsPerBead = 100
+numberOfBeads = int(numberOfPairs/readsPerBead)
+
+f1 = open(sys.argv[3]+'.1.fq','w')
+f2 = open(sys.argv[3]+'.2.fq','w')
+
+amplicons = {
+    '16s1':{'rev':'GGACTACCAGGGTATCTAABCCTGT','fwd':'ADACTCCTACGGGAGGCAGCAG','r1':'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT','r2':'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT'},
+    '16s2':{'rev':'GAYTTGACGTCRTCCCCDCCTTCCT','fwd':'AAAKRAATTGACGGGGRCCCGCACA','r1':'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC','r2':'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC'},
+    '23s1':{'rev':'AGTGAGCTRTTACGCWHTCTTT','fwd':'AGTACCGTGAGGGAADGGYGAAAAG','r1':'GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG','r2':'GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG'},
+    '23s2':{'rev':'GAGCCGACATCGAGGTGCCAA','fwd':'ACBRTCCTAAGGTAGCGAAATTCCTTGTC','r1':'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA','r2':'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'}
+}
+
+if errorRate < 1:
+    oneIn = 1
+    while errorRate-int(errorRate) != 0:
+        errorRate = errorRate*10
+        print errorRate,int(errorRate),errorRate-int(errorRate)
+        oneIn = oneIn*10
+    print errorRate, 'errors in',oneIn,'bases'
+elif errorRate > 1: print 'Warning: error rate 1 or more.'
+else: print 'Warning: error rate 1 or more.'
+
+total_bases = 0
+total_errors = 0
+for i in xrange(numberOfBeads):
+    
+    beadId = ''
+    for i in xrange(15):
+        base = random.choice(['A','G','T','C'])
+        beadId += base
+    handleseq = '-CSEQUENCE-'
+
+    for i in xrange(readsPerBead):
+        amplicon = random.choice(amplicons.keys())
+        header = '@HWI.'+''.join([str(random.randint(0,9)) for i in range(5)]) +'.'+''.join([str(random.randint(0,9)) for i in range(5)])
+        readone = beadId+handleseq+amplicons[amplicon]['fwd']+amplicons[amplicon]['r1'][:150-len(handleseq)-len(beadId)-len(amplicons[amplicon]['fwd'])]
+        readtwo = amplicons[amplicon]['rev']+amplicons[amplicon]['r2'][:150-len(amplicons[amplicon]['rev'])]
+        
+        tmp = ''
+        for i in readone:
+            total_bases += 1
+            base = i
+            if random.randint(1,oneIn) <= errorRate:
+                total_errors += 1
+                base = random.choice(['A','G','T','C'])
+                while base == i: base = random.choice(['A','G','T','C'])
+            tmp += base
+        readone = tmp
+        tmp = ''
+        for i in readtwo:
+            base = i
+            if random.randint(1,oneIn) <= errorRate:
+                base = random.choice(['A','G','T','C'])
+                while base == i: base = random.choice(['A','G','T','C'])
+            tmp += base
+        readtwo = tmp
+
+        f1.write( header +'\n')
+        f1.write(  readone +'\n')
+        f1.write(  '+' +'\n')
+        f1.write(  '#'.join(['' for i in xrange(151)]) +'\n')
+        f2.write(  header +'\n')
+        f2.write( readtwo +'\n')
+        f2.write( '+' +'\n')
+        f2.write( '#'.join(['' for i in xrange(151)]) +'\n')
+
+
+f1.close()
+f2.close()
+print total_bases,'bases', total_errors, 'errors, ie',float(total_errors)/total_bases,'errors per base in average'
