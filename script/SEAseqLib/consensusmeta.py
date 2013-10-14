@@ -275,6 +275,8 @@ def getClustersAndPairs(config,clusterq):
     #pairs = []
     config.infiles['r1'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq']
     config.infiles['r2'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq']
+    missingClustersFlag = False
+    missingClusters = []
     
     from SEAseqLib.mainLibrary import getPairs
     for tmp in getPairs(config):
@@ -293,7 +295,19 @@ def getClustersAndPairs(config,clusterq):
 	    currentclusterid = pair.cid
             cluster = BarcodeCluster(currentclusterid)
             cluster.addreadpair(pair)
-	else: sys.stdout.write('ERROR 1979 in consensus creation get clusters and pairs.\n')
+	elif pair.cid > currentclusterid+1:
+	    while clusterq.qsize() > 160 or clusterq.full(): time.sleep(1);
+            clusterq.put([cluster,config])
+            tmpcounter += 1
+	    if not missingClustersFlag:
+		config.logfile.write('WARNING: missing cluster(s), are you running on a subset of data?\n')
+		missingClustersFlag = True
+	    for i in xrange(currentclusterid+1,pair.cid): missingClusters.append(str(i))
+	    currentclusterid = pair.cid
+            cluster = BarcodeCluster(currentclusterid)
+            cluster.addreadpair(pair)
+	else: sys.stdout.write('ERROR 1979 in consensus creation get clusters and pairs.\nCluster id in pair is '+str(pair.cid)+' and the current cluster id is '+str(currentclusterid)+'\n')
+    if missingClustersFlag: config.logfile.write('WARNING: Cluster(s) '+', '.join(missingClusters[:-1])+' & '+missingClusters[-1]+' were missing, are you running on a subset of data?\n')
 
     clusterq.put('END')
     config.logfile.write('Reader exiting after adding '+str(tmpcounter)+' clusters to queue.\n')
