@@ -152,7 +152,7 @@ def getPairs(config):
 			# skip or stop if option is set on config
 			if config.skip and tmp < (4*config.skip) and skip: continue
 			elif config.skip and tmp == (4*config.skip) and skip: skip=False; tmp =0;continue
-			if config.stop and counter == config.stop: break
+			if config.stop and counter == config.stop+1: break
 
 			# depending on line number (within entry) do ...	
 			if tmp == 1: #header check match between files
