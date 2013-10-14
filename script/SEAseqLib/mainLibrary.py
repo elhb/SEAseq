@@ -685,12 +685,17 @@ class SEAseqSummary():
 		highest = []
 		perc = percentages.keys()
 		perc.sort(reverse=True)
+		last_highest = 0
 		#print perc
 		while len(highest) < config.numberofseeds:
 			try:
 				for bc in percentages[perc[0]]: highest.append(bc)
 			except IndexError: pass
 			perc=perc[1:]
+			if len(highest) <= last_highest:
+			    config.logfile.write('WARNING: could only find '+str(len(highest))+' uniqe barcodes, using all as cluster centers.\n')
+			    break
+			last_highest = len(highest)
 		tempfile = open(config.path+'/predetermined_cluster_centers.fa','w')
 		for bc in highest: tempfile.write('>'+bc+' '+str(self.barcodes[bc])+' readpairs\n'+bc+'\n')
 		tempfile.close()
