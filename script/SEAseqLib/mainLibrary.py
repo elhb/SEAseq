@@ -709,6 +709,10 @@ class SEAseqSummary():
 			    config.logfile.write('WARNING: could only find '+str(len(highest))+' uniqe barcodes, using all as cluster centers.\n')
 			    break
 			last_highest = len(highest)
+		if len(highest) == 0:
+			config.logfile.write('ERROR: could not find any uniqe barcodes, are you sure this dataset is correct, exciting.\n')
+			import sys
+			sys.exit(1)
 		tempfile = open(config.path+'/predetermined_cluster_centers.fa','w')
 		for bc in highest: tempfile.write('>'+bc+' '+str(self.barcodes[bc])+' readpairs\n'+bc+'\n')
 		tempfile.close()
