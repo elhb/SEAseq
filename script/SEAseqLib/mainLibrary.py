@@ -381,6 +381,12 @@ class Configuration():
     
     def __init__ (self, path, cmd, stop=None, skip=None ,random=None ):
 
+	import sys
+	import time
+	f = open(path+'/command.log.txt','a')
+	f.write(time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\t'+' '.join(sys.argv)+'\n')
+	f.close()
+
 	# permanent
 	self.path 		= path
 	self.config		= self.path + '/'+'config'
