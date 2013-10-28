@@ -101,13 +101,17 @@ def meta(indata):
     # set primerpairs
     from SEAseqLib.mainLibrary import PrimerPair
     config.primerpairs = {}
-    config.primerpairs['16s']      = PrimerPair('GTGBCAGCMGCCGCGGTAA',         'ACAHBTCACRRCACGAGCTGACGAC',    '16s')
-    config.primerpairs['its']      = PrimerPair('G?GBCTTBTACWCACYGCCCGTC',     'CTCYDRNWGCCVRGGCATCCACC',      'its')
+    config.primerpairs['v1.16s']      = PrimerPair('GTGBCAGCMGCCGCGGTAA',         'ACAHBTCACRRCACGAGCTGACGAC',    '16s')
+    config.primerpairs['v1.its']      = PrimerPair('G?GBCTTBTACWCACYGCCCGTC',     'CTCYDRNWGCCVRGGCATCCACC',      'its')
     config.primerpairs['ecoli']    = PrimerPair('TGCGAACGCGCGAATCAACTGG',      'AAGCGCGCGGCTGAATTACTGG',       'ecoli')
     config.primerpairs['m13']      = PrimerPair('GCCTCGTTCCGGCTAAGTAACATGGAG', 'AGTTGCGCCGACAATGACAACAACC',    'm13')
     config.primerpairs['myco']     = PrimerPair('ATGCCGCAGCCAAGAACGCATC',      'TTCGTGGCACTTGCCGAACTGG',       'myco')
     config.primerpairs['lambda']   = PrimerPair('TCAGCTATGCGCCGACCAGAACAC',    'TTCCATGACCGCACCAACAGGCTC',     'lambda')
-
+    config.primerpairs['v2.16s.1']   = PrimerPair('ADACTCCTACGGGAGGCAGCAG',		'GGACTACCAGGGTATCTAABCCTGT',	'v2.16s.1')
+    config.primerpairs['v2.16s.2']   = PrimerPair('AAAKRAATTGACGGGGRCCCGCACA',		'GAYTTGACGTCRTCCCCDCCTTCCT',	'v2.16s.2')
+    config.primerpairs['v2.23s.1']   = PrimerPair('AGTACCGTGAGGGAADGGYGAAAAG',		'AGTGAGCTRTTACGCWHTCTTT',	'v2.23s.1')
+    config.primerpairs['v2.23s.2']   = PrimerPair('ACBRTCCTAAGGTAGCGAAATTCCTTGTC',	'GAGCCGACATCGAGGTGCCAA',	'v2.23s.2')
+    config.primerpairs['v2.its']     = PrimerPair('GAAGYYGGADTCGCTAGTAA',		'GNTACTDAGATGTTTCAGTTC',	'v2.its')
     
     import multiprocessing as mp
     man = mp.Manager()
@@ -279,6 +283,8 @@ def getClustersAndPairs(config,clusterq):
     #pairs = []
     config.infiles['r1'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq']
     config.infiles['r2'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq']
+    missingClustersFlag = False
+    missingClusters = []
     
     from SEAseqLib.mainLibrary import getPairs
     for tmp in getPairs(config):
@@ -296,7 +302,19 @@ def getClustersAndPairs(config,clusterq):
             tmpcounter += 1
             cluster = BarcodeCluster(pair.cid)
             cluster.addreadpair(pair)
-	else: sys.stdout.write('ERROR 1979 in consensus creation get clusters and pairs.\n')
+	elif pair.cid > currentclusterid+1:
+	    while clusterq.qsize() > 160 or clusterq.full(): time.sleep(1);
+            clusterq.put([cluster,config])
+            tmpcounter += 1
+	    if not missingClustersFlag:
+		config.logfile.write('WARNING: missing cluster(s), are you running on a subset of data?\n')
+		missingClustersFlag = True
+	    for i in xrange(currentclusterid+1,pair.cid): missingClusters.append(str(i))
+	    currentclusterid = pair.cid
+            cluster = BarcodeCluster(currentclusterid)
+            cluster.addreadpair(pair)
+	else: sys.stdout.write('ERROR 1979 in consensus creation get clusters and pairs.\nCluster id in pair is '+str(pair.cid)+' and the current cluster id is '+str(currentclusterid)+'\n')
+    if missingClustersFlag: config.logfile.write('WARNING: Cluster(s) '+', '.join(missingClusters[:-1])+' & '+missingClusters[-1]+' were missing, are you running on a subset of data?\n')
 
     clusterq.put('END')
     config.logfile.write('Reader exiting after adding '+str(tmpcounter)+' clusters to queue.\n')

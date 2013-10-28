@@ -152,7 +152,7 @@ def getPairs(config):
 			# skip or stop if option is set on config
 			if config.skip and tmp < (4*config.skip) and skip: continue
 			elif config.skip and tmp == (4*config.skip) and skip: skip=False; tmp =0;continue
-			if config.stop and counter == config.stop: break
+			if config.stop and counter == config.stop+1: break
 
 			# depending on line number (within entry) do ...	
 			if tmp == 1: #header check match between files
@@ -687,12 +687,17 @@ class SEAseqSummary():
 		highest = []
 		perc = percentages.keys()
 		perc.sort(reverse=True)
+		last_highest = 0
 		#print perc
 		while len(highest) < config.numberofseeds:
 			try:
 				for bc in percentages[perc[0]]: highest.append(bc)
 			except IndexError: pass
 			perc=perc[1:]
+			if len(highest) <= last_highest:
+			    config.logfile.write('WARNING: could only find '+str(len(highest))+' uniqe barcodes, using all as cluster centers.\n')
+			    break
+			last_highest = len(highest)
 		tempfile = open(config.path+'/predetermined_cluster_centers.fa','w')
 		for bc in highest: tempfile.write('>'+bc+' '+str(self.barcodes[bc])+' readpairs\n'+bc+'\n')
 		tempfile.close()
