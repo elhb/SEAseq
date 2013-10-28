@@ -94,7 +94,7 @@ def getindata(cmd):
         argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq]',			type=str,	required=False,	default='fq',	help='Format to output reads to fa=fasta or fq=fastq(default fastq)')
 	argparser.add_argument(	'-trimr1',		dest='trimr1',	metavar='N',				type=int,	required=False,	default=0,	help='Number of bases to trim from 3prime end of r1 (default 0)')
 	argparser.add_argument(	'-trimr2',		dest='trimr2',	metavar='N',				type=int,	required=False,	default=0,	help='Number of bases to trim from 3prime end of r2 (default 0)')
-    if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta' or cmd == 'classifymeta':
+    if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta' or cmd == 'classifymeta' or cmd == 'sbatch':
 	argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to run in parallel (default 1).')
     if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta':
 	argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='Skip the first N read pairs in files (default 0).')

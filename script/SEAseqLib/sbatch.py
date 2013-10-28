@@ -36,10 +36,11 @@ def sbatch(indata):
             'echo "$(date) Running on: $(hostname)"'+'\n'+
             'cd '+os.getcwd()+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' clusterbarcodes -path '+config.path+' -bm '+str(indata.bcmm)+' -hm '+str(indata.handlemm)+' -seed '+str(indata.seed)+' -p 8'+'\n'
-        )
+            sys.argv[0]+' clusterbarcodes -path '+config.path+' -bm '+str(indata.bcmm)+' -hm '+str(indata.handlemm)+' -seed '+str(indata.seed)+' -p '+str(indata.cpus))
+        if indata.handlepos: f.write(' -hpos '+indata.handlepos)
+        f.write('\n')
         f.close()
-    
+        
         f = open( config.path +'/sbatch.sortreads.sh','w')
         f.write(
             '#! /bin/bash -l'+'\n'+
