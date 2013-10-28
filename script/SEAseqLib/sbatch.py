@@ -60,8 +60,9 @@ def sbatch(indata):
             'echo "$(date) Running on: $(hostname)"'+'\n'+
             'cd '+os.getcwd()+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' sortreads -path '+config.path+' -sortfmt '+str(indata.sortfmt)+' -p8 -trimr1 '+str(indata.trimr1)+' -trimr2 '+str(indata.trimr2)+'\n'
-        )
+            sys.argv[0]+' sortreads -path '+config.path+' -sortfmt '+str(indata.sortfmt)+' -p '+str(indata.cpus)+' -trimr1 '+str(indata.trimr1)+' -trimr2 '+str(indata.trimr2))
+        if indata.handlepos: f.write(' -hpos '+indata.handlepos)
+        f.write('\n')
         f.close()
         
         f = open( config.path +'/sbatch.meta.sh','w')
@@ -83,7 +84,10 @@ def sbatch(indata):
             'echo "$(date) Running on: $(hostname)"'+'\n'+
             'cd '+os.getcwd()+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' meta -path '+config.path+' -p8'+' -mr '+str(indata.minimum_reads)+' -ms '+str(indata.minimum_support)+' -mi '+str(indata.clustering_identity)+'\n'+
+            sys.argv[0]+' meta -path '+config.path+' -p8'+' -mr '+str(indata.minimum_reads)+' -ms '+str(indata.minimum_support)+' -mi '+str(indata.clustering_identity))
+        if indata.handlepos: f.write(' -hpos '+indata.handlepos)
+        f.write(
+            '\n'+
             'grep -vP "^((Read)|([0-9]+\t)|P|c|(Co))" '+config.path+'/meta.out.txt | cat -s > '+config.path+'/meta.smaller.out.txt\n'
         )
         f.close()

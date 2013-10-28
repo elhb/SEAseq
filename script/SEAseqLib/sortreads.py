@@ -51,6 +51,7 @@ def sortreads(indata):
     config.logfile.write('Get infiles from config-file.\n')
     config.load()
     config.getreads2process()
+    config.handlepos = indata.handlepos
 
     import multiprocessing
     man = multiprocessing.Manager()
