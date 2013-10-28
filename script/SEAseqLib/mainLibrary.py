@@ -383,6 +383,8 @@ class Configuration():
 
 	import sys
 	import time
+	import os
+	if not os.path.isdir(path): os.mkdir(path)
 	f = open(path+'/command.log.txt','a')
 	f.write(time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+'\t'+' '.join(sys.argv)+'\n')
 	f.close()
