@@ -34,6 +34,7 @@ def clusterbarcodes(indata):
     config.save()
 
     config.logfile.write('Part1: identifying barcode sequences in reads.\n')
+    config.handlepos = indata.handlepos
     
     #deciding if to run multiprocessing or single process for debugging
     from SEAseqLib.mainLibrary import getPairs, Progress

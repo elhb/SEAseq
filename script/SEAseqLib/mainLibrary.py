@@ -569,7 +569,10 @@ class readpair():
 		return 0
 
 	def identify(self, handle, config):
-		[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
+		if config.handlepos:
+			handle_start	= int(config.handlepos.split(':')[0])
+			handle_end	= int(config.handlepos.split(':')[1])
+		else:[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
 		self.handle_start = handle_start
 		self.handle_end   = handle_end
 		return 0

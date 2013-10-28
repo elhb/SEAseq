@@ -88,6 +88,7 @@ def getindata(cmd):
     if cmd == 'clusterbarcodes' or cmd == 'sbatch':
 	argparser.add_argument(	'-bm',			dest='bcmm',	metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in barcode sequence during clustering (default 0)')
 	argparser.add_argument(	'-hm',			dest='handlemm',metavar='N',				type=int,	required=False,	default=0,	help='Number off missmatches allowed in handle sequence (default 0)')
+	argparser.add_argument(	'-hpos',		dest='handlepos',metavar='<start>:<end>',		type=str,	required=False,	default=False,	help='Define handle by position instead of sequence (default False)')
         argparser.add_argument(	'-seed',		dest='seed',	metavar='N',				type=int,	required=False,	default=100,	help='Number of top barcodes (with most reads) to use as seeds in clustering(default 100)')
     if cmd == 'sortreads' or cmd == 'sbatch':
         argparser.add_argument(	'-sortfmt',		dest='sortfmt',	metavar='[fa/fq]',			type=str,	required=False,	default='fq',	help='Format to output reads to fa=fasta or fq=fastq(default fastq)')
