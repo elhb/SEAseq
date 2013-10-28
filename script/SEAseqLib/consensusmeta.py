@@ -314,7 +314,7 @@ def getClustersAndPairs(config,clusterq):
             cluster = BarcodeCluster(currentclusterid)
             cluster.addreadpair(pair)
 	else: sys.stdout.write('ERROR 1979 in consensus creation get clusters and pairs.\nCluster id in pair is '+str(pair.cid)+' and the current cluster id is '+str(currentclusterid)+'\n')
-    if missingClustersFlag: config.logfile.write('WARNING: Cluster(s) '+', '.join(missingClusters[:-1])+' & '+missingClusters[-1]+' were missing, are you running on a subset of data?\n')
+    if missingClustersFlag: config.logfile.write('WARNING: Cluster(s) '+', '.join(missingClusters[:-1])+' & '+missingClusters[-1]+' were missing ('+str(len(missingClusters))+' clusters), are you running on a subset of data?\n')
 
     clusterq.put('END')
     config.logfile.write('Reader exiting after adding '+str(tmpcounter)+' clusters to queue.\n')
