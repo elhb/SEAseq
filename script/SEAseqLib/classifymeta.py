@@ -68,7 +68,7 @@ def foreachCluster(tmp):
         import os
         os.remove(blastfile.name)
         output += '\tNo reads in fasta file, cluster '+str(cluster.id)+'\n'
-        return output
+        return [output, cluster]
 
 
     # Align consensus sequences by blast
@@ -106,7 +106,7 @@ def foreachCluster(tmp):
     else:local_gi2org = {}
 
     #for the random match estimation
-    tmp_matches = {}
+    cluster.blastHits = {}
     
     # parse through the blast records and sort them by amplicon, allele and readnumber/part
     for blast_record in records:
@@ -123,6 +123,7 @@ def foreachCluster(tmp):
     for amplicon in amplicons:
 
         broken = False
+        cluster.blastHits[amplicon] = {}
         consensuses = amplicons[amplicon]
         output += '\tAmplicon: '+amplicon     +'\n'
 
@@ -149,6 +150,7 @@ def foreachCluster(tmp):
                 continue
 
             # get all organisms that part one maps to
+            hitInfo = {}
             in_r1 = {}
             for alignment in r1.alignments:
                 for hsp in alignment.hsps:
@@ -160,7 +162,14 @@ def foreachCluster(tmp):
                     except KeyError:
                         organism = gi2orgname(gi_number)
                         local_gi2org[gi_number] = organism
-                    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r1[organism] = alignment
+                    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff:
+                        in_r1[organism] = alignment
+                        try:
+                            hitInfo[organism]['r1']['pi'].append(perc_identity)
+                            hitInfo[organism]['r1']['pc'].append(perc_coverage)
+                            hitInfo[organism]['r1']['ss'].append(str(hsp.sbjct_start)+'-'+str(hsp.sbjct_start+hsp.align_length))
+                        except KeyError:
+                            hitInfo[organism] = {'r1':{'pi':[perc_identity],'pc':[perc_coverage],'ss':[str(hsp.sbjct_start)+'-'+str(hsp.sbjct_start+hsp.align_length)]},'r2':{'pi':[],'pc':[],'ss':[]}}
 
             # get all organisms that part two maps to
             in_r2 = {}
@@ -174,7 +183,14 @@ def foreachCluster(tmp):
                     except KeyError:
                         organism = gi2orgname(gi_number)
                         local_gi2org[gi_number] = organism
-                    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r2[organism] = alignment
+                    if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff:
+                        in_r2[organism] = alignment
+                        try:
+                            hitInfo[organism]['r2']['pi'].append(perc_identity)
+                            hitInfo[organism]['r2']['pc'].append(perc_coverage)
+                            hitInfo[organism]['r2']['ss'].append(str(hsp.sbjct_start)+'-'+str(hsp.sbjct_start+hsp.align_length))
+                        except KeyError:
+                            hitInfo[organism] = {'r2':{'pi':[perc_identity],'pc':[perc_coverage],'ss':[str(hsp.sbjct_start)+'-'+str(hsp.sbjct_start+hsp.align_length)]},'r1':{'pi':[],'pc':[],'ss':[]}}
 
             # get all organisms that both parts map to and print them also ptint if no overlap is found
             in_both_reads = []
@@ -182,12 +198,14 @@ def foreachCluster(tmp):
                 if organism in in_r2:
                     in_both_reads.append(organism)
             for organism in in_both_reads:
-                output +=       '\t\t\t'+organism     +'\n'
-                #tmp_matches[amplicon][organism] = True
+                output +=       '\t\t\t'+organism    +'\n'
+                output += '\t\t\t\tpart1:\tHIT#'+'\n\t\t\t\t\tHIT#'.join([str(i)+': identity='+str(hitInfo[organism]['r1']['pi'][i])+'%, coverage='+str(hitInfo[organism]['r1']['pc'][i])+'%, pos='+str(hitInfo[organism]['r1']['ss'][i]) for i in range(len(hitInfo[organism]['r1']['ss']))]) + '\n'
+                output += '\t\t\t\tpart2:\tHIT#'+'\n\t\t\t\t\tHIT#'.join([str(i)+': identity='+str(hitInfo[organism]['r2']['pi'][i])+'%, coverage='+str(hitInfo[organism]['r2']['pc'][i])+'%, pos='+str(hitInfo[organism]['r2']['ss'][i]) for i in range(len(hitInfo[organism]['r2']['ss']))]) + '\n'
+                cluster.blastHits[amplicon][organism] = hitInfo[organism]
             if not in_both_reads:
                 output +=       '\t\t\tNo alignment supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage'     +'\n'
     
-    return output
+    return [output, cluster]
 
 def classifymeta(indata):
 
@@ -224,85 +242,100 @@ def classifymeta(indata):
 
     # will paralellise this when stuff works
     tmcounter = 0
-    for cluster in results:
-        print cluster
-        tmcounter +=1
-        if tmcounter == 20: break
-
-    #for the random match estimation
+    moreThanOneAmpAndMono4All = 0
+    orgInAllAmpsCounter = 0
+    noMatchAmp = {}
     matches = {}
-
-    #from SEAseqLib.mainLibrary import Progress
-    #config.logfile.write('Parsing BLASTreport ....\n')
-    #progress = Progress(len(data),unit='cluster',logfile=config.logfile)
-    #with progress:
-
-    import sys
-    sys.exit(0)
-
-    #CUTTNIG AND PASTING FROMHERE:::
-
-    for pelleplut in list:
-	for cluster_id, amplicons in data.iteritems():
-	    
-	    
-	    progress.update()
-
-	    config.outfile.write(      '### Cluster '+str(cluster_id)+' ###'     +'\n')
-	    identity_cutoff = BLAST_identity#%
-	    alignment_length_cutoff = indata.length#95#%
-
-	    #for amplicon, consensuses in amplicons.iteritems():
-	    in_both_reads = {'ITS':[],'16S':[]}
-
-
-	    if tmp_matches['ITS'] and tmp_matches['16S']:
-		matches[cluster_id] = tmp_matches
-
-	    hitagree = False
-	    config.outfile.write(      '\nSupported by both:'     +'\n')
-	    for organism in in_both_reads['ITS']:
-		if organism in in_both_reads['16S']:
-		    config.outfile.write(      '\t'+organism+' is present in both'     +'\n')
-		    hitagree = True
-
-	    if hitagree:	blasthitsagree += 1
-	    elif not broken:
-		hitsdonotagree += 1
-		config.outfile.write(      '\tno hit is present in both'     +'\n')
-	    config.outfile.write(      ''     +'\n')
-
-	assert len(data) - noblasthit_its - noblasthit_16s - blasthitsagree - hitsdonotagree == 0, '\n\nError '+str(len(data))+' - '+str(noblasthit_its)+' - '+str(noblasthit_16s)+' - '+str(blasthitsagree)+' - '+str(hitsdonotagree)+' != 0\n\n'
-	config.outfile.write(      'out of '+str(len(data))+' analyzed clusters (with both amplicons present and monoclonal for both) were:'     +'\n')
-	config.outfile.write(      str(noblasthit_its) +' ('+str(round(100*float(noblasthit_its)/float(len(data)),2))+'%) removed because the ITS sequence gave no hits supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage.'     +'\n')
-	config.outfile.write(      str(noblasthit_16s) +' ('+str(round(100*float(noblasthit_16s)/float(len(data)),2))+'%) removed because the 16S sequence gave no hits supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage.'     +'\n')
-	config.outfile.write(      str(hitsdonotagree+blasthitsagree) +' ('+str(round(100*float(hitsdonotagree+blasthitsagree)/float(len(data)),2))+'%) have hits for both ITS and 16S.'     +'\n')
-        if hitsdonotagree+blasthitsagree > 0:
-            config.outfile.write(  str(hitsdonotagree) +' ('+str(round(100*float(hitsdonotagree)/float(len(data)),2))+'%) removed because none of the ITS and 16S hits did agree.'+	 ' ('+str(round(100*float(hitsdonotagree)/float(hitsdonotagree+blasthitsagree),2))+'% out of clusters with hits for both)'     +'\n')
-            config.outfile.write(  'For '+str(blasthitsagree) +' ('+str(round(100*float(blasthitsagree)/float(len(data)),2))+'%) clusters did the ITS and 16S hits agree at least once.'+' ('+str(round(100*float(blasthitsagree)/float(hitsdonotagree+blasthitsagree),2))+'% out of clusters with hits for both)'     +'\n')
-	
-            groups_its = [] 
-            groups_16s = []
-            for cluster in matches:
-                groups_its.append(matches[cluster]['ITS'])
-                groups_16s.append(matches[cluster]['16S'])
+    for tmp in results:
+        [output, cluster] = tmp
+        config.outfile.write( output+'\n')
+        
+        if cluster.definedampliconcount > 1:
             
-            import random
-            total_tries = 10000
-            random_hits = 0
-            for i in xrange(total_tries):
-                hits_its = random.choice(groups_its)
-                hits_16s = random.choice(groups_16s)
-                
-                at_least_one_match = False
-                for hit in hits_its:
-                    if hit in hits_16s: at_least_one_match = True
-                
-                if at_least_one_match: random_hits += 1
+            # get combo
+            ampliconnames = cluster.definedamplicons.keys()
+            ampliconnames.sort()
+            ampliconcombo = '/'.join(ampliconnames)
+            # get monocombo
+            monoAmps = {}
+            for ampname, amplicon in cluster.definedamplicons.iteritems():
+                if amplicon.monoclonal: monoAmps[amplicon.type] = amplicon.monoclonal
+            mononames = monoAmps.keys()
+            mononames.sort()
+            monoCombo = '/'.join(mononames)
             
-            config.outfile.write('Random matches between hits in 16S/ITS hit groups, made '+str(total_tries)+' tries and got '+str(random_hits)+' hits ('+str(round(100*float(random_hits)/float(total_tries),2))+'%).\n')
-	else:
-            config.outfile.write('No clusters found with hits for both were found'     +'\n')
+            atLeastOneOrgInAllAmps = False
+            if ampliconcombo == monoCombo: # monoclonal for all defined amplicons
+                moreThanOneAmpAndMono4All += 1
+                for organism in cluster.blastHits[ampliconnames[0]]:
+                    notInAll = None
+                    for amplicon in ampliconnames[1:]:
+                        try:
+                            if organism not in cluster.blastHits[amplicon]:
+                                notInAll = True
+                        except KeyError:
+                            try:            noMatchAmp[amplicon] += 1
+                            except KeyError:noMatchAmp[amplicon] = 1
+                    if not notInAll: # ie organism inAll amplicons
+                        atLeastOneOrgInAllAmps = True
+                
+                allHaveHits = True
+                for amplicon in ampliconnames:
+                    if not cluster.blastHits[amplicon]: allHaveHits = False
+                if allHaveHits:
+                    matches[cluster.id] = {}
+                    for amplicon in ampliconnames:
+                        matches[cluster.id][amplicon] = [organism for organism in cluster.blastHits[amplicon]]
+            
+            if atLeastOneOrgInAllAmps: orgInAllAmpsCounter += 1
+
+        tmcounter +=1
+        if tmcounter == 2000: break
+
+    #assert len(data) - noblasthit_its - noblasthit_16s - blasthitsagree - hitsdonotagree == 0, '\n\nError '+str(len(data))+' - '+str(noblasthit_its)+' - '+str(noblasthit_16s)+' - '+str(blasthitsagree)+' - '+str(hitsdonotagree)+' != 0\n\n'
+    config.outfile.write(      'out of '+str(moreThanOneAmpAndMono4All)+' analyzed clusters (with more than one amplicon defined and monoclonal for all defined amplicon) were:'     +'\n')
+    config.outfile.write(      str(orgInAllAmpsCounter) +' ('+str(round(100*float(orgInAllAmpsCounter)/float(moreThanOneAmpAndMono4All),2))+'%) clusters where atleast one organism were identified within the hitLists of all defined amplicons.\n')
+    for amplicon in noMatchAmp:  
+        config.outfile.write(  str(noMatchAmp[amplicon]) +' ('+str(round(100*float(noMatchAmp[amplicon])/float(moreThanOneAmpAndMono4All),2))+'%) clusters had no BLAST hits for '+amplicon+' supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage.'     +'\n')
+    #config.outfile.write(      str(hitsdonotagree+blasthitsagree) +' ('+str(round(100*float(hitsdonotagree+blasthitsagree)/float(len(data)),2))+'%) have hits for both ITS and 16S.'     +'\n')
+    #if hitsdonotagree+blasthitsagree > 0:
+    #    config.outfile.write(  str(hitsdonotagree) +' ('+str(round(100*float(hitsdonotagree)/float(len(data)),2))+'%) removed because none of the ITS and 16S hits did agree.'+         ' ('+str(round(100*float(hitsdonotagree)/float(hitsdonotagree+blasthitsagree),2))+'% out of clusters with hits for both)'     +'\n')
+    #    config.outfile.write(  'For '+str(blasthitsagree) +' ('+str(round(100*float(blasthitsagree)/float(len(data)),2))+'%) clusters did the ITS and 16S hits agree at least once.'+' ('+str(round(100*float(blasthitsagree)/float(hitsdonotagree+blasthitsagree),2))+'% out of clusters with hits for both)'     +'\n')
+    #
+    if matches:
+        groups = {}
+        for cluster, amplicons in matches.iteritems():
+            for amplicon, hitList in amplicons.iteritems():
+                try:
+                    groups[amplicon].append(hitList)
+                except KeyError:
+                    groups[amplicon]=[hitList]
+        
+        import random
+        total_tries = 10000
+        random_hits = 0
+        for i in xrange(total_tries):
+            currentHitList = {}
+            for amplicon, listOfHitLists in groups.iteritems():
+                currentHitList[amplicon] = random.choice(listOfHitLists)
+            
+            atLeastOneOrgInAllHitLists = False
+            for organismHit in currentHitList[groups.keys()[0]]:
+                notInAllHitLists = None
+                for amplicon in groups.keys()[1:]:
+                    if organismHit not in currentHitList[amplicon]:
+                        notInAllHitLists = True
+                if not notInAllHitLists: # ie organism in All hitLists
+                    atLeastOneOrgInAllHitLists = True
+            if atLeastOneOrgInAllHitLists: random_hits += 1
+
+        config.outfile.write(
+            'There was '+str(random_hits)+' ('+str(round(100*float(random_hits)/float(total_tries),2))+'%) overlaps/matches betwen all BLAST-hitList, when trying '+
+            str(total_tries)+' times to match amplicon '+', '.join([amplicon for amplicon in groups.keys()[:-1]])+' and '+groups.keys()[-1]+' hit lists from randomly chosen BarcodeClusters.\n'
+        )
+    else:
+        config.outfile.write('No clusters found with hits for both were found'     +'\n')
         
     config.logfile.write('Classification done.\n')
+
     return 0
