@@ -40,6 +40,10 @@ def foreachCluster(tmp):
     if cluster.ampliconpairs > 0:
         output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads):\n'
     output += perAmpOut + '\n'
+    
+    if cluster.definedampliconcount == 0:
+        output += '\t0 defined amplicons, cluster '+str(cluster.id)+'\n'
+        return [output, cluster]
 
     # creating the temporary fasta file
     if indata.tempfilefolder:
@@ -218,6 +222,31 @@ def classifymeta(indata):
 
     # settings
     config.load()
+    
+    if indata.tempfilefolder:
+        config.logfile.write('Copying database to temporary location for fast access:\n ');
+        import os, shutil, glob
+        pid = ''#+os.getpid()
+        dbBaseName = indata.database.split('/')[-1]
+        for filename in glob.glob(indata.database+'*'):
+                noPathFileName = filename.split('/')[-1]
+                src = filename
+                dst = indata.tempfilefolder+'/SEAseqtemp/'+str(pid)+''+noPathFileName
+                if not os.path.exists(dst):
+                    config.logfile.write('\tcopying: '+src+' to '+dst+ '\n');
+                    shutil.copyfile(src, dst)
+                    config.logfile.write('\tDone.\n');
+        indata.database = indata.tempfilefolder+'/SEAseqtemp/'+str(pid)+''+dbBaseName
+        if indata.gidatabase:
+            filename = indata.gidatabase
+            noPathFileName = filename.split('/')[-1]
+            src = filename
+            dst = indata.tempfilefolder+'/SEAseqtemp/'+str(pid)+''+noPathFileName
+            if not os.path.exists(dst):
+                config.logfile.write('\tcopying: '+src+' to '+dst+ '\n');
+                shutil.copyfile(src, dst)
+                config.logfile.write('\tDone.\n');
+            indata.gidatabase = indata.tempfilefolder+'/SEAseqtemp/'+str(pid)+''+noPathFileName
 
     if indata.debug: #single process // serial
 	config.logfile.write('debugging:\n ');
@@ -246,55 +275,59 @@ def classifymeta(indata):
     orgInAllAmpsCounter = 0
     noMatchAmp = {}
     matches = {}
-    for tmp in results:
-        [output, cluster] = tmp
-        config.outfile.write( output+'\n')
-        
-        if cluster.definedampliconcount > 1:
+    from SEAseqLib.mainLibrary import Progress
+    progress = Progress(config.clustercount, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
+    with progress:
+        for tmp in results:
+            [output, cluster] = tmp
+            config.outfile.write( output+'\n')
             
-            # get combo
-            ampliconnames = cluster.definedamplicons.keys()
-            ampliconnames.sort()
-            ampliconcombo = '/'.join(ampliconnames)
-            # get monocombo
-            monoAmps = {}
-            for ampname, amplicon in cluster.definedamplicons.iteritems():
-                if amplicon.monoclonal: monoAmps[amplicon.type] = amplicon.monoclonal
-            mononames = monoAmps.keys()
-            mononames.sort()
-            monoCombo = '/'.join(mononames)
-            
-            atLeastOneOrgInAllAmps = False
-            if ampliconcombo == monoCombo: # monoclonal for all defined amplicons
-                moreThanOneAmpAndMono4All += 1
-                for organism in cluster.blastHits[ampliconnames[0]]:
-                    notInAll = None
-                    for amplicon in ampliconnames[1:]:
-                        try:
-                            if organism not in cluster.blastHits[amplicon]:
-                                notInAll = True
-                        except KeyError:
-                            try:            noMatchAmp[amplicon] += 1
-                            except KeyError:noMatchAmp[amplicon] = 1
-                    if not notInAll: # ie organism inAll amplicons
-                        atLeastOneOrgInAllAmps = True
+            if cluster.definedampliconcount > 1:
                 
-                allHaveHits = True
-                for amplicon in ampliconnames:
-                    if not cluster.blastHits[amplicon]: allHaveHits = False
-                if allHaveHits:
-                    matches[cluster.id] = {}
+                # get combo
+                ampliconnames = cluster.definedamplicons.keys()
+                ampliconnames.sort()
+                ampliconcombo = '/'.join(ampliconnames)
+                # get monocombo
+                monoAmps = {}
+                for ampname, amplicon in cluster.definedamplicons.iteritems():
+                    if amplicon.monoclonal: monoAmps[amplicon.type] = amplicon.monoclonal
+                mononames = monoAmps.keys()
+                mononames.sort()
+                monoCombo = '/'.join(mononames)
+                
+                atLeastOneOrgInAllAmps = False
+                if ampliconcombo == monoCombo: # monoclonal for all defined amplicons
+                    moreThanOneAmpAndMono4All += 1
+                    for organism in cluster.blastHits[ampliconnames[0]]:
+                        notInAll = None
+                        for amplicon in ampliconnames[1:]:
+                            try:
+                                if organism not in cluster.blastHits[amplicon]:
+                                    notInAll = True
+                            except KeyError:
+                                try:            noMatchAmp[amplicon] += 1
+                                except KeyError:noMatchAmp[amplicon] = 1
+                        if not notInAll: # ie organism inAll amplicons
+                            atLeastOneOrgInAllAmps = True
+                    
+                    allHaveHits = True
                     for amplicon in ampliconnames:
-                        matches[cluster.id][amplicon] = [organism for organism in cluster.blastHits[amplicon]]
-            
-            if atLeastOneOrgInAllAmps: orgInAllAmpsCounter += 1
-
-        tmcounter +=1
-        if tmcounter == 2000: break
+                        if not cluster.blastHits[amplicon]: allHaveHits = False
+                    if allHaveHits:
+                        matches[cluster.id] = {}
+                        for amplicon in ampliconnames:
+                            matches[cluster.id][amplicon] = [organism for organism in cluster.blastHits[amplicon]]
+                
+                if atLeastOneOrgInAllAmps: orgInAllAmpsCounter += 1
+    
+            progress.update()
+            tmcounter +=1
+            #if tmcounter == 2000: break
 
     #assert len(data) - noblasthit_its - noblasthit_16s - blasthitsagree - hitsdonotagree == 0, '\n\nError '+str(len(data))+' - '+str(noblasthit_its)+' - '+str(noblasthit_16s)+' - '+str(blasthitsagree)+' - '+str(hitsdonotagree)+' != 0\n\n'
-    config.outfile.write(      'out of '+str(moreThanOneAmpAndMono4All)+' analyzed clusters (with more than one amplicon defined and monoclonal for all defined amplicon) were:'     +'\n')
-    config.outfile.write(      str(orgInAllAmpsCounter) +' ('+str(round(100*float(orgInAllAmpsCounter)/float(moreThanOneAmpAndMono4All),2))+'%) clusters where atleast one organism were identified within the hitLists of all defined amplicons.\n')
+    config.outfile.write(      'out of '+str(moreThanOneAmpAndMono4All)+' analyzed clusters with more than one amplicon defined and monoclonal for all the defined amplicon, were:'     +'\n')
+    config.outfile.write(      str(orgInAllAmpsCounter) +' ('+str(round(100*float(orgInAllAmpsCounter)/float(moreThanOneAmpAndMono4All),2))+'%) clusters where atleast one organism were identified within all the hitLists of all defined amplicons.\n')
     for amplicon in noMatchAmp:  
         config.outfile.write(  str(noMatchAmp[amplicon]) +' ('+str(round(100*float(noMatchAmp[amplicon])/float(moreThanOneAmpAndMono4All),2))+'%) clusters had no BLAST hits for '+amplicon+' supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage.'     +'\n')
     #config.outfile.write(      str(hitsdonotagree+blasthitsagree) +' ('+str(round(100*float(hitsdonotagree+blasthitsagree)/float(len(data)),2))+'%) have hits for both ITS and 16S.'     +'\n')
@@ -330,9 +363,11 @@ def classifymeta(indata):
             if atLeastOneOrgInAllHitLists: random_hits += 1
 
         config.outfile.write(
-            'There was '+str(random_hits)+' ('+str(round(100*float(random_hits)/float(total_tries),2))+'%) overlaps/matches betwen all BLAST-hitList, when trying '+
-            str(total_tries)+' times to match amplicon '+', '.join([amplicon for amplicon in groups.keys()[:-1]])+' and '+groups.keys()[-1]+' hit lists from randomly chosen BarcodeClusters.\n'
+            'There was '+str(random_hits)+' ('+str(round(100*float(random_hits)/float(total_tries),2))+'%) occasion when at least one organism was present in all BLAST-hitList, when trying '+
+            str(total_tries)+' times to find overlaps between amplicon '+', '.join([amplicon for amplicon in groups.keys()[:-1]])+' and '+groups.keys()[-1]+' hitLists each one randomly chosen from a population of BarcodeClusters.\n'
         )
+        
+        
     else:
         config.outfile.write('No clusters found with hits for both were found'     +'\n')
         
