@@ -17,119 +17,120 @@ def clusterGenerator(config,indata):
             break
 
 def foreachCluster(tmp):
+    
+    # unpack input information
     cluster,config,indata = tmp
-    perAmpOut = ''
+
+    # initiate the output string and set some variables
     output = '######## Cluster '+str(cluster.id)+' ###################\n'
+    output += 'Cluster contains '+str(cluster.readcount)+' raw reads.\n'
     indata.minimum_reads = 5
     indata.minimum_support = 5
+    identity_cutoff = 99
+    alignment_length_cutoff = 95
+
+    # get the cluster and per amplicon information and append it to output
+    perAmpOut = ''
     for amplicon in cluster.amplicons.values(): perAmpOut += amplicon.checkmono(indata)
     output += 'There are '+str(cluster.adaptercount)+' illumina adapter reads.\n'
     output += 'There are '+str(cluster.primererrors)+' primer missmatch reads.\n'
+    output += 'There are '+str(cluster.readcount-cluster.primererrors-cluster.adaptercount)+' "good reads".\n'
     if cluster.ampliconpairs == 0:
         output += '0 amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads)\n'
     if cluster.ampliconpairs > 0:
         output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads):\n'
     output += perAmpOut + '\n'
 
+    # creating the temporary fasta file
     if indata.tempfilefolder:
         import os
         try: os.mkdir(indata.tempfilefolder+'/SEAseqtemp')
         except: pass
         blastfile = open(indata.tempfilefolder+'/SEAseqtemp/blastinput.'+str(cluster.id)+'.fa','w')
-    else:blastfile= open(         config.path+'/sortedReads/blastinput.'+str(cluster.id)+'.fa','w')
-    
-    output+= 'making fasta '+str(cluster.id)+'\n'
+    else:blastfile= open(         config.path+'/sortedReads/blastinput.'+str(cluster.id)+'.fa','w')    
+    output+= '\tmaking fasta for cluster '+str(cluster.id)+'\n'
     fastaentries = 0
     amplicons = {}
     for amplicon in cluster.definedamplicons.values():
         amplicons[amplicon.type] = {}
         for consensus in amplicon.goodalleles:
-            amplicons[amplicon.type][str(consensus.id)] = {'1':None,'2':None}
+            amplicons[amplicon.type][str(consensus.id)] = {'r1':None,'r2':None}
             r1 = consensus.sequence.seq.split('NNNNNNNNNN')[0]
             r2 = consensus.sequence.seq.split('NNNNNNNNNN')[1]
-            blastfile.write('>'+amplicon.type+'.'+str(consensus.id)+'.r1\n'+r1+'\n'+
-                            '>'+amplicon.type+'.'+str(consensus.id)+'.r2\n'+r2+'\n')
+            blastfile.write('>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|r1\n'+r1+'\n'+
+                            '>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|r2\n'+r2+'\n')
             fastaentries +=1
     blastfile.close()
-    output+=  'done '+str(cluster.id)+'\n'
+    output+=  '\tfasta file created (cluster '+str(cluster.id)+')\n'
     
+    # check that there were reads to align
     if fastaentries == 0:
         import os
         os.remove(blastfile.name)
-        output += 'No reads in fasta file '+str(cluster.id)+'\n'
+        output += '\tNo reads in fasta file, cluster '+str(cluster.id)+'\n'
         return output
 
 
+    # Align consensus sequences by blast
     from Bio.Blast.Applications import NcbiblastnCommandline
     from Bio.Blast import NCBIXML
     from cStringIO import StringIO
     import time
-
     #setting up blast
     BLAST_identity = indata.identity
-
     database = indata.database
     cline = NcbiblastnCommandline(query=blastfile.name, db=database ,evalue=0.001, outfmt=5, num_threads=8,perc_identity=BLAST_identity)#, out=infile+'.blastout')
     #cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn', out=infile+'.'+config.blastid+'.blastout')
-    
-    output+='Starting BLAST '+str(cluster.id)+'\n'
+    import time
+    output+='\tStarting BLAST, cluster '+str(cluster.id)+'\n'
+    starttime = time.time()
     blast_handle = cline.__call__()
-    output+=str(cluster.id)+' '+ str(blast_handle)[0:100].replace('\n','--NEWLINE--')+'\n'
-    output+='BLAST search done '+str(cluster.id)+'\n'
-
+    #output+=str(cluster.id)+' '+ str(blast_handle)[0:100].replace('\n','--NEWLINE--')+'\n'
+    output+='\tBLAST search finished, cluster '+str(cluster.id)+', run time was '+str(round(time.time()-starttime))+'s.\n\n'
+    # remove temporary file
     import os
-    os.remove(blastfile.name)
-
+    os.remove(blastfile.name) 
+    #convert blast output to parsable handle
     blast_handle = StringIO(blast_handle[0])
     blast_handle.seek(0)
     records = NCBIXML.parse(blast_handle)
     
+    #load the mapping to organism name dictionary
     from SEAseqLib.mainLibrary import gi2orgname
     local_gi2org = {}
+    if indata.gidatabase:
+        tmp_file = open(indata.gidatabase)
+        tmp_string = tmp_file.read()
+        tmp_file.close()
+        local_gi2org = eval(tmp_string)
+    else:local_gi2org = {}
 
     #for the random match estimation
     tmp_matches = {}
-
-    if indata.gidatabase:
-	tmp_file = open(indata.gidatabase)
-	tmp_string = tmp_file.read()
-	tmp_file.close()
-	local_gi2org = eval(tmp_string)
-    else:local_gi2org = {}
     
-    identity_cutoff = 99
-    alignment_length_cutoff = 95
+    # parse through the blast records and sort them by amplicon, allele and readnumber/part
     for blast_record in records:
 
-        amptype = blast_record.query.split('.')[0]
-        allele =blast_record.query.split('.')[1]
-        readnumber =blast_record.query.split('.')[2]
+        # get the information from the query header
+        amptype = blast_record.query.split('|tempSep|')[0]
+        allele =blast_record.query.split('|tempSep|')[1]
+        readnumber =blast_record.query.split('|tempSep|')[2]
         
         amplicons[amptype][allele][readnumber] = blast_record
         if blast_record == None: output += amptype+' '+allele+' '+readnumber+'ajajajaj\n'
-        
-        #for alignment in blast_record.alignments[:10]:
-        #    for hsp in alignment.hsps[:1]:
-        #        perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
-        #        perc_coverage = float(hsp.align_length)	/	float(blast_record.query_letters)	*100
-        #        gi_number = alignment.title.split(' ')[1].split('|')[1]
-        #        try:
-        #            organism = local_gi2org[gi_number]
-        #        except KeyError:
-        #            organism = gi2orgname(gi_number)
-        #            local_gi2org[gi_number] = organism
-        #        if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff:
-        #            print perc_identity,perc_coverage,organism
     
+    # parse through the blast result one amplicon at the time
     for amplicon in amplicons:
+
         broken = False
         consensuses = amplicons[amplicon]
+        output += '\tAmplicon: '+amplicon     +'\n'
 
-        output += '\t'+amplicon     +'\n'
-
+        # for each consensus get the blasst records for the two sequences and check for completeness of file
         for consensus in consensuses:
+            output += '\t\tConsensus/Allele/Variant '+str(consensus)     +'\n'
             try:
-                r1 = consensuses[consensus]['1']
+                r1 = consensuses[consensus]['r1']
                 if r1 == None:
                     output += '\t\tno read1 matches\n'
                     continue
@@ -138,7 +139,7 @@ def foreachCluster(tmp):
                 output += 'WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?\n'
                 continue
             try:
-                r2 = consensuses[consensus]['2']
+                r2 = consensuses[consensus]['r2']
                 if r2 == None:
                     output += '\t\tno read2 matches\n'
                     continue
@@ -147,12 +148,7 @@ def foreachCluster(tmp):
                 output += 'WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?\n'
                 continue
 
-            #amplicon	= 	r1.query.split('.')[1].split('=')[1]
-            #support	= float(r1.query.split('r1.')[-1].split('_')[0].replace('%','')	)
-            #readpop = int(r1.query.split('r1.')[-1].split('_')[-1].replace('reads','')	)
-
-            output +=       '\t\tConsensus '+str(consensus)+': '+amplicon+' supported by '+str(support) +'% ('+str(readpop)+')'     +'\n'
-
+            # get all organisms that part one maps to
             in_r1 = {}
             for alignment in r1.alignments:
                 for hsp in alignment.hsps:
@@ -164,10 +160,9 @@ def foreachCluster(tmp):
                     except KeyError:
                         organism = gi2orgname(gi_number)
                         local_gi2org[gi_number] = organism
-                    #print organism
-                    output += organism
                     if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r1[organism] = alignment
 
+            # get all organisms that part two maps to
             in_r2 = {}
             for alignment in r2.alignments:
                 for hsp in alignment.hsps:
@@ -179,33 +174,20 @@ def foreachCluster(tmp):
                     except KeyError:
                         organism = gi2orgname(gi_number)
                         local_gi2org[gi_number] = organism
-                    #print organism
-                    output += organism
                     if perc_identity >= identity_cutoff and perc_coverage >= alignment_length_cutoff: in_r2[organism] = alignment
 
-
+            # get all organisms that both parts map to and print them also ptint if no overlap is found
+            in_both_reads = []
             for organism in in_r1:
                 if organism in in_r2:
-                    in_both_reads[amplicon].append(organism)
-
-            for organism in in_both_reads[amplicon]:
+                    in_both_reads.append(organism)
+            for organism in in_both_reads:
                 output +=       '\t\t\t'+organism     +'\n'
-                tmp_matches[amplicon][organism] = True
-            if not in_both_reads[amplicon]:
+                #tmp_matches[amplicon][organism] = True
+            if not in_both_reads:
                 output +=       '\t\t\tNo alignment supported by both reads with >='+str(identity_cutoff)+'% identity and '+str(alignment_length_cutoff)+'% alignment length coverage'     +'\n'
-                if amplicon == '16S':
-                    noblasthit_16s +=1
-                    broken = True;
-                elif amplicon == 'ITS':
-                    noblasthit_its += 1
-                    broken = True;
-                    break;
-        if broken: break
-    
-    
     
     return output
-
 
 def classifymeta(indata):
 
@@ -220,9 +202,9 @@ def classifymeta(indata):
     config.load()
 
     if indata.debug: #single process // serial
-	config.logfile.write('debugging: ');
+	config.logfile.write('debugging:\n ');
         import sys
-	sys.stdout.write('debugging: ')
+	sys.stdout.write('debugging:\n ')
 	config.logfile.write('Running in debug mode ')
 	results=[] # create holder for processed reads
 	#progress = Progress(config.clustercount, logfile=config.logfile) # creates a progress "bar" thingy
