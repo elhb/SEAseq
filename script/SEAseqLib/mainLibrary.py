@@ -418,6 +418,7 @@ class Configuration():
 	self.barcodemissmatch	= None
 	self.clustercount	= None
 	self.numberofseeds	= None
+	self.tempFileFolder	= None
 
 	# for each run
 	self.cmd		= cmd
@@ -469,7 +470,7 @@ class Configuration():
 	if self.stop: 	self.reads2process = self.stop
 	if self.random:	self.reads2process = self.random
 
-    def set(self,varname, value ):
+    def set(self,varname, value, setDefaults=False ):
 	if varname == 'chandlemissmatch':	self.chandlemissmatch	= value
 	elif varname == 'barcodemissmatch':	self.barcodemissmatch	= value
 	elif varname == 'clustercount':		self.clustercount	= value
@@ -478,19 +479,22 @@ class Configuration():
 	elif varname == 'read_count_per_barcode_cluster_cutoff':self.read_count_per_barcode_cluster_cutoff = value
 	else: raise ValueError
 
+    def setMany(self,indata, setDefaults=False ):
+	pass
+
     def load(self, ):
 	self.config = initiate_file(self.config, self.logfile , mode='r')
 	for line in self.config:
-	    if line.rstrip() == '# Absolute path:':
-		self.abspath = self.config.next().rstrip()
-	    if line.rstrip() == '# Infiles dictionary:':
-		self.infiles = eval(self.config.next())
-	    if line.rstrip() == '# Read counts list:':
-		self.readcounts = eval(self.config.next())
-	    if line.rstrip() == '# Number of cluster seeds:':
-		self.numberofseeds = eval(self.config.next().rstrip())
-	    if line.rstrip() == '# Number of barcode clusters identified:':
-		self.clustercount = eval(self.config.next().rstrip())
+		if line[0] == '#': continue
+		[varName, varValue, varComment] = line.rstrip().split('\t')
+		#general
+		if varName == 'AbsolutePath' :				self.abspath 		= varValue.rstrip()
+		if varName == 'TempFilesFolder' :			self.tempFileFolder	= varValue
+		if varName == 'InfilesDictionary' :			self.infiles 		= eval(varValue)
+		if varName == 'ReadCountsList' :			self.readcounts 	= eval(varValue)
+		#bc clustering
+		if varName == 'NumberOfClusterSeeds' :			self.numberofseeds 	= eval(varValue.rstrip())
+		if varName == 'NumberOfBarcodeClustersIdentified' :	self.clustercount 	= eval(varValue.rstrip())
 	self.config.close()
 	self.config = self.config.name
 
@@ -512,12 +516,18 @@ class Configuration():
 
 	self.logfile.write('Writing settings to config file ...\n')
 	self.config.write(
-	    '# Absolute path:\n'+str(self.abspath)+'\n'+
-	    '# Infiles dictionary:\n'+str(self.infiles)+'\n'+
-	    '# Read counts list:\n'+str(self.readcounts)+'\n'+
-	    '# Number of cluster seeds:\n'+str(self.numberofseeds)+'\n'+
-	    '# Number of barcode clusters identified:\n'+str(self.clustercount)+'\n'
-	    )
+		'#VariableName\t#Value\t#Comment\n'+
+		'#GENERAL VARIABLES:\n'+
+		'Path'+					'\t'	+str(self.path)+		'\t'+	'# Relstive analysis path'+	'\n'+
+		'AbsolutePath'+				'\t'	+str(self.abspath)+		'\t'+	'# Absolute analysis path'+	'\n'+
+		'TempFileFolder'+			'\t'	+str(self.tempFileFolder)+	'\t'+	'# Folder used to store temporary files, host dependent, might change for each run'+	'\n'+
+		'InfilesDictionary'+			'\t'	+str(self.infiles)+		'\t'+	'# Dictionary storing locations of pairs of input fastqfiles'+	'\n'+
+		'ReadCountsList'+			'\t'	+str(self.readcounts)+		'\t'+	'# List with the read pair count within each fastq file pair'+	'\n'+
+		'#SETTINGS FOR BEAD BARCODES CLUSTERING AND IDENTIFICATION:\n'+
+		'NumberOfClusterSeeds'+			'\t'	+str(self.numberofseeds)+	'\t'+	'# Number of sequences to use as seeds during clustering to identify bead barcodes '+	'\n'+
+		'NumberOfBarcodeClustersIdentified'+	'\t'	+str(self.clustercount)+	'\t'+	'# Number of Beads identified during clustering of barcode sequences'+	'\n'+
+		'# A None value usually means that the variable is not yet set.\n'
+		)
 	self.config.close()
 	self.config = self.config.name
 
