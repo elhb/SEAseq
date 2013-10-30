@@ -84,7 +84,7 @@ def sbatch(indata):
             'echo "$(date) Running on: $(hostname)"'+'\n'+
             'cd '+os.getcwd()+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' meta -path '+config.path+' -p8'+' -mr '+str(indata.minimum_reads)+' -ms '+str(indata.minimum_support)+' -mi '+str(indata.clustering_identity))
+            sys.argv[0]+' meta -path '+config.path+' -p8'+' -mr '+str(indata.minimum_reads)+' -ms '+str(indata.minimum_support)+' -mi '+str(indata.clustering_identity)+' -primerset '+indata.primerset.name)
         if indata.handlepos: f.write(' -hpos '+indata.handlepos)
         f.write(
             '\n'+

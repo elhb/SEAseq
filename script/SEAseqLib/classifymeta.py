@@ -326,7 +326,7 @@ def classifymeta(indata):
                 if atLeastOneOrgInAllAmps: orgInAllAmpsCounter += 1
     
             progress.update()
-            if tmcounter >= indata.stop: break
+            if indata.stop and tmcounter >= indata.stop: break
 
     #assert len(data) - noblasthit_its - noblasthit_16s - blasthitsagree - hitsdonotagree == 0, '\n\nError '+str(len(data))+' - '+str(noblasthit_its)+' - '+str(noblasthit_16s)+' - '+str(blasthitsagree)+' - '+str(hitsdonotagree)+' != 0\n\n'
     config.outfile.write(      'out of '+str(moreThanOneAmpAndMono4All)+' analyzed clusters with more than one amplicon defined and monoclonal for all the defined amplicon, were:'     +'\n')
