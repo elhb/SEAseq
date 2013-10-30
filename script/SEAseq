@@ -97,9 +97,10 @@ def getindata(cmd):
 	argparser.add_argument(	'-trimr2',		dest='trimr2',	metavar='N',				type=int,	required=False,	default=0,	help='Number of bases to trim from 3prime end of r2 (default 0)')
     if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta' or cmd == 'classifymeta' or cmd == 'sbatch':
 	argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to run in parallel (default 1).')
-    if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta':
+    if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta' or cmd == 'classifymeta':
 	argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='Skip the first N read pairs in files (default 0).')
 	argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
+    if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta':
 	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
         argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED')
     if cmd == 'meta' or cmd == 'sbatch':

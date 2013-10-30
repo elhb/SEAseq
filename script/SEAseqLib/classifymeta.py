@@ -248,6 +248,7 @@ def classifymeta(indata):
                 config.logfile.write('\tDone.\n');
             indata.gidatabase = indata.tempfilefolder+'/SEAseqtemp/'+str(pid)+''+noPathFileName
 
+    config.logfile.write('Starting to align clusters:\n ');
     if indata.debug: #single process // serial
 	config.logfile.write('debugging:\n ');
         import sys
@@ -279,6 +280,9 @@ def classifymeta(indata):
     progress = Progress(config.clustercount, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
     with progress:
         for tmp in results:
+            tmcounter +=1
+            if tmcounter <= indata.skip:
+                progress.update(); continue
             [output, cluster] = tmp
             config.outfile.write( output+'\n')
             
@@ -322,8 +326,7 @@ def classifymeta(indata):
                 if atLeastOneOrgInAllAmps: orgInAllAmpsCounter += 1
     
             progress.update()
-            tmcounter +=1
-            #if tmcounter == 2000: break
+            if tmcounter >= indata.stop: break
 
     #assert len(data) - noblasthit_its - noblasthit_16s - blasthitsagree - hitsdonotagree == 0, '\n\nError '+str(len(data))+' - '+str(noblasthit_its)+' - '+str(noblasthit_16s)+' - '+str(blasthitsagree)+' - '+str(hitsdonotagree)+' != 0\n\n'
     config.outfile.write(      'out of '+str(moreThanOneAmpAndMono4All)+' analyzed clusters with more than one amplicon defined and monoclonal for all the defined amplicon, were:'     +'\n')
@@ -335,6 +338,7 @@ def classifymeta(indata):
     #    config.outfile.write(  str(hitsdonotagree) +' ('+str(round(100*float(hitsdonotagree)/float(len(data)),2))+'%) removed because none of the ITS and 16S hits did agree.'+         ' ('+str(round(100*float(hitsdonotagree)/float(hitsdonotagree+blasthitsagree),2))+'% out of clusters with hits for both)'     +'\n')
     #    config.outfile.write(  'For '+str(blasthitsagree) +' ('+str(round(100*float(blasthitsagree)/float(len(data)),2))+'%) clusters did the ITS and 16S hits agree at least once.'+' ('+str(round(100*float(blasthitsagree)/float(hitsdonotagree+blasthitsagree),2))+'% out of clusters with hits for both)'     +'\n')
     #
+    config.logfile.write('All clusters aligned, starting random match estimation ...\n')
     if matches:
         groups = {}
         for cluster, amplicons in matches.iteritems():
@@ -362,11 +366,16 @@ def classifymeta(indata):
                     atLeastOneOrgInAllHitLists = True
             if atLeastOneOrgInAllHitLists: random_hits += 1
 
+        
+
         config.outfile.write(
             'There was '+str(random_hits)+' ('+str(round(100*float(random_hits)/float(total_tries),2))+'%) occasion when at least one organism was present in all BLAST-hitList, when trying '+
             str(total_tries)+' times to find overlaps between amplicon '+', '.join([amplicon for amplicon in groups.keys()[:-1]])+' and '+groups.keys()[-1]+' hitLists each one randomly chosen from a population of BarcodeClusters.\n'
         )
-        
+        config.outfile.write('Rand match was based on:\n')
+        for amplicon, listOfHitLists in groups.iteritems():
+            config.outfile.write( str(len(listOfHitLists)) +' Hitlists for amplicon '+amplicon+'.\n')
+            
         
     else:
         config.outfile.write('No clusters found with hits for both were found'     +'\n')
