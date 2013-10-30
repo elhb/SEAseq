@@ -124,7 +124,7 @@ def getPairs(config):
 	if config.skip: skip =True
 
 	# unpack infiles
-	for file1, file2 in zip(config.infiles['r1'],config.infiles['r2']):
+	for file1, file2 in zip(config.infilesDictionary['r1'],config.infilesDictionary['r2']):
 	
 		#check if files are gzipped
 		if file1.split('.')[-1] in ['gz','gzip']: file1 = gzip.open(file1)
@@ -409,23 +409,39 @@ class Configuration():
 	self.classifymeta_logfile= self.path + '/' + 'classify.log.txt'
 	self.classifymeta_outfile= self.path + '/' + 'classify.out.txt'
 	self.clusters_file	= self.path+'/barcode_clusters_dictionary'
-	self.abspath		= None # not loaded or set
+	self.absolutePath	= None # not loaded or set
 
 	# longlasting
-	self.infiles		= {'r1':[],'r2':[]}
-	self.readcounts		= []
-	self.chandlemissmatch	= None
-	self.barcodemissmatch	= None
-	self.clustercount	= None
-	self.numberofseeds	= None
-	self.tempFileFolder	= None
+	self.infilesDictionary	= {'r1':[],'r2':[]}
+	self.readCountsList	= []
+	self.maxHandleMissMatch	= None
+	self.maxBeadBarcodeMissMatch	= None
+	self.numberOfBarcodeClustersIdentified	= None
+	self.numberOfClusterSeeds	= None
+	self.tempFilesFolder	= None
+	self.skipReadCounting	= None
+	self.handlePosition	= None
+	self.sortFormat		= None
+	self.trimmingRead1	= None
+	self.trimmingRead2	= None
+	self.minReadCountPerBead= None
+	self.minReadCountPerConsensus= None
+	self.minReadPopSupportConsensus=None
+	self.minConsensusClusteringIdentity=None
+	self.primerset		= None
+	self.blastDb		= None
+	self.gidatabase		= None
+	self.minBlastIdentity	= None
+	self.minBlastCoverage	= None
+	self.shortTimeJobs	= None
+	self.jobName		= None
 
 	# for each run
 	self.cmd		= cmd
 	self.stop		= stop
 	self.skip		= skip
 	self.random		= random
-	self.sortformat		= 'fq'
+	self.sortFormat		= 'fq'
 	self.read_count_per_barcode_cluster_cutoff = 1
 	
 	
@@ -471,11 +487,11 @@ class Configuration():
 	if self.random:	self.reads2process = self.random
 
     def set(self,varname, value, setDefaults=False ):
-	if varname == 'chandlemissmatch':	self.chandlemissmatch	= value
-	elif varname == 'barcodemissmatch':	self.barcodemissmatch	= value
-	elif varname == 'clustercount':		self.clustercount	= value
-	elif varname == 'numberofseeds':	self.numberofseeds	= value
-	elif varname == 'sortformat':		self.sortformat		= value
+	if varname == 'chandlemissmatch':	self.maxHandleMissMatch	= value
+	elif varname == 'barcodemissmatch':	self.maxBeadBarcodeMissMatch	= value
+	elif varname == 'clustercount':		self.numberOfBarcodeClustersIdentified	= value
+	elif varname == 'numberofseeds':	self.numberOfClusterSeeds	= value
+	elif varname == 'sortformat':		self.sortFormat		= value
 	elif varname == 'read_count_per_barcode_cluster_cutoff':self.read_count_per_barcode_cluster_cutoff = value
 	else: raise ValueError
 
@@ -487,14 +503,25 @@ class Configuration():
 	for line in self.config:
 		if line[0] == '#': continue
 		[varName, varValue, varComment] = line.rstrip().split('\t')
-		#general
-		if varName == 'AbsolutePath' :				self.abspath 		= varValue.rstrip()
-		if varName == 'TempFilesFolder' :			self.tempFileFolder	= varValue
-		if varName == 'InfilesDictionary' :			self.infiles 		= eval(varValue)
-		if varName == 'ReadCountsList' :			self.readcounts 	= eval(varValue)
-		#bc clustering
-		if varName == 'NumberOfClusterSeeds' :			self.numberofseeds 	= eval(varValue.rstrip())
-		if varName == 'NumberOfBarcodeClustersIdentified' :	self.clustercount 	= eval(varValue.rstrip())
+		try:	self.__dict__[varName] = eval(varValue)
+		except: self.__dict__[varName] = varValue
+		##general
+		#if varName == 'absolutePath' :				self.absolutePath	= varValue.rstrip()
+		#if varName == 'tempFilesFolder' :			self.tempFilesFolder	= varValue
+		#if varName == 'infilesDictionary' :			self.infilesDictionary 	= eval(varValue)
+		#if varName == 'readCountsList' :			self.readCountsList 	= eval(varValue)
+		#if varName == 'skipReadCounting':			self.skipReadCounting	= eval(varValue)
+		#if varName == 'jobName':				self.jobName		= varValue
+		##bc clustering
+		#if varName == 'numberOfClusterSeeds' :			self.numberOfClusterSeeds = eval(varValue.rstrip())
+		#if varName == 'numberOfBarcodeClustersIdentified' :	self.numberOfBarcodeClustersIdentified 	= eval(varValue.rstrip())
+		#if varName == 'maxBeadBarcodeMissMatch' :		self.maxBeadBarcodeMissMatch	= eval(varValue)
+		#if varName == 'maxHandleMissMatch' :			self.maxHandleMissMatch	= eval(varValue)
+		#if varName == 'handlePosition' :			self.handlePosition	= varValue
+		##sorting
+		#if varName == 'sortFormat' :				self.sortFormat		= varValue
+		#if varName == 'trimmingRead1' :				self.trimmingRead1		= eval(varValue)
+		#if varName == 'trimmingRead2' :				self.trimmingRead2		= eval(varValue)
 	self.config.close()
 	self.config = self.config.name
 
@@ -510,24 +537,45 @@ class Configuration():
 
 	if not os.path.exists(self.config):
 	    self.config = initiate_file(self.config, self.logfile)
-	    self.abspath = os.path.abspath(self.path)
+	    self.absolutePath = os.path.abspath(self.path)
 	else:
 	    self.config = initiate_file(self.config, self.logfile, mode='ow')
 
 	self.logfile.write('Writing settings to config file ...\n')
 	self.config.write(
 		'#VariableName\t#Value\t#Comment\n'+
-		'#GENERAL VARIABLES:\n'+
-		'Path'+					'\t'	+str(self.path)+		'\t'+	'# Relstive analysis path'+	'\n'+
-		'AbsolutePath'+				'\t'	+str(self.abspath)+		'\t'+	'# Absolute analysis path'+	'\n'+
-		'TempFileFolder'+			'\t'	+str(self.tempFileFolder)+	'\t'+	'# Folder used to store temporary files, host dependent, might change for each run'+	'\n'+
-		'InfilesDictionary'+			'\t'	+str(self.infiles)+		'\t'+	'# Dictionary storing locations of pairs of input fastqfiles'+	'\n'+
-		'ReadCountsList'+			'\t'	+str(self.readcounts)+		'\t'+	'# List with the read pair count within each fastq file pair'+	'\n'+
-		'#SETTINGS FOR BEAD BARCODES CLUSTERING AND IDENTIFICATION:\n'+
-		'NumberOfClusterSeeds'+			'\t'	+str(self.numberofseeds)+	'\t'+	'# Number of sequences to use as seeds during clustering to identify bead barcodes '+	'\n'+
-		'NumberOfBarcodeClustersIdentified'+	'\t'	+str(self.clustercount)+	'\t'+	'# Number of Beads identified during clustering of barcode sequences'+	'\n'+
+		'# GENERAL VARIABLES:\n'+
+		'path'+					'\t'	+str(self.path)+		'\t'+	'# Relstive analysis path'+	'\n'+
+		'absolutePath'+				'\t'	+str(self.absolutePath)+	'\t'+	'# Absolute analysis path'+	'\n'+
+		'tempFileFolder'+			'\t'	+str(self.tempFilesFolder)+	'\t'+	'# Folder used to store temporary files, host dependent, might change for each run'+	'\n'+
+		'skipReadCounting'+			'\t'	+str(self.skipReadCounting)+	'\t'+	'# Bool skip counting reads in fastq files, debug option for speed'+	'\n'+
+		'jobName'+				'\t'	+str(self.jobName)+		'\t'+	'# Name of job in sbatch files etc'+	'\n'+
+		'infilesDictionary'+			'\t'	+str(self.infilesDictionary)+	'\t'+	'# Dictionary storing locations of pairs of input fastqfiles'+	'\n'+
+		'readCountsList'+			'\t'	+str(self.readCountsList)+	'\t'+	'# List with the read pair count within each fastq file pair'+	'\n'+
+		'# SETTINGS FOR BEAD BARCODES CLUSTERING AND IDENTIFICATION:\n'+
+		'numberOfClusterSeeds'+			'\t'	+str(self.numberOfClusterSeeds)+'\t'+	'# Number of sequences to use as seeds during clustering to identify bead barcodes '+	'\n'+
+		'numberOfBarcodeClustersIdentified'+	'\t'	+str(self.numberOfBarcodeClustersIdentified)+	'\t'+	'# Number of Beads identified during clustering of barcode sequences'+	'\n'+
+		'maxBeadBarcodeMissMatch'+		'\t'	+str(self.maxBeadBarcodeMissMatch)+	'\t'+	'# Number off missmatches allowed in clustering of bead barcodes'+	'\n'+
+		'maxHandleMissMatch'+			'\t'	+str(self.maxHandleMissMatch)+	'\t'+	'# Number of missmatches allaowed when identifyng the handle'+	'\n'+
+		'handlePosition'+			'\t'	+str(self.handlePosition)+	'\t'+	'# Position of handle, if set it overrides the sequence based identification'+	'\n'+
+		'# SETTINGS FOR SORTING FAST(A/Q) READS TO IDENTIFIED BEADS:\n'+
+		'sortFormat'+				'\t'	+str(self.sortFormat)+		'\t'+	'# File format to store sorted reads to'+	'\n'+
+		'trimmingRead1'+			'\t'	+str(self.trimmingRead1)+	'\t'+	'# Number of bases to trim from read 1 during sorting (and in all downstream steps)'+	'\n'+
+		'trimmingRead2'+			'\t'	+str(self.trimmingRead2)+	'\t'+	'# Number of bases to trim from read 2 during sorting (and in all downstream steps)'+	'\n'+
+		'# SETTINGS FOR CLUSTERING OF READS TO CONSENSUS SEQUENCES AND AMPLICONS:\n'+
+		'minReadCountPerConsensus'+		'\t'	+str(self.minReadCountPerConsensus)+	'\t'+	'# minimum number of reads needed for a consensus sequence to be considered as a variant of an amplicon'+	'\n'+
+		'minReadPopSupportConsensus'+		'\t'	+str(self.minReadPopSupportConsensus)+	'\t'+	'# minimum %support of read pop needed for a consensus sequence to be considered as a variant of an amplicon'+	'\n'+
+		'minConsensusClusteringIdentity'+	'\t'	+str(self.minConsensusClusteringIdentity)+'\t'+	'# minimum identity for two reads to cluster as one consensus sequence'+	'\n'+
+		'primerset'+				'\t'	+str(self.primerset)+		'\t'+	'# the primer set to be used when identifying amplicon supporting reads'+	'\n'+
+		'# SETTINGS FOR ALIGNMENT OF CONSENSUS SEQUENCES TO GENOMES:\n'+
+		'blastDb'+				'\t'	+str(self.blastDb)+		'\t'+	'# database to be used for the alignment of amplicon variants'+	'\n'+
+		'gidatabase'+				'\t'	+str(self.gidatabase)+		'\t'+	'# dictionary of gi id to organism name mappings'+	'\n'+
+		'minBlastIdentity'+			'\t'	+str(self.minBlastIdentity)+	'\t'+	'# minimum blast identity to consider the blast hit'+	'\n'+
+		'minBlastCoverage'+			'\t'	+str(self.minBlastCoverage)+	'\t'+	'# minimum alignment length coverage to consider the blast hit'+	'\n'+
+		#''+			'\t'	+str(self)+		'\t'+	'# '+	'\n'+
 		'# A None value usually means that the variable is not yet set.\n'
 		)
+	#for varName in self.__dict__.keys(): print varName, str(self.__dict__[varName])
 	self.config.close()
 	self.config = self.config.name
 
@@ -589,7 +637,7 @@ class readpair():
 
 	def identifyIllumina(self, config):
 		#handle = sequence('illuminaUniversal','AGATCGGAAGAGC','AGATCGGAAGAGC')
-		config.chandlemissmatch = 3
+		config.maxHandleMissMatch = 3
 		#handle = sequence('illumina','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC','AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC')
 		handle = sequence('illumina','AGATCGGAAGAGCACACGTCT','AGATCGGAAGAGCACACGTCT')
 		[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
@@ -620,7 +668,7 @@ class readpair():
 		    handle_start = perfect_match.start()
 		    handle_end = perfect_match.end()
 		
-		elif config.chandlemissmatch:
+		elif config.maxHandleMissMatch:
 			mindist = [10000,-1]
 			for i in range(len(read.seq)):
 			    
@@ -630,7 +678,7 @@ class readpair():
 				
 				if dist < mindist[0]: mindist =[dist,i]
 
-			if mindist[0] < config.chandlemissmatch:
+			if mindist[0] < config.maxHandleMissMatch:
 				handle_start = i
 				handle_end = i+len(handle.seq)
 			else:
@@ -697,7 +745,7 @@ class SEAseqSummary():
 		config.logfile.write( '\n' )
 		
 		config.minperc = 0
-		maxdist = config.barcodemissmatch
+		maxdist = config.maxBeadBarcodeMissMatch
 		matchfunc = hamming_distance
 
 		percentages={}
@@ -710,7 +758,7 @@ class SEAseqSummary():
 		perc.sort(reverse=True)
 		last_highest = 0
 		#print perc
-		while len(highest) < config.numberofseeds:
+		while len(highest) < config.numberOfClusterSeeds:
 			try:
 				for bc in percentages[perc[0]]: highest.append(bc)
 			except IndexError: pass
@@ -740,8 +788,8 @@ class SEAseqSummary():
 		import time
 		import multiprocessing
 		tempo = time.time()
-		config.logfile.write('starting '+' '.join(['dnaclust','--similarity',str(1-(float(config.barcodemissmatch)/15)),'--input-file',config.path+'/raw_barcode_sequences.fa','-t',str(multiprocessing.cpu_count()),'--predetermined-cluster-centers',config.path+'/predetermined_cluster_centers.fa'])+'\n')
-		dnaclust =               subprocess.Popen(['dnaclust','--similarity',str(1-(float(config.barcodemissmatch)/15)),'--input-file',config.path+'/raw_barcode_sequences.fa','-t',str(multiprocessing.cpu_count()),'--predetermined-cluster-centers',config.path+'/predetermined_cluster_centers.fa'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		config.logfile.write('starting '+' '.join(['dnaclust','--similarity',str(1-(float(config.maxBeadBarcodeMissMatch)/15)),'--input-file',config.path+'/raw_barcode_sequences.fa','-t',str(multiprocessing.cpu_count()),'--predetermined-cluster-centers',config.path+'/predetermined_cluster_centers.fa'])+'\n')
+		dnaclust =               subprocess.Popen(['dnaclust','--similarity',str(1-(float(config.maxBeadBarcodeMissMatch)/15)),'--input-file',config.path+'/raw_barcode_sequences.fa','-t',str(multiprocessing.cpu_count()),'--predetermined-cluster-centers',config.path+'/predetermined_cluster_centers.fa'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		dnaclust_out, errdata = dnaclust.communicate()
 		if dnaclust.returncode != 0:
 			print 'dnaclust view Error code', dnaclust.returncode, errdata

@@ -255,7 +255,7 @@ def classifymeta(indata):
 	sys.stdout.write('debugging:\n ')
 	config.logfile.write('Running in debug mode ')
 	results=[] # create holder for processed reads
-	#progress = Progress(config.clustercount, logfile=config.logfile) # creates a progress "bar" thingy
+	#progress = Progress(config.numberOfBarcodeClustersIdentified, logfile=config.logfile) # creates a progress "bar" thingy
 	#with progress:
         tmcounter = 0
 	for cluster in clusterGenerator(config, indata):
@@ -277,7 +277,7 @@ def classifymeta(indata):
     noMatchAmp = {}
     matches = {}
     from SEAseqLib.mainLibrary import Progress
-    progress = Progress(config.clustercount, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
+    progress = Progress(config.numberOfBarcodeClustersIdentified, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
     with progress:
         for tmp in results:
             tmcounter +=1

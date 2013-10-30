@@ -29,8 +29,8 @@ def sbatch(indata):
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
             '#SBATCH -J clust_'+indata.jobname+'_'+config.path+'\n'+
-            '#SBATCH -e '+config.abspath+'/sbatch.cluster.stderr.txt'+'\n'+
-            '#SBATCH -o '+config.abspath+'/sbatch.cluster.stdout.txt'+'\n'+
+            '#SBATCH -e '+config.absolutePath+'/sbatch.cluster.stderr.txt'+'\n'+
+            '#SBATCH -o '+config.absolutePath+'/sbatch.cluster.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+
             '#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
             'echo "$(date) Running on: $(hostname)"'+'\n'+
@@ -53,8 +53,8 @@ def sbatch(indata):
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
             '#SBATCH -J sort_'+indata.jobname+'_'+config.path+'\n'+
-            '#SBATCH -e '+config.abspath+'/sbatch.sortreads.stderr.txt'+'\n'+
-            '#SBATCH -o '+config.abspath+'/sbatch.sortreads.stdout.txt'+'\n'+
+            '#SBATCH -e '+config.absolutePath+'/sbatch.sortreads.stderr.txt'+'\n'+
+            '#SBATCH -o '+config.absolutePath+'/sbatch.sortreads.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+
             '#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
             'echo "$(date) Running on: $(hostname)"'+'\n'+
@@ -77,8 +77,8 @@ def sbatch(indata):
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
             '#SBATCH -J meta_'+indata.jobname+'_'+config.path+'\n'+
-            '#SBATCH -e '+config.abspath+'/sbatch.meta.stderr.txt'+'\n'+
-            '#SBATCH -o '+config.abspath+'/sbatch.meta.stdout.txt'+'\n'+
+            '#SBATCH -e '+config.absolutePath+'/sbatch.meta.stderr.txt'+'\n'+
+            '#SBATCH -o '+config.absolutePath+'/sbatch.meta.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+
             '#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
             'echo "$(date) Running on: $(hostname)"'+'\n'+
@@ -103,8 +103,8 @@ def sbatch(indata):
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
             '#SBATCH -J classify_'+indata.jobname+'_'+config.path+'\n'+
-            '#SBATCH -e '+config.abspath+'/sbatch.classify.stderr.txt'+'\n'+
-            '#SBATCH -o '+config.abspath+'/sbatch.classify.stdout.txt'+'\n'+
+            '#SBATCH -e '+config.absolutePath+'/sbatch.classify.stderr.txt'+'\n'+
+            '#SBATCH -o '+config.absolutePath+'/sbatch.classify.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+
             '#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
             'echo "$(date) Running on: $(hostname)"'+'\n'+
@@ -123,8 +123,8 @@ def sbatch(indata):
             '#SBATCH -n 8 -p node'+'\n'+
             '#SBATCH -t 72:00:00'+'\n'+
             '#SBATCH -J gzip_'+indata.jobname+'_'+config.path+'\n'+
-            '#SBATCH -e '+config.abspath+'/sbatch.gzip.stderr.txt'+'\n'+
-            '#SBATCH -o '+config.abspath+'/sbatch.gzip.stdout.txt'+'\n'+
+            '#SBATCH -e '+config.absolutePath+'/sbatch.gzip.stderr.txt'+'\n'+
+            '#SBATCH -o '+config.absolutePath+'/sbatch.gzip.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+
             '#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
             'echo "$(date) Running on: $(hostname)"'+'\n'+

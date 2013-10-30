@@ -121,7 +121,7 @@ def meta(indata):
 	sys.stdout.write('debugging: ')
 	config.logfile.write('Running in debug mode ')
 	results=[] # create holder for processed reads
-	progress = Progress(config.clustercount, logfile=config.logfile) # creates a progress "bar" thingy
+	progress = Progress(config.numberOfBarcodeClustersIdentified, logfile=config.logfile) # creates a progress "bar" thingy
 	with progress:
 	    for cluster_pairs in clusteriterator(clusterq, indata):
 		progress.update()
@@ -134,7 +134,7 @@ def meta(indata):
 	#results = WorkerPool.imap(          foreachcluster_meta,clusteriterator(clusterq, indata),chunksize=1)
 
     if not indata.debug: config.logfile.write('Part1: Per cluster action '+str(indata.cpus)+' processes  ...\n')
-    progress = Progress(config.clustercount, logfile=config.logfile, unit='cluster',mem=True)
+    progress = Progress(config.numberOfBarcodeClustersIdentified, logfile=config.logfile, unit='cluster',mem=True)
     counter = RunStatCounter(config)
     
     statstable = open(config.path+'/meta.statstable','w',1)
@@ -275,8 +275,8 @@ def getClustersAndPairs(config,clusterq):
     from SEAseqLib.mainLibrary import BarcodeCluster
     cluster = BarcodeCluster(1)
     #pairs = []
-    config.infiles['r1'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq']
-    config.infiles['r2'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq']
+    config.infilesDictionary['r1'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq']
+    config.infilesDictionary['r2'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq']
     missingClustersFlag = False
     missingClusters = []
     

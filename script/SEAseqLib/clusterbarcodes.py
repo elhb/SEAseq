@@ -59,8 +59,8 @@ def clusterbarcodes(indata):
     from SEAseqLib.mainLibrary import SEAseqSummary
     progress = Progress(config.reads2process, logfile=config.logfile)
     summary = SEAseqSummary()
-    f1 = open(config.abspath+'/nonCreads.1.fq','w')
-    f2 = open(config.abspath+'/nonCreads.2.fq','w')
+    f1 = open(config.absolutePath+'/nonCreads.1.fq','w')
+    f2 = open(config.absolutePath+'/nonCreads.2.fq','w')
     with progress:
 	for pair in results:
 	    progress.update()

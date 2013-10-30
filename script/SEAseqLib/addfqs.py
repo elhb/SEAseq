@@ -15,15 +15,15 @@ def addfqs(indata):
     import sys
     r1 = os.path.abspath(indata.reads1.name)
     r2 = os.path.abspath(indata.reads2.name)
-    if r1 in config.infiles['r1'] + config.infiles['r2'] or r2 in config.infiles['r1'] + config.infiles['r2']:
+    if r1 in config.infilesDictionary['r1'] + config.infilesDictionary['r2'] or r2 in config.infilesDictionary['r1'] + config.infilesDictionary['r2']:
 	sys.stderr.write('ERROR:\nat least one of the files:\n'+r1+'\n'+r2+'\nare already in the config file.\n');
 	config.logfile.write('ERROR:\nat least one of the files:\n'+r1+'\n'+r2+'\nare already in the config file.\nExiting withiout changes.\n');
 	return 1
-    config.infiles['r1'].append(r1)
-    config.infiles['r2'].append(r2)
+    config.infilesDictionary['r1'].append(r1)
+    config.infilesDictionary['r2'].append(r2)
     
     config.logfile.write('Getting readcount ...\n')
-    config.readcounts.append(bufcount(r1)/4)
+    config.readCountsList.append(bufcount(r1)/4)
     
     config.save()
     

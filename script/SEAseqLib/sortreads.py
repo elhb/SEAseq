@@ -56,7 +56,7 @@ def sortreads(indata):
     import multiprocessing
     man = multiprocessing.Manager()
     config.cid_by_bc = man.dict()
-#    chunk_list = man.list([[[cluster+chunk*chunksize,[],[], 0, 0] for cluster in xrange(chunksize)] for chunk in xrange(config.clustercount/chunksize+1)])
+#    chunk_list = man.list([[[cluster+chunk*chunksize,[],[], 0, 0] for cluster in xrange(chunksize)] for chunk in xrange(config.numberOfBarcodeClustersIdentified/chunksize+1)])
     queue = multiprocessing.Queue()
     p = multiprocessing.Process(target=load_clusters,args=(config,queue))
     p.start()
@@ -88,43 +88,43 @@ def sortreads(indata):
 
     config.logfile.write('Allocating sorting memory  ...\n')
     chunksize = 5000
-    chunk_list = [[[cluster+chunk*chunksize,[],[]] for cluster in xrange(chunksize)] for chunk in xrange(config.clustercount/chunksize+1)]
+    chunk_list = [[[cluster+chunk*chunksize,[],[]] for cluster in xrange(chunksize)] for chunk in xrange(config.numberOfBarcodeClustersIdentified/chunksize+1)]
     config.logfile.write(' done.\n')
 
     if not indata.debug: config.logfile.write('Sorting reads to cluster '+str(indata.cpus)+' processes  ...\n')
     progress = Progress(config.reads2process, logfile=config.logfile, mem = True)
     with progress:
-	if config.sortformat == 'fq':
+	if config.sortFormat == 'fq':
 	    f1 = open(config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq','w')
 	    f2 = open(config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq','w')
-	elif config.sortformat == 'fa':
+	elif config.sortFormat == 'fa':
 	    f1 = open(config.path+'/sortedReads/sorted_by_barcode_cluster.fa','w')
 	for pair in results:
 	    progress.update()
 	    if pair.cid:
-		if config.sortformat == 'fq':
+		if config.sortFormat == 'fq':
                     if indata.trimr1:   chunk_list[pair.cid/chunksize][pair.cid%chunksize][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r1.seq[:-indata.trimr1]+'\n+\n'+pair.r1.qual[:-indata.trimr1]+'\n')
                     else:               chunk_list[pair.cid/chunksize][pair.cid%chunksize][1].append('_'.join(pair.r1.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r1.seq+'\n+\n'+pair.r1.qual+'\n')
                     if indata.trimr2:   chunk_list[pair.cid/chunksize][pair.cid%chunksize][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r2.seq[:-indata.trimr2]+'\n+\n'+pair.r2.qual[:-indata.trimr2]+'\n')
                     else:	        chunk_list[pair.cid/chunksize][pair.cid%chunksize][2].append('_'.join(pair.r2.header.split(' ')) + '_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r2.seq+'\n+\n'+pair.r2.qual+'\n')
-		elif config.sortformat == 'fa':
+		elif config.sortFormat == 'fa':
 		    f1.write('>' + '_'.join(pair.r1.header.split(' ')) + '_r1_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r1.seq+'\n'+
 			     '>' + '_'.join(pair.r2.header.split(' ')) + '_r2_' + str(pair.cid) + '_' + pair.n15.seq + '\n'+pair.r2.seq+'\n')
 
-    if config.sortformat == 'fq':
+    if config.sortFormat == 'fq':
 	config.logfile.write('\nWriting to fastq files sorted by cluster id ...\n')
 	progress = Progress(clustercount, logfile=config.logfile, unit = 'cluster')
 	with progress:
 	    for chunk in chunk_list:
 		for cluster in chunk:
-			if cluster[0] <= config.clustercount: progress.update()
+			if cluster[0] <= config.numberOfBarcodeClustersIdentified: progress.update()
 			for i in xrange(len(cluster[1])):
 			    f1.write(cluster[1][i])
 			    f2.write(cluster[2][i])	
 
     #close connections
-    if config.sortformat in ['fa','fq']:	f1.close()
-    if config.sortformat == 'fq':		f2.close()
+    if config.sortFormat in ['fa','fq']:	f1.close()
+    if config.sortFormat == 'fq':		f2.close()
 
     if not indata.debug: WorkerPool.close()
     if not indata.debug: WorkerPool.join()

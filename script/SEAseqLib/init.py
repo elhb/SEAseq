@@ -34,5 +34,5 @@ def init(indata):
     config.logfile.write('Creating config file:\n')
     config.save()
 
-    config.logfile.write('Analysis '+config.abspath+' sucesfully initiated.\n')
+    config.logfile.write('Analysis '+config.absolutePath+' sucesfully initiated.\n')
     return 0
