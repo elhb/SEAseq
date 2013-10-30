@@ -474,9 +474,9 @@ class Configuration():
 	
 	self.logfile.write('Getting readcounts ...\n')
 	total = 0
-	for i in range(len(self.readcounts)):
-	    rc = self.readcounts[i]
-	    self.logfile.write(self.infiles['r1'][i]+' -> '+str(rc) +' reads.\n')
+	for i in range(len(self.readCountsList)):
+	    rc = self.readCountsList[i]
+	    self.logfile.write(self.infilesDictionary['r1'][i]+' -> '+str(rc) +' reads.\n')
 	    total += rc
 	self.logfile.write(str(total)+' read pairs in fastq files.\n');
 	
