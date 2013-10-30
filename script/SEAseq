@@ -104,6 +104,7 @@ def getindata(cmd):
 	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
         argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED')
     if cmd == 'meta' or cmd == 'sbatch':
+	argparser.add_argument(	'-primerset',		dest='primerset',metavar='FILE',			type=file,	required=False, default=open('primersets/meta2.primerset','r'),	help='Primer set file (default ="primersets/meta2.primerset").')
 	argparser.add_argument(	'-mr',			dest='minimum_reads',	metavar='N',				type=int,	required=False,	default=5,	help='minimum number of reads supporting a consensus sequence (default 5).')
 	argparser.add_argument(	'-ms',			dest='minimum_support',	metavar='N',				type=float,	required=False,	default=5.0,	help='minimum percentage of read population supporting a consensus sequence  (default 5).')
 	argparser.add_argument(	'-mi',			dest='clustering_identity',	metavar='N',				type=float,	required=False,	default=97.0,	help='Minimum identity for two sequences to cluster together (default 97).')
