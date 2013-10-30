@@ -106,23 +106,6 @@ def meta(indata):
         if line[0] != "#":
             line = line.split('\t')
             config.primerpairs[line[0]] = PrimerPair(line[1],line[2],line[3])
-    #config.primerpairs['v1.16s']      = PrimerPair('GTGBCAGCMGCCGCGGTAA',         'ACAHBTCACRRCACGAGCTGACGAC',    '16s')
-    #config.primerpairs['v1.its']      = PrimerPair('G?GBCTTBTACWCACYGCCCGTC',     'CTCYDRNWGCCVRGGCATCCACC',      'its')
-    #config.primerpairs['ecoli']    = PrimerPair('TGCGAACGCGCGAATCAACTGG',      'AAGCGCGCGGCTGAATTACTGG',       'ecoli')
-    #config.primerpairs['m13']      = PrimerPair('GCCTCGTTCCGGCTAAGTAACATGGAG', 'AGTTGCGCCGACAATGACAACAACC',    'm13')
-    #config.primerpairs['myco']     = PrimerPair('ATGCCGCAGCCAAGAACGCATC',      'TTCGTGGCACTTGCCGAACTGG',       'myco')
-    #config.primerpairs['lambda']   = PrimerPair('TCAGCTATGCGCCGACCAGAACAC',    'TTCCATGACCGCACCAACAGGCTC',     'lambda')
-#    config.primerpairs['v2.16s.1']   = PrimerPair('ADACTCCTACGGGAGGCAGCAG',		'GGACTACCAGGGTATCTAABCCTGT',	'v2.16s.1')
-#    config.primerpairs['v2.16s.2']   = PrimerPair('AAAKRAATTGACGGGGRCCCGCACA',		'GAYTTGACGTCRTCCCCDCCTTCCT',	'v2.16s.2')
-#    config.primerpairs['v2.23s.1']   = PrimerPair('AGTACCGTGAGGGAADGGYGAAAAG',		'AGTGAGCTRTTACGCWHTCTTT',	'v2.23s.1')
-#    config.primerpairs['v2.23s.2']   = PrimerPair('ACBRTCCTAAGGTAGCGAAATTCCTTGTC',	'GAGCCGACATCGAGGTGCCAA',	'v2.23s.2')
-#    config.primerpairs['v2.its']     = PrimerPair('GAAGYYGGADTCGCTAGTAA',		'GNTACTDAGATGTTTCAGTTC',	'v2.its')
-
-    #config.primerpairs['v2.16s.1']   = PrimerPair('ADNCTCCTACGGGAGGCAGCAG',		'GGACTACCAGGGTATCTAABCCTGT',	'v2.16s.1')
-    #config.primerpairs['v2.16s.2']   = PrimerPair('AANKRAATTGACGGGGRCCCGCACA',		'GAYTTGACGTCRTCCCCDCCTTCCT',	'v2.16s.2')
-    #config.primerpairs['v2.23s.1']   = PrimerPair('AGNACCGTGAGGGAADGGYGAAAAG',		'AGTGAGCTRTTACGCWHTCTTT',	'v2.23s.1')
-    #config.primerpairs['v2.23s.2']   = PrimerPair('ACNRTCCTAAGGTAGCGAAATTCCTTGTC',	'GAGCCGACATCGAGGTGCCAA',	'v2.23s.2')
-    #config.primerpairs['v2.its']     = PrimerPair('GANGYYGGADTCGCTAGTAA',		'GNTACTDAGATGTTTCAGTTC',	'v2.its')
     
     import multiprocessing as mp
     man = mp.Manager()
