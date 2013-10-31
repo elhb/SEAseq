@@ -1,4 +1,4 @@
-def metagraph(indata):
+def makegraphs(indata):
 
     from SEAseqLib.mainLibrary import Configuration, writelogheader
     config = Configuration(indata.path, indata.cmd)
@@ -13,7 +13,7 @@ def metagraph(indata):
 
     # settings
     config.load()
-    
+
     if indata.graphs == 'all': indata.graphs = 'abcdefghijklmnopqrstuvxyz';
     indata.graphs = list(indata.graphs)
     

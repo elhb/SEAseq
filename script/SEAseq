@@ -19,7 +19,7 @@ def main():
 	sys.stderr.write('Please specify a command, if you need help run SEAseq help.\n')
 	cmd = None
 
-    if cmd not in ['Help','help','-help','--help','-h','init','addfqs','clusterbarcodes','sortreads','meta','sbatch','metagraph','classifymeta','setVariables']:sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n');sys.exit()
+    if cmd not in ['Help','help','-help','--help','-h','init','addfqs','clusterbarcodes','sortreads','meta','sbatch','makegraphs','classifymeta','setVariables']:sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n');sys.exit()
 
     if cmd and cmd not in ['Help','help','-help','--help','-h']: indata = getindata(cmd)
     elif not cmd: return 1
@@ -36,7 +36,7 @@ def main():
 				    +'\tsortreads'	+' '.join(['' for i in range(20-len('sortreads'))])		+'links barcode cluster information to each read pair\n'
 				    +'\tmeta'		+' '.join(['' for i in range(20-len('meta'))])			+'metagenomics amplicon analysis, EXPRIMENTAL!\n'
 				    +'\tsbatch'		+' '.join(['' for i in range(20-len('sbatch'))])		+'creates and queues sbatch files for the clusterbarcodes, sortreads and meta steps\n'
-				    +'\tmetagraph'	+' '.join(['' for i in range(20-len('metagraph'))])		+'generates pdf graphs from meta stats\n'
+				    +'\tmakegraphs'	+' '.join(['' for i in range(20-len('makegraphs'))])		+'generates pdf graphs from meta stats\n'
 				    +'\tclassifymeta'	+' '.join(['' for i in range(20-len('classifymeta'))])		+'classify the consensussequences from the meta clusters\n'
 				    +'\thelp'		+' '.join(['' for i in range(20-len('help'))])			+'print this help message and exit\n'
 				    )
@@ -62,9 +62,9 @@ def main():
     elif cmd == 'sbatch':
 	from SEAseqLib.sbatch import sbatch
 	sbatch(indata)
-    elif cmd == 'metagraph':
-	from SEAseqLib.metagraph import metagraph
-	metagraph(indata)
+    elif cmd == 'makegraphs':
+	from SEAseqLib.makegraphs import makegraphs
+	makegraphs(indata)
     elif cmd == 'classifymeta':
 	from SEAseqLib.classifymeta import classifymeta
 	classifymeta(indata)
@@ -121,11 +121,11 @@ def getindata(cmd):
 	argparser.add_argument(	'-random',		dest='n',	metavar='N',				type=int,	required=False,	default=0,	help='Use a random subset of N read pairs, this option is slower (default 0 = off). Can not be used in combination with "-skip" or "-stop"')
         argparser.add_argument(	'-mrc',			dest='mrc',	metavar='N',				type=int,	required=False,	default=1,	help='Minimum number of reads per cluster to consider it (default 1) DISABLED')
 
-    if cmd == 'metagraph':
+    if cmd == 'makegraphs':
 	argparser.add_argument(	'-step',		dest='step',	metavar='N',				type=int,	required=False,	default=0,	help='Update intervall. Updates y value every "step" x value (default "max(x)/200" ie 200 datapoints along x-axis)')
 	argparser.add_argument(	'-x',			dest='xscale',	metavar='N-N',				type=str,	required=False,	default='0-1000',help='x axis scale (default 0-1000)')
 	argparser.add_argument(	'-y',			dest='yscale',	metavar='N-N',				type=str,	required=False,	default='0-1000',help='y axis scale (default 0-1000)')
-	argparser.add_argument(	'-sample',		dest='sample',	metavar='str',				type=str,	required=False,	default='0-1000',help='Sample name to put in header and filename')
+	argparser.add_argument(	'-sample',		dest='sample',	metavar='str',				type=str,	required=False,	default='Sample',help='Sample name to put in header and filename')
 	argparser.add_argument('--highres',	dest='highres', 	action='store_true', 			required=False,	default=False,	help='Use all x points to get high res data.')
 	argparser.add_argument(	'-g',			dest='graphs',	metavar='N',				type=str,	required=False,	default='a',	help='"all" or str with graph signs (default a).\n\n'+
 				'Available graph signs:\n\n'+

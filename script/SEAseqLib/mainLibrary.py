@@ -404,8 +404,8 @@ class Configuration():
 	self.meta_outfile	= self.path + '/' + 'meta.out.txt'
 	self.sbatch_logfile	= self.path + '/' + 'sbatch.log.txt'
 	self.sbatch_outfile	= self.path + '/' + 'sbatch.out.txt'
-	self.metagraph_logfile	= self.path + '/' + 'graph.log.txt'
-	self.metagraph_outfile	= self.path + '/' + 'graph.out.txt'
+	self.makegraphs_logfile	= self.path + '/' + 'graph.log.txt'
+	self.makegraphs_outfile	= self.path + '/' + 'graph.out.txt'
 	self.classifymeta_logfile= self.path + '/' + 'classify.log.txt'
 	self.classifymeta_outfile= self.path + '/' + 'classify.out.txt'
 	self.setVariables_logfile= self.path + '/' + 'setVariables.log.txt'
@@ -468,9 +468,9 @@ class Configuration():
 	elif cmd == 'sbatch':
 	    self.logfile = self.sbatch_logfile
 	    self.outfile = self.sbatch_outfile
-	elif cmd == 'metagraph':
-	    self.logfile = self.metagraph_logfile
-	    self.outfile = self.metagraph_outfile
+	elif cmd == 'makegraphs':
+	    self.logfile = self.makegraphs_logfile
+	    self.outfile = self.makegraphs_outfile
 	elif cmd == 'classifymeta':
 	    self.logfile = self.classifymeta_logfile
 	    self.outfile = self.classifymeta_outfile
@@ -834,37 +834,41 @@ class SEAseqSummary():
 				counter+=1
 				#print cc,clusters[cc]['total'],clusters[cc]['highest'][1],clusters[cc]['highest'][0]
 
-		config.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n\n')
+		#config.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n\n')
 		config.outfile.write(str( cc)+' clusters whereof '+str(counter)+' has more than one read\n\n')
 
-		temp_x=reads_in_clusters.keys()
-		temp_x.sort()
-		y=[];x =[]
-		for i in xrange(max(temp_x)+1):
-			x.append(i)
-			try: y.append(reads_in_clusters[i])
-			except KeyError: y.append(0)
-		x=x
-		y=y
-		import numpy as np
-		import matplotlib.pyplot as plt
-		for scale in [[0,5000,0,20],[0,1000,0,20]]:
-			plt.figure()
-			plt.axis(scale)
-			#plt.xlabel('Total Number of Reads per Barcode Cluster')
-			#plt.ylabel('Number of Clusters')
-			#pos = np.arange(len(x))
-			#width = 1.0     # gives histogram aspect to the bar diagram
-			#ax = plt.axes()
-			#ax.set_xticks(pos + (width / 2))
-			#ax.set_xticklabels(x,rotation='horizontal')
-			#plt.bar(pos, y, width, color='r')
-			##plt.show()
-			##plt.savefig(pp,format='pdf',bbox_inches=0)
-			plt.plot(x,y)
-			plt.suptitle('Y is Total Number of Clusters with X Reads Pairs per Barcode Cluster.', fontsize=12)
-			plt.savefig(config.path+'/read_pairs_per_barcode_cluster.x_scale_'+str(scale[0])+'-'+str(scale[1])+'.y_scale_'+str(scale[2])+'-'+str(scale[3])+'.pdf')
-			plt.close()
+		f = open(config.path+'/cluster.graphStats','w')
+		f.write(str(reads_in_clusters))
+		f.close()
+
+		#temp_x=reads_in_clusters.keys()
+		#temp_x.sort()
+		#y=[];x =[]
+		#for i in xrange(max(temp_x)+1):
+		#	x.append(i)
+		#	try: y.append(reads_in_clusters[i])
+		#	except KeyError: y.append(0)
+		#x=x
+		#y=y
+		#import numpy as np
+		#import matplotlib.pyplot as plt
+		#for scale in [[0,5000,0,20],[0,1000,0,20]]:
+		#	plt.figure()
+		#	plt.axis(scale)
+		#	#plt.xlabel('Total Number of Reads per Barcode Cluster')
+		#	#plt.ylabel('Number of Clusters')
+		#	#pos = np.arange(len(x))
+		#	#width = 1.0     # gives histogram aspect to the bar diagram
+		#	#ax = plt.axes()
+		#	#ax.set_xticks(pos + (width / 2))
+		#	#ax.set_xticklabels(x,rotation='horizontal')
+		#	#plt.bar(pos, y, width, color='r')
+		#	##plt.show()
+		#	##plt.savefig(pp,format='pdf',bbox_inches=0)
+		#	plt.plot(x,y)
+		#	plt.suptitle('Y is Total Number of Clusters with X Reads Pairs per Barcode Cluster.', fontsize=12)
+		#	plt.savefig(config.path+'/read_pairs_per_barcode_cluster.x_scale_'+str(scale[0])+'-'+str(scale[1])+'.y_scale_'+str(scale[2])+'-'+str(scale[3])+'.pdf')
+		#	plt.close()
 		config.logfile.write( 'done\n')
 
 		self.clusters = clusters
