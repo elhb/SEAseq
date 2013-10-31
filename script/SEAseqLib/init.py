@@ -16,7 +16,7 @@ def init(indata):
 	tmp_log += 'Folder '+indata.path+' created sucessfully.\n'
     except OSError as inst:
 	if inst[0] != 17: print inst; return
-	_continue = ''
+	_continue = 'yes'
 	while not _continue or _continue[0] not in ['Y','y', 'N','n']:
 	    _continue = raw_input('WARNING: the folder '+indata.path+' already excists. Continue anyway? (yes/no) ')
 	tmp_log += 'WARNING: the folder '+indata.path+' already excists. Continue anyway? (yes/no) '+_continue+'\nUsing already exsisting folder ...\n'
