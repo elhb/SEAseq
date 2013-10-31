@@ -25,16 +25,12 @@ def clusterbarcodes(indata):
     writelogheader(config.logfile)
 
     # settings
-    config.logfile.write('Get infiles from config-file.\n')
+    config.logfile.write('Get infiles and settings from config-file.\n')
     config.load()
     config.getreads2process()
-    config.set('chandlemissmatch',indata.handlemm)
-    config.set('barcodemissmatch',indata.bcmm)
-    config.set('numberofseeds', indata.seed)
     config.save()
 
     config.logfile.write('Part1: identifying barcode sequences in reads.\n')
-    config.handlepos = indata.handlepos
     
     #deciding if to run multiprocessing or single process for debugging
     from SEAseqLib.mainLibrary import getPairs, Progress

@@ -28,7 +28,7 @@ def sbatch(indata):
         else:
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
-            '#SBATCH -J clust_'+indata.jobname+'_'+config.path+'\n'+
+            '#SBATCH -J clust_'+config.jobName+'_'+config.path+'\n'+
             '#SBATCH -e '+config.absolutePath+'/sbatch.cluster.stderr.txt'+'\n'+
             '#SBATCH -o '+config.absolutePath+'/sbatch.cluster.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+
@@ -36,8 +36,7 @@ def sbatch(indata):
             'echo "$(date) Running on: $(hostname)"'+'\n'+
             'cd '+os.getcwd()+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' clusterbarcodes -path '+config.path+' -bm '+str(indata.bcmm)+' -hm '+str(indata.handlemm)+' -seed '+str(indata.seed)+' -p '+str(indata.cpus))
-        if indata.handlepos: f.write(' -hpos '+indata.handlepos)
+            sys.argv[0]+' clusterbarcodes -path '+config.path+' -p '+str(indata.cpus))
         f.write('\n')
         f.close()
         
@@ -52,7 +51,7 @@ def sbatch(indata):
         else:
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
-            '#SBATCH -J sort_'+indata.jobname+'_'+config.path+'\n'+
+            '#SBATCH -J sort_'+config.jobName+'_'+config.path+'\n'+
             '#SBATCH -e '+config.absolutePath+'/sbatch.sortreads.stderr.txt'+'\n'+
             '#SBATCH -o '+config.absolutePath+'/sbatch.sortreads.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+
@@ -60,8 +59,7 @@ def sbatch(indata):
             'echo "$(date) Running on: $(hostname)"'+'\n'+
             'cd '+os.getcwd()+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' sortreads -path '+config.path+' -sortfmt '+str(indata.sortfmt)+' -p '+str(indata.cpus)+' -trimr1 '+str(indata.trimr1)+' -trimr2 '+str(indata.trimr2))
-        if indata.handlepos: f.write(' -hpos '+indata.handlepos)
+            sys.argv[0]+' sortreads -path '+config.path+' -p '+str(indata.cpus))
         f.write('\n')
         f.close()
         
@@ -76,7 +74,7 @@ def sbatch(indata):
         else:
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
-            '#SBATCH -J meta_'+indata.jobname+'_'+config.path+'\n'+
+            '#SBATCH -J meta_'+config.jobName+'_'+config.path+'\n'+
             '#SBATCH -e '+config.absolutePath+'/sbatch.meta.stderr.txt'+'\n'+
             '#SBATCH -o '+config.absolutePath+'/sbatch.meta.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+
@@ -84,8 +82,7 @@ def sbatch(indata):
             'echo "$(date) Running on: $(hostname)"'+'\n'+
             'cd '+os.getcwd()+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' meta -path '+config.path+' -p8'+' -mr '+str(indata.minimum_reads)+' -ms '+str(indata.minimum_support)+' -mi '+str(indata.clustering_identity)+' -primerset '+indata.primerset.name)
-        if indata.handlepos: f.write(' -hpos '+indata.handlepos)
+            sys.argv[0]+' meta -path '+config.path+' -p8')
         f.write(
             '\n'+
             'grep -vP "^((Read)|([0-9]+\t)|P|c|(Co))" '+config.path+'/meta.out.txt | cat -s > '+config.path+'/meta.smaller.out.txt\n'
@@ -102,7 +99,7 @@ def sbatch(indata):
         else:
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
-            '#SBATCH -J classify_'+indata.jobname+'_'+config.path+'\n'+
+            '#SBATCH -J classify_'+config.jobName+'_'+config.path+'\n'+
             '#SBATCH -e '+config.absolutePath+'/sbatch.classify.stderr.txt'+'\n'+
             '#SBATCH -o '+config.absolutePath+'/sbatch.classify.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+
@@ -112,7 +109,7 @@ def sbatch(indata):
             'module load bioinfo-tools blast/2.2.28+ biopython'+'\n'+
             'module unload python/2.6.6'+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' classifymeta -path '+config.path+''+' -db '+str(indata.database)+' -gidb '+str(indata.gidatabase)+' -identity '+str(indata.identity)+' -length '+str(indata.length)+'\n'
+            sys.argv[0]+' classifymeta -path '+config.path+'\n'
         )
         f.close()
     
@@ -122,7 +119,7 @@ def sbatch(indata):
             '#SBATCH -A '+uppmaxprojectid+''+'\n'+
             '#SBATCH -n 8 -p node'+'\n'+
             '#SBATCH -t 72:00:00'+'\n'+
-            '#SBATCH -J gzip_'+indata.jobname+'_'+config.path+'\n'+
+            '#SBATCH -J gzip_'+config.jobName+'_'+config.path+'\n'+
             '#SBATCH -e '+config.absolutePath+'/sbatch.gzip.stderr.txt'+'\n'+
             '#SBATCH -o '+config.absolutePath+'/sbatch.gzip.stdout.txt'+'\n'+
             '#SBATCH --mail-type=All'+'\n'+

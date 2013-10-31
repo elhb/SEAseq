@@ -1,7 +1,7 @@
 import sys
 import os
 MASTER = os.getpid()
-version = 'ALPHA 1.3'
+version = 'ALPHA 1.4'
 
 ######################### MAIN #########################
 
@@ -408,6 +408,8 @@ class Configuration():
 	self.metagraph_outfile	= self.path + '/' + 'graph.out.txt'
 	self.classifymeta_logfile= self.path + '/' + 'classify.log.txt'
 	self.classifymeta_outfile= self.path + '/' + 'classify.out.txt'
+	self.setVariables_logfile= self.path + '/' + 'setVariables.log.txt'
+	self.setVariables_outfile= self.path + '/' + 'setVariables.out.txt'	
 	self.clusters_file	= self.path+'/barcode_clusters_dictionary'
 	self.absolutePath	= None # not loaded or set
 
@@ -448,6 +450,9 @@ class Configuration():
 	if cmd == 'init':
 	    self.logfile = self.init_logfile
 	    self.outfile = self.init_outfile
+	elif cmd == 'setVariables':
+	    self.logfile = self.setVariables_logfile
+	    self.outfile = self.setVariables_outfile
 	elif cmd == 'addfqs':
 	    self.logfile = self.addfqs_logfile
 	    self.outfile = self.addfqs_outfile
@@ -523,6 +528,7 @@ class Configuration():
 		#if varName == 'trimmingRead1' :				self.trimmingRead1		= eval(varValue)
 		#if varName == 'trimmingRead2' :				self.trimmingRead2		= eval(varValue)
 	self.config.close()
+	if self.primerset: self.primerset = open(self.primerset,'r')
 	self.config = self.config.name
 
     def openconnections(self, ):
@@ -541,33 +547,40 @@ class Configuration():
 	else:
 	    self.config = initiate_file(self.config, self.logfile, mode='ow')
 
+	if type(self.primerset) == file: self.primerset = self.primerset.name
+
 	self.logfile.write('Writing settings to config file ...\n')
 	self.config.write(
 		'#VariableName\t#Value\t#Comment\n'+
-		'# GENERAL VARIABLES:\n'+
-		'path'+					'\t'	+str(self.path)+		'\t'+	'# Relstive analysis path'+	'\n'+
+
+		'#\n# GENERAL VARIABLES:\n#\n'+
+		'path'+					'\t'	+str(self.path)+		'\t'+	'# Relative analysis path'+	'\n'+
 		'absolutePath'+				'\t'	+str(self.absolutePath)+	'\t'+	'# Absolute analysis path'+	'\n'+
 		'tempFileFolder'+			'\t'	+str(self.tempFilesFolder)+	'\t'+	'# Folder used to store temporary files, host dependent, might change for each run'+	'\n'+
 		'skipReadCounting'+			'\t'	+str(self.skipReadCounting)+	'\t'+	'# Bool skip counting reads in fastq files, debug option for speed'+	'\n'+
 		'jobName'+				'\t'	+str(self.jobName)+		'\t'+	'# Name of job in sbatch files etc'+	'\n'+
 		'infilesDictionary'+			'\t'	+str(self.infilesDictionary)+	'\t'+	'# Dictionary storing locations of pairs of input fastqfiles'+	'\n'+
 		'readCountsList'+			'\t'	+str(self.readCountsList)+	'\t'+	'# List with the read pair count within each fastq file pair'+	'\n'+
-		'# SETTINGS FOR BEAD BARCODES CLUSTERING AND IDENTIFICATION:\n'+
+
+		'#\n# SETTINGS FOR BEAD BARCODES CLUSTERING AND IDENTIFICATION:\n#\n'+
 		'numberOfClusterSeeds'+			'\t'	+str(self.numberOfClusterSeeds)+'\t'+	'# Number of sequences to use as seeds during clustering to identify bead barcodes '+	'\n'+
 		'numberOfBarcodeClustersIdentified'+	'\t'	+str(self.numberOfBarcodeClustersIdentified)+	'\t'+	'# Number of Beads identified during clustering of barcode sequences'+	'\n'+
 		'maxBeadBarcodeMissMatch'+		'\t'	+str(self.maxBeadBarcodeMissMatch)+	'\t'+	'# Number off missmatches allowed in clustering of bead barcodes'+	'\n'+
 		'maxHandleMissMatch'+			'\t'	+str(self.maxHandleMissMatch)+	'\t'+	'# Number of missmatches allaowed when identifyng the handle'+	'\n'+
 		'handlePosition'+			'\t'	+str(self.handlePosition)+	'\t'+	'# Position of handle, if set it overrides the sequence based identification'+	'\n'+
-		'# SETTINGS FOR SORTING FAST(A/Q) READS TO IDENTIFIED BEADS:\n'+
+
+		'#\n# SETTINGS FOR SORTING FAST(A/Q) READS TO IDENTIFIED BEADS:\n#\n'+
 		'sortFormat'+				'\t'	+str(self.sortFormat)+		'\t'+	'# File format to store sorted reads to'+	'\n'+
 		'trimmingRead1'+			'\t'	+str(self.trimmingRead1)+	'\t'+	'# Number of bases to trim from read 1 during sorting (and in all downstream steps)'+	'\n'+
 		'trimmingRead2'+			'\t'	+str(self.trimmingRead2)+	'\t'+	'# Number of bases to trim from read 2 during sorting (and in all downstream steps)'+	'\n'+
-		'# SETTINGS FOR CLUSTERING OF READS TO CONSENSUS SEQUENCES AND AMPLICONS:\n'+
+
+		'#\n# SETTINGS FOR CLUSTERING OF READS TO CONSENSUS SEQUENCES AND AMPLICONS:\n#\n'+
 		'minReadCountPerConsensus'+		'\t'	+str(self.minReadCountPerConsensus)+	'\t'+	'# minimum number of reads needed for a consensus sequence to be considered as a variant of an amplicon'+	'\n'+
 		'minReadPopSupportConsensus'+		'\t'	+str(self.minReadPopSupportConsensus)+	'\t'+	'# minimum %support of read pop needed for a consensus sequence to be considered as a variant of an amplicon'+	'\n'+
 		'minConsensusClusteringIdentity'+	'\t'	+str(self.minConsensusClusteringIdentity)+'\t'+	'# minimum identity for two reads to cluster as one consensus sequence'+	'\n'+
 		'primerset'+				'\t'	+str(self.primerset)+		'\t'+	'# the primer set to be used when identifying amplicon supporting reads'+	'\n'+
-		'# SETTINGS FOR ALIGNMENT OF CONSENSUS SEQUENCES TO GENOMES:\n'+
+
+		'#\n# SETTINGS FOR ALIGNMENT OF CONSENSUS SEQUENCES TO GENOMES:\n#\n'+
 		'blastDb'+				'\t'	+str(self.blastDb)+		'\t'+	'# database to be used for the alignment of amplicon variants'+	'\n'+
 		'gidatabase'+				'\t'	+str(self.gidatabase)+		'\t'+	'# dictionary of gi id to organism name mappings'+	'\n'+
 		'minBlastIdentity'+			'\t'	+str(self.minBlastIdentity)+	'\t'+	'# minimum blast identity to consider the blast hit'+	'\n'+
@@ -627,9 +640,9 @@ class readpair():
 		return 0
 
 	def identify(self, handle, config):
-		if config.handlepos:
-			handle_start	= int(config.handlepos.split(':')[0])
-			handle_end	= int(config.handlepos.split(':')[1])
+		if config.handlePosition:
+			handle_start	= int(config.handlePosition.split(':')[0])
+			handle_end	= int(config.handlePosition.split(':')[1])
 		else:[handle_start, handle_end] = self.matchHandle(handle, config, self.r1)
 		self.handle_start = handle_start
 		self.handle_end   = handle_end
@@ -1029,11 +1042,11 @@ class BarcodeCluster(object):
 		    tem_seq = pair.r1.seq[pair.handle_end:][len( config.primerpairs[pair.p1].fwd )+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(    config.primerpairs[pair.p1].rev   )+1)]
 		    tofilestr += '>'+str(pair.id)+'\n'+ tem_seq +'\n'
 		
-		if indata.tempfilefolder:
+		if indata.tempFileFolder:
 			import os
-			try: os.mkdir(indata.tempfilefolder+'/SEAseqtemp')
+			try: os.mkdir(indata.tempFileFolder+'/SEAseqtemp')
 			except: pass
-			f = open(indata.tempfilefolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa','w')
+			f = open(indata.tempFileFolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa','w')
 		else: 	f = open(config.path+'/sortedReads/temporary.'+str(self.id)+'.fa','w')
 		f.write(tofilestr)
 		f.close()
@@ -1045,25 +1058,25 @@ class BarcodeCluster(object):
 		#check that there is data to work with
 		if self.adaptercount+self.primererrors == self.readcount:
 		    import os
-		    if indata.tempfilefolder: os.remove( indata.tempfilefolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa')
+		    if indata.tempFileFolder: os.remove( indata.tempFileFolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa')
 		    else: os.remove( config.path+'/sortedReads/temporary.'+str(self.id)+'.fa' )
 		    return 'All adapter and/or primer error.\n'#['ONLY JUNK',return_info]
 	
 		# Cluster Read pairs
 		import subprocess
 		from cStringIO import StringIO
-		if indata.tempfilefolder:
+		if indata.tempFileFolder:
 			command = [	'cd-hit-454',
-				'-i',indata.tempfilefolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa',
-				'-o',indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa',
+				'-i',indata.tempFileFolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa',
+				'-o',indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa',
 				'-g','1',
-				'-c',str(indata.clustering_identity/100.0)
+				'-c',str(config.minConsensusClusteringIdentity/100.0)
 				]
 		else:	command = [	'cd-hit-454',
 				'-i',config.path+'/sortedReads/temporary.'+str(self.id)+'.fa',
 				'-o',config.path+'/sortedReads/cluster.'+str(self.id)+'.fa',
 				'-g','1',
-				'-c',str(indata.clustering_identity/100.0)
+				'-c',str(config.minConsensusClusteringIdentity/100.0)
 				]
 
 		cdhit = subprocess.Popen(
@@ -1077,12 +1090,12 @@ class BarcodeCluster(object):
 			sys.exit()
 	
 		# Build consensus sequences for read pair clusters
-		if indata.tempfilefolder:
+		if indata.tempFileFolder:
 			command = ['cdhit-cluster-consensus',
-				indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa.clstr',
-				indata.tempfilefolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa',
-				indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.consensus',
-				indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.aligned'
+				indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa.clstr',
+				indata.tempFileFolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa',
+				indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.consensus',
+				indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.aligned'
 				]
 		else:	command =['cdhit-cluster-consensus',
 				config.path+'/sortedReads/cluster.'+str(self.id)+'.fa.clstr',
@@ -1104,11 +1117,11 @@ class BarcodeCluster(object):
 		# output info from temporary files
 		if verb:
 			output = ''
-			if indata.tempfilefolder:
+			if indata.tempFileFolder:
 				datacombos = [
-				[indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(cluster.id)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
-				[indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(cluster.id)+'.fa.clstr','\nClustering details:\n'],
-				[indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(cluster.id)+'.aligned','\nAlignment details:\n']
+				[indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(cluster.id)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
+				[indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(cluster.id)+'.fa.clstr','\nClustering details:\n'],
+				[indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(cluster.id)+'.aligned','\nAlignment details:\n']
 				]
 			else:	datacombos = [
 				[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
@@ -1127,12 +1140,12 @@ class BarcodeCluster(object):
 
 	def removetempfiles(self, config, indata):
 		import os
-		if indata.tempfilefolder:
-			os.remove(indata.tempfilefolder+'/SEAseqtemp/temporary.' + str(self.id) + '.fa')
-			os.remove(indata.tempfilefolder+'/SEAseqtemp/cluster.'   + str(self.id) + '.fa')
-			os.remove(indata.tempfilefolder+'/SEAseqtemp/cluster.'   + str(self.id) + '.fa.clstr')
-			os.remove(indata.tempfilefolder+'/SEAseqtemp/cluster.'   + str(self.id) + '.consensus.fasta')
-			os.remove(indata.tempfilefolder+'/SEAseqtemp/cluster.'   + str(self.id) + '.aligned')
+		if indata.tempFileFolder:
+			os.remove(indata.tempFileFolder+'/SEAseqtemp/temporary.' + str(self.id) + '.fa')
+			os.remove(indata.tempFileFolder+'/SEAseqtemp/cluster.'   + str(self.id) + '.fa')
+			os.remove(indata.tempFileFolder+'/SEAseqtemp/cluster.'   + str(self.id) + '.fa.clstr')
+			os.remove(indata.tempFileFolder+'/SEAseqtemp/cluster.'   + str(self.id) + '.consensus.fasta')
+			os.remove(indata.tempFileFolder+'/SEAseqtemp/cluster.'   + str(self.id) + '.aligned')
 
 		else: 
 			os.remove(config.path + '/sortedReads/temporary.' + str(self.id) + '.fa')
@@ -1144,7 +1157,7 @@ class BarcodeCluster(object):
 	def loadconsensuses(self, config, indata):
 
 	#	get identity from file
-		if indata.tempfilefolder: f = open(indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa.clstr')
+		if indata.tempFileFolder: f = open(indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa.clstr')
 		else: f = open(config.path+'/sortedReads/cluster.'+str(self.id)+'.fa.clstr')
 		data = f.read()
 		f.close()
@@ -1171,7 +1184,7 @@ class BarcodeCluster(object):
 
 	def loadconsensusalignemnts(self, config, indata):
 		# get alignments from file
-		if indata.tempfilefolder: f = open(indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.aligned')
+		if indata.tempFileFolder: f = open(indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.aligned')
 		else: f = open(config.path+'/sortedReads/cluster.'+str(self.id)+'.aligned')
 		data = f.read()
 		f.close()
@@ -1199,7 +1212,7 @@ class BarcodeCluster(object):
 	
 	def loadconsensussequences(self, config, indata):
 		##load singelton consensus sequences
-		if indata.tempfilefolder: f = open(indata.tempfilefolder+'/SEAseqtemp/cluster.'+str(self.id)+'.consensus.fasta')
+		if indata.tempFileFolder: f = open(indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.consensus.fasta')
 		else: f = open(config.path+'/sortedReads/cluster.'+str(self.id)+'.consensus.fasta')
 		data = f.read()
 		f.close()
@@ -1247,7 +1260,7 @@ class Amplicon(object):
 			sys.stderr.write('ERROR: Amplicon type does not match the Consensus type.\n')
 			raise ValueError
 
-	def checkmono(self, indata):
+	def checkmono(self, config):
 		output = ''
 		output += '\t'+self.type+' '+str(self.readcount)+' reads in total.\n'
 		self.allelecount = 0
@@ -1257,7 +1270,7 @@ class Amplicon(object):
 			consensus.percentagesupport = 100*float(consensus.readcount)/float(self.readcount)
 			if consensus.readcount > 1 and consensus.percentagesupport > 1:
 				output += '\t\tConsensus '+consensus.id+' supported by '+str(round(consensus.percentagesupport,2))+'% of readpop ('+str(consensus.readcount)+' reads)\t'+consensus.sequence.seq+'\n'
-			if  consensus.percentagesupport >= indata.minimum_support and consensus.readcount >= indata.minimum_reads:
+			if  consensus.percentagesupport >= config.minReadPopSupportConsensus and consensus.readcount >= config.minReadCountPerConsensus:
 				self.allelecount += 1
 				self.goodalleles.append(consensus)
 		

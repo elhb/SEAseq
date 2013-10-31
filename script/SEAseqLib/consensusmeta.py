@@ -58,7 +58,7 @@ class RunStatCounter(object):
                 #self.ampliconcombinations[ampliconcombo]['monos']['All'] += 1
                 self.definedclustersMono += 1
     
-    def createsummary(self, indata):
+    def createsummary(self, config):
         output = ''
         output += ('##### SUMMARY #####'+'\n')
         output += (  str(self.clustercount)   +' clusters processed, out of these were:'+'\n')
@@ -78,7 +78,7 @@ class RunStatCounter(object):
         if self.definedclusters: tmppercentage = round(100*float(self.definedclustersMono)/float(self.definedclusters),2)
         output += (
             str(self.definedclusters)+' ('+str(round(100*float(self.definedclusters)/float(self.clustercount),2))+'%) has at least one defined amplicon out of these are '+str(self.definedclustersMono)+' ('+str(tmppercentage)+'%) monoclonal for the defined amplicon(s)\n'+
-            '(ie there is only one consensus sequence of that type with more than '+str(indata.minimum_reads)+' reads and '+str(indata.minimum_support)+'% support, clustering done with '+str(indata.clustering_identity)+'% identity cutoff)\n'
+            '(ie there is only one consensus sequence of that type with more than '+str(config.minReadCountPerConsensus)+' reads and '+str(config.minReadPopSupportConsensus)+'% support, clustering done with '+str(config.minConsensusClusteringIdentity)+'% identity cutoff)\n'
             )
         return output
 
@@ -97,15 +97,15 @@ def meta(indata):
     config.logfile.write('Get infiles from config-file.\n')
     config.load()
     config.getreads2process()
-    config.handlepos = indata.handlepos
     
     # set primerpairs
     from SEAseqLib.mainLibrary import PrimerPair
     config.primerpairs = {}
-    for line in indata.primerset:
+    for line in config.primerset:
         if line[0] != "#":
-            line = line.split('\t')
-            config.primerpairs[line[0]] = PrimerPair(line[1],line[2],line[3])
+            line = line.rstrip().split('\t')
+            try:config.primerpairs[line[0]] = PrimerPair(line[1],line[2],line[3])
+            except IndexError: print line;print 'ERROR: Wrong number of columns in primerset file.'; sys.exit()
     
     import multiprocessing as mp
     man = mp.Manager()
@@ -145,7 +145,7 @@ def meta(indata):
     #compressing takes forever skip this and do later if needed
     #import gzip
     #clusterdump = gzip.open(config.path+'/meta.clusters.pickle.gz','wb',9)
-    if indata.tempfilefolder: clusterdump = open(indata.tempfilefolder+'/SEAseqtemp/meta.clusters.pickle','w')
+    if indata.tempFileFolder: clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/meta.clusters.pickle','w')
     else:                     clusterdump = open(config.path+'/meta.clusters.pickle','w')
     
     #import cPickle
@@ -188,15 +188,15 @@ def meta(indata):
 
 	    
 	clusterdump.close()
-        if indata.tempfilefolder:
+        if indata.tempFileFolder:
             import shutil
-            shutil.move(indata.tempfilefolder+'/SEAseqtemp/meta.clusters.pickle',config.path+'/meta.clusters.pickle')
+            shutil.move(indata.tempFileFolder+'/SEAseqtemp/meta.clusters.pickle',config.path+'/meta.clusters.pickle')
 	statstable.close()
 
     reader.join()
     	
     # create a nice run summary
-    config.outfile.write(counter.createsummary(indata))
+    config.outfile.write(counter.createsummary(config))
     
     config.logfile.write('Done.\n')
     return 0
@@ -236,7 +236,7 @@ def foreachcluster_meta(cluster_pairs):
             for amplicon in cluster.amplicons.values():
                 for consensus in amplicon.allels: aligmnmentsOut += consensus.alignmentoutput(config)
     
-            for amplicon in cluster.amplicons.values(): perAmpOut += amplicon.checkmono(indata)
+            for amplicon in cluster.amplicons.values(): perAmpOut += amplicon.checkmono(config)
             cluster.getDefinedAmplicons()
             
             cluster.removetempfiles(config, indata)
@@ -244,9 +244,9 @@ def foreachcluster_meta(cluster_pairs):
         output += 'There are '+str(cluster.adaptercount)+' illumina adapter reads.\n'
 	output += 'There are '+str(cluster.primererrors)+' primer missmatch reads.\n'
         if cluster.ampliconpairs == 0:
-            output += '0 amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads)\n'
+            output += '0 amplicon(s) have enough data (>=1 cons with >= '+str(config.minReadPopSupportConsensus)+'% support and >= '+str(config.minReadCountPerConsensus)+' reads)\n'
         if cluster.ampliconpairs > 0:
-            output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(indata.minimum_support)+'% support and >= '+str(indata.minimum_reads)+' reads):\n'
+            output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(config.minReadPopSupportConsensus)+'% support and >= '+str(config.minReadCountPerConsensus)+' reads):\n'
         output += perAmpOut + '\n'
         output += '# Details:\n'
         output += '# Alignemnts:\n'
