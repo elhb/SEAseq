@@ -82,7 +82,7 @@ def sbatch(indata):
             'echo "$(date) Running on: $(hostname)"'+'\n'+
             'cd '+os.getcwd()+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' meta -path '+config.path+' -p8')
+            sys.argv[0]+' meta -path '+config.path+' -p '+str(indata.cpus))
         f.write(
             '\n'+
             'grep -vP "^((Read)|([0-9]+\t)|P|c|(Co))" '+config.path+'/meta.out.txt | cat -s > '+config.path+'/meta.smaller.out.txt\n'
@@ -109,7 +109,7 @@ def sbatch(indata):
             'module load bioinfo-tools blast/2.2.28+ biopython'+'\n'+
             'module unload python/2.6.6'+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' classifymeta -path '+config.path+'\n'
+            sys.argv[0]+' classifymeta -path '+config.path+' -p '+str(indata.cpus)+'\n'
         )
         f.close()
     
