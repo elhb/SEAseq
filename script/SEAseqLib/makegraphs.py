@@ -28,6 +28,7 @@ def makegraphs(indata):
 	tmp = {}
 	incomplete = False
 	for cluster in data:
+	    if not cluster: continue
 	    cluster = cluster.split('\t')
 	    cid = cluster[0]
 	    #assert len(cluster) == len(header), '\nhead='+ str(header) +'\nclust='+ str(cluster)+'\n'
@@ -50,8 +51,7 @@ def makegraphs(indata):
     xscale = [int(i) for i in indata.xscale.split('-')]
     yscale = [int(i) for i in indata.yscale.split('-')]
     
-    #['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support']
-    
+    #['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support','monoclonal for all defined amplicons']    
    
     if not indata.highres:
 	step = xscale[1]/200
@@ -70,7 +70,7 @@ def makegraphs(indata):
     graph_info = {'good':{},'total':{}}
     for x_current in x_range:
 	for rc_type in ['total','good']:
-	    graph_info[rc_type][ x_current ] = {'all':0,'16s':0,'its':0,'both':0,'None':0,'any':0,'16s_mono':0,'its_mono':0,'both_mono':0,'both_16s_mono':0,'both_its_mono':0,'any_mono':0}
+	    graph_info[rc_type][ x_current ] = {'totalClusterCount':0,'16s':0,'its':0,'both':0,'undefinedClusterCount':0,'definedClusterCount':0,'16s_mono':0,'its_mono':0,'both_mono':0,'both_16s_mono':0,'both_its_mono':0,'monoForAllDefinedAmps':0}
 
     config.logfile.write('Counting clusters ... \n')
     if os.path.exists(config.path+'/meta.statstable'):
@@ -82,35 +82,41 @@ def makegraphs(indata):
 		    [rc_type, comp_value] = tmp
 		
 		    if comp_value > x_current:
-			graph_info[rc_type][ x_current ]['all'] += 1
+			graph_info[rc_type][ x_current ]['totalClusterCount'] += 1
     
-			if data[cid]['16s'] and data[cid]['its']:
-			    graph_info[rc_type][ x_current ]['both'] += 1
-			    graph_info[rc_type][ x_current ]['any'] += 1
-			    if data[cid]['16s monoclonal'] and data[cid]['its monoclonal']:
-				graph_info[rc_type][ x_current ]['both_mono'] += 1
-				graph_info[rc_type][ x_current ]['any_mono'] += 1
-			    if not data[cid]['16s monoclonal'] and data[cid]['its monoclonal']:
-				graph_info[rc_type][ x_current ]['both_its_mono'] += 1
-			    if data[cid]['16s monoclonal'] and not data[cid]['its monoclonal']:
-				graph_info[rc_type][ x_current ]['both_16s_mono'] += 1
+			if data[cid]['number of consensus types with good support']:
+			    graph_info[rc_type][ x_current ]['definedClusterCount'] += 1
     
-			elif data[cid]['16s'] and not data[cid]['its']:
-			    graph_info[rc_type][ x_current ]['16s'] += 1
-			    graph_info[rc_type][ x_current ]['any'] += 1
-			    if data[cid]['16s monoclonal']:
-				graph_info[rc_type][ x_current ]['16s_mono'] += 1
-				graph_info[rc_type][ x_current ]['any_mono'] += 1
-			
-			elif data[cid]['its'] and not data[cid]['16s']:
-			    graph_info[rc_type][ x_current ]['its'] += 1
-			    graph_info[rc_type][ x_current ]['any'] += 1
-			    if data[cid]['its monoclonal']:
-				graph_info[rc_type][ x_current ]['its_mono'] += 1
-				graph_info[rc_type][ x_current ]['any_mono'] += 1
+			if data[cid]['monoclonal for all defined amplicons']:
+			    graph_info[rc_type][ x_current ]['monoForAllDefinedAmps'] += 1
+    
+			#if data[cid]['16s'] and data[cid]['its']:
+			#    graph_info[rc_type][ x_current ]['both'] += 1
+			#    graph_info[rc_type][ x_current ]['definedClusterCount'] += 1
+			#    if data[cid]['16s monoclonal'] and data[cid]['its monoclonal']:
+			#	graph_info[rc_type][ x_current ]['both_mono'] += 1
+			#	graph_info[rc_type][ x_current ]['monoForAllDefinedAmps'] += 1
+			#    if not data[cid]['16s monoclonal'] and data[cid]['its monoclonal']:
+			#	graph_info[rc_type][ x_current ]['both_its_mono'] += 1
+			#    if data[cid]['16s monoclonal'] and not data[cid]['its monoclonal']:
+			#	graph_info[rc_type][ x_current ]['both_16s_mono'] += 1
+			# 
+			#elif data[cid]['16s'] and not data[cid]['its']:
+			#    graph_info[rc_type][ x_current ]['16s'] += 1
+			#    graph_info[rc_type][ x_current ]['definedClusterCount'] += 1
+			#    if data[cid]['16s monoclonal']:
+			#	graph_info[rc_type][ x_current ]['16s_mono'] += 1
+			#	graph_info[rc_type][ x_current ]['monoForAllDefinedAmps'] += 1
+			#
+			#elif data[cid]['its'] and not data[cid]['16s']:
+			#    graph_info[rc_type][ x_current ]['its'] += 1
+			#    graph_info[rc_type][ x_current ]['definedClusterCount'] += 1
+			#    if data[cid]['its monoclonal']:
+			#	graph_info[rc_type][ x_current ]['its_mono'] += 1
+			#	graph_info[rc_type][ x_current ]['monoForAllDefinedAmps'] += 1
 			    
-			elif not data[cid]['16s'] and not data[cid]['its']:
-			    graph_info[rc_type][ x_current ]['None'] += 1
+			elif not data[cid]['number of consensus types with good support']:
+			    graph_info[rc_type][ x_current ]['undefinedClusterCount'] += 1
 			
 			else: print 'ERROR: this should not be possible'
 			
@@ -122,34 +128,19 @@ def makegraphs(indata):
 	    f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.values' ,'w' )
 	    f.write(
 		'x'			+'\t'+ 
-		'all'		+'\t'+ 
-		'None'		+'\t'+ 
-		'16s'		+'\t'+ 
-		'16s_mono'		+'\t'+ 
-		'16s_mono %'	+'\t'+ 
-		'its'		+'\t'+ 
-		'its_mono'		+'\t'+ 
-		'its_mono %'	+'\t'+ 
-		'both'		+'\t'+ 
-		'both_mono'		+'\t'+ 
-		'both_mono %'	+'\t'+ 
-		'both'		+'\t'+ 
-		'both_16s_mono'	+'\t'+ 
-		'both_16s_mono %'	+'\t'+ 
-		'both'		+'\t'+ 
-		'both_its_mono'	+'\t'+ 
-		'both_its_mono %'	+'\t'+
-		'any'		+'\t'+ 
-		'any_mono'		+'\t'+ 
-		'any_mono %'	+'\n'
+		'totalClusterCount'		+'\t'+ 
+		'undefinedClusterCount'		+'\t'+ 
+		'definedClusterCount'		+'\t'+ 
+		'monoForAllDefinedAmps'		+'\t'+ 
+		'monoForAllDefinedAmps %'	+'\n'
 	    )
 	    f.close()
 	for x_current in x_range:
 	    for rc_type in ['total','good']:
 		f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+'.values' ,'a' )
-		f.write(str(x_current) +'\t'+     str(graph_info[rc_type][ x_current ]['all'])	+'\t'+	str(graph_info[rc_type][ x_current ]['None'])	+'\t'	)
+		f.write(str(x_current) +'\t'+     str(graph_info[rc_type][ x_current ]['totalClusterCount'])	+'\t'+	str(graph_info[rc_type][ x_current ]['undefinedClusterCount'])	+'\t'	)
     
-		for [total_id,count_id] in [['16s','16s_mono'],['its','its_mono'],['both','both_mono'],['both','both_16s_mono'],['both','both_its_mono'],['any','any_mono']]:
+		for [total_id,count_id] in [['definedClusterCount','monoForAllDefinedAmps']]:
 		    total  = graph_info[rc_type][ x_current ][total_id]
 		    count = graph_info[rc_type][ x_current ][count_id]
 		    
@@ -164,25 +155,19 @@ def makegraphs(indata):
 		f.write('\t'+str(x_current)+'\n')
 		f.close()
 
-    if 'a' in indata.graphs and os.path.exists(config.path+'/meta.statstable'):
+    if ('c' in indata.graphs and os.path.exists(config.path+'/meta.statstable')) or os.path.exists(config.path+'/meta.statstable'):
 	config.logfile.write('Preparing variables for plotting ... \n')
 	for rc_type in ['total','good']:
 
 	    temp_x=graph_info[rc_type].keys()
 	    temp_x.sort()
-	    x =[];y1=[];y2=[];y3=[];y4=[];y5=[];y6=[];y7=[];y8=[];y9=[];y10=[]
+	    x =[];y1=[];y2=[];y3=[];y4=[];
 	    for i in temp_x:
 		    x.append(i)
-		    y1.append(graph_info[rc_type][i]['all'])
-		    y2.append(graph_info[rc_type][i]['both'])
-		    y3.append(graph_info[rc_type][i]['16s'])
-		    y4.append(graph_info[rc_type][i]['its'])
-		    y5.append(graph_info[rc_type][i]['None'])
-		    y6.append(graph_info[rc_type][i]['16s_mono'])
-		    y7.append(graph_info[rc_type][i]['its_mono'])
-		    y8.append(graph_info[rc_type][i]['both_mono'])
-		    y9.append(graph_info[rc_type][i]['both_its_mono'])
-		    y10.append(graph_info[rc_type][i]['both_16s_mono'])
+		    y1.append(graph_info[rc_type][i]['totalClusterCount'])
+		    y2.append(graph_info[rc_type][i]['definedClusterCount'])
+		    y3.append(graph_info[rc_type][i]['undefinedClusterCount'])
+		    y4.append(graph_info[rc_type][i]['monoForAllDefinedAmps'])
 
 	    config.logfile.write('Creating graphics ... \n')
 	    import numpy as np
@@ -193,134 +178,7 @@ def makegraphs(indata):
 	    ax = fig.add_subplot(111)
 	    if incomplete: ax.set_title('WARNING: incomplete dataset! '+ indata.sample+' ' +config.path)
 	    else : ax.set_title(indata.sample+' ' +config.path)
-	    ax.plot(x, y6, '--g', label = 'Percentage monoclonal 16S cluster')
-	    ax.plot(x, y7, '--y', label = 'Percentage monoclonal ITS cluster')
-	    ax.plot(x, y8, '--b', label = 'Perc. both mono. both in cluster')
-	    ax.plot(x, y9, '--r', label = 'Perc. ITS mono. both in cluster')
-	    ax.plot(x, y10, '--k', label = 'Perc. 16S mono. both in cluster')
-	    ax2 = ax.twinx()
-	    ax2.plot(x, y1, '-r', label = 'Total number of clusters')
-	    ax2.plot(x, y2, '-b', label = 'Number of 16S/ITS clusters')
-	    ax2.plot(x, y3, '-g', label = 'Number of 16S only clusters')
-	    ax2.plot(x, y4, '-y', label = 'Number of ITS only clusters')
-	    ax2.plot(x, y5, '-k', label = 'Number of undefined clusters')
-	    
-	    lines, labels   = ax.get_legend_handles_labels()
-	    lines2, labels2 = ax2.get_legend_handles_labels()
-	    ax2.legend(lines + lines2, labels + labels2, loc=7)
-	    #ax.legend(lines, labels, loc=7)
-
-	    ax.grid(b=True, which='both')
-	    ax.set_xlabel('Read pairs per Barcode Cluster ( '+rc_type+' reads )')
-	    ax.set_ylabel('Percentage Monoclonal')
-	    ax2.set_ylabel('Number of Clusters')
-	    
-	    ax.set_ylim(0,100)
-	    ax2.set_ylim(yscale[0],yscale[1])
-	    
-	    ax.set_xlim(xscale[0],xscale[1])
-	    ax2.set_xlim(xscale[0],xscale[1])
-
-	    ax.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/10))
-	    ax2.set_yticks(np.arange(yscale[0],yscale[1]+1,min(100,yscale[1]/10)))
-	    ax.set_yticks(np.arange(0,101,5))
-
-	    plt.savefig(config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+'.pdf')
-	    config.logfile.write('Created: '+config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+' (.pdf and .values)'+'.\n')
-	    plt.close()
-
-    if 'b' in indata.graphs and os.path.exists(config.path+'/meta.statstable'):
-	config.logfile.write('Preparing variables for plotting ... \n')
-	for cluster_type in ['its','16s','both']:
-
-	    temp_x=graph_info['total'].keys()
-	    temp_x.sort()
-	    
-	    x =[];y1=[];y2=[];y3=[];y4=[];y5=[];y6=[];y7=[];y8=[];
-
-	    for i in temp_x:
-		    x.append(i)
-		    y1.append(graph_info['good' ][i][cluster_type])
-		    y2.append(graph_info['total'][i][cluster_type])
-		    y3.append(graph_info['good' ][i][cluster_type+'_mono'])
-		    y4.append(graph_info['total'][i][cluster_type+'_mono'])
-		    if cluster_type == 'both':
-			y5.append(graph_info['good' ][i][cluster_type+'_its_mono'])
-			y6.append(graph_info['good' ][i][cluster_type+'_16s_mono'])
-			y7.append(graph_info['total'][i][cluster_type+'_its_mono'])
-			y8.append(graph_info['total'][i][cluster_type+'_16s_mono'])
-
-	    config.logfile.write('Creating graphics ... \n')
-	    import numpy as np
-	    import matplotlib.pyplot as plt
-	    from matplotlib import rc
-		    
-	    fig = plt.figure(figsize=(20, 15), dpi=100)
-	    ax = fig.add_subplot(111)
-	    
-	    if incomplete:	ax.set_title('WARNING: incomplete dataset! '+'Clusters with '+cluster_type+' consensus sequence(s)'+'. '+indata.sample+' '+config.path)
-	    else:		ax.set_title(				     'Clusters with '+cluster_type+' consensus sequence(s)'+'. '+indata.sample+' '+config.path)
-
-	    ax.plot(x, y3, '--b', label =     'Perc. mono. good pairs')
-	    ax.plot(x, y4, '--r', label =     'Perc. mono. totalpairs')
-	    if cluster_type == 'both':
-		ax.plot(x, y5, '--g', label = '% mono.its good pairs')
-		ax.plot(x, y7, '--m', label = '% mono.its totalpairs')
-		ax.plot(x, y6, '--c', label = '% mono.16s good pairs')
-		ax.plot(x, y8, '--y', label = '% mono.16s totalpairs')
-
-	    ax2 = ax.twinx()
-	    ax2.plot(x, y1, '-b', label =     'Number of good pairs')
-	    ax2.plot(x, y2, '-r', label =     'Number of totalpairs')
-	    
-	    lines, labels   = ax.get_legend_handles_labels()
-	    lines2, labels2 = ax2.get_legend_handles_labels()
-	    ax2.legend(lines + lines2, labels + labels2, loc=7)
-	    #ax.legend(lines, labels, loc=7)
-
-	    ax.grid(b=True, which='both')
-	    ax.set_xlabel('Read pairs per Barcode Cluster')
-	    ax.set_ylabel('Percentage Monoclonal')
-	    ax2.set_ylabel('Number of Clusters')
-	    
-	    ax.set_ylim(0,100)
-	    ax2.set_ylim(yscale[0],yscale[1])
-	    
-	    ax.set_xlim(xscale[0],xscale[1])
-	    ax2.set_xlim(xscale[0],xscale[1])
-
-	    ax.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/10))
-	    ax2.set_yticks(np.arange(yscale[0],yscale[1]+1,min(100,yscale[1]/10)))
-	    ax.set_yticks(np.arange(0,101,5))
-
-	    plt.savefig(                     config.path+'/graphs/'+cluster_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+'.pdf')
-	    config.logfile.write('Created: '+config.path+'/graphs/'+cluster_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+' (.pdf and .values)'+'.\n')
-	    plt.close()
-
-    if 'c' in indata.graphs and os.path.exists(config.path+'/meta.statstable'):
-	config.logfile.write('Preparing variables for plotting ... \n')
-	for rc_type in ['total','good']:
-
-	    temp_x=graph_info[rc_type].keys()
-	    temp_x.sort()
-	    x =[];y1=[];y2=[];y3=[];y4=[];y5=[];y6=[];y7=[];y8=[];y9=[];y10=[]
-	    for i in temp_x:
-		    x.append(i)
-		    y1.append(graph_info[rc_type][i]['all'])
-		    y2.append(graph_info[rc_type][i]['any'])
-		    y3.append(graph_info[rc_type][i]['None'])
-		    y4.append(graph_info[rc_type][i]['any_mono'])
-
-	    config.logfile.write('Creating graphics ... \n')
-	    import numpy as np
-	    import matplotlib.pyplot as plt
-	    from matplotlib import rc
-		    
-	    fig = plt.figure(figsize=(20, 15), dpi=100)
-	    ax = fig.add_subplot(111)
-	    if incomplete: ax.set_title('WARNING: incomplete dataset! '+ indata.sample+' ' +config.path)
-	    else : ax.set_title(indata.sample+' ' +config.path)
-	    ax.plot(x, y4, '--b', label = 'Perc. mono. for defined amplicons')
+	    ax.plot(x, y4, '--b', label = 'Perc. mono. for all defined amplicons')
 	    ax2 = ax.twinx()
 	    ax2.plot(x, y1, '-r', label = 'Total number of clusters')
 	    ax2.plot(x, y2, '-b', label = 'Number of defined clusters')
@@ -358,11 +216,17 @@ def makegraphs(indata):
 	
 	temp_x=reads_in_clusters.keys()
 	temp_x.sort()
-	y=[];x =[]
+	y=[];x =[];y2=[];
 	for i in x_range:
 		x.append(i)
-		try: y.append(reads_in_clusters[i])
-		except KeyError: y.append(0)
+		cumulative = []
+		for i2 in range(i,max(reads_in_clusters.keys()),1):
+		    try: cumulative.append( reads_in_clusters[i2] )
+		    except KeyError: pass
+		y.append( sum(cumulative) )
+		try: y2.append(reads_in_clusters[i])
+		except KeyError: y2.append(0)
+
 	x=x
 	y=y
 
@@ -373,7 +237,8 @@ def makegraphs(indata):
 	fig = plt.figure(figsize=(20, 15), dpi=100)
 	ax = fig.add_subplot(111)
 	ax.set_title(indata.sample+' Reads Pairs per Barcode Cluster (Raw reads directly after clustering). ' +config.path)
-	ax.plot(x, y, '-b', label = 'Total number of clusters')
+	ax.plot(x, y, '-b', label = 'Cumulative Cluster Count')
+	ax.plot(x, y2, '-r', label = 'Non-cumulative Cluster Count')
 	
 	lines, labels   = ax.get_legend_handles_labels()
 	ax.legend(lines, labels, loc=7)

@@ -12,7 +12,7 @@ class RunStatCounter(object):
         self.lowreadclusters = 0
         
         self.statstable = open(config.path+'/meta.statstable','w',1)
-        self.statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support']
+        self.statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support','monoclonal for all defined amplicons']
         #for amptype in ['ecoli','myco','lambda','m13']: statsheader.append(amptype+' reads');statsheader.append(amptype+' monoclonal');statsheader.append(amptype)
         self.statstable.write('\t'.join(self.statsheader))
 
@@ -50,6 +50,7 @@ class RunStatCounter(object):
         for ampname, amplicon in cluster.definedamplicons.iteritems():
             if amplicon.monoclonal: monoAmps[amplicon.type] = amplicon.monoclonal
         
+        monoForAllDefined = False
         if not monoAmps.keys():
             self.ampliconcombinations[ampliconcombo]['poly'] += 1
         else:
@@ -63,6 +64,7 @@ class RunStatCounter(object):
             if monoCombo == ampliconcombo:
                 #self.ampliconcombinations[ampliconcombo]['monos']['All'] += 1
                 self.definedclustersMono += 1
+                monoForAllDefined = True
     
         #print to stats info file
         #NOTE: ONLY for 16s its stuff!!!
@@ -86,6 +88,7 @@ class RunStatCounter(object):
         for name, primerpair in self.config.primerpairs.iteritems(): pass
         self.statstable.write(str(cluster.ampliconcount                          )+'\t')#'number of consensus types'
         self.statstable.write(str(cluster.definedampliconcount                   )+'\n')#'number of consensus types with good support'
+        self.statstable.write(str(monoForAllDefined                              )+'\n')#'cluster is mono for all defined amplicons'
 
     
     def createsummary(self, config):
