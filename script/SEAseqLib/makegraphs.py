@@ -17,32 +17,34 @@ def makegraphs(indata):
     if indata.graphs == 'all': indata.graphs = 'abcdefghijklmnopqrstuvxyz';
     indata.graphs = list(indata.graphs)
     
-    config.logfile.write('Loading data ... \n')
-    f = open(config.path+'/meta.statstable','r')
-    data = f.read()
-    f.close()
-    header = data.split('\n')[0].split('\t')
-    data = data.split('\n')[1:]
-    tmp = {}
-    incomplete = False
-    for cluster in data:
-	cluster = cluster.split('\t')
-	cid = cluster[0]
-	#assert len(cluster) == len(header), '\nhead='+ str(header) +'\nclust='+ str(cluster)+'\n'
-	if len(cluster) == len(header): tmp[cid] = {}
-	else:
-	    incomplete = True
-	    print 'Warning errounus row in stat table.'
-	    config.logfile.write('Warning errounus row in stat table, you are creating graphs for a incomplete dataset, SEAseq meta is probably still running.\n')
-	    continue
-	for i in xrange(len(header)):
-	    name = header[i]
-	    value = cluster[i]
-	    tmp[cid][name] = eval(value)
-	    #try: tmp[cid][name] = eval(value)
-	    #except TypeError: print cid,name,value
-    data = tmp
-    config.logfile.write('Loaded.\n')
+    #read indata file
+    if os.path.exists(config.path+'/meta.statstable'):
+	config.logfile.write('Loading data ... \n')
+	f = open(config.path+'/meta.statstable','r')
+	data = f.read()
+	f.close()
+	header = data.split('\n')[0].split('\t')
+	data = data.split('\n')[1:]
+	tmp = {}
+	incomplete = False
+	for cluster in data:
+	    cluster = cluster.split('\t')
+	    cid = cluster[0]
+	    #assert len(cluster) == len(header), '\nhead='+ str(header) +'\nclust='+ str(cluster)+'\n'
+	    if len(cluster) == len(header): tmp[cid] = {}
+	    else:
+		incomplete = True
+		print 'Warning errounus row in stat table.'
+		config.logfile.write('Warning errounus row in stat table, you are creating graphs for a incomplete dataset, SEAseq meta is probably still running.\n')
+		continue
+	    for i in xrange(len(header)):
+		name = header[i]
+		value = cluster[i]
+		tmp[cid][name] = eval(value)
+		#try: tmp[cid][name] = eval(value)
+		#except TypeError: print cid,name,value
+	data = tmp
+	config.logfile.write('Loaded.\n')
 
     config.logfile.write('Setting scale and update intervall ... \n')
     xscale = [int(i) for i in indata.xscale.split('-')]
@@ -63,7 +65,7 @@ def makegraphs(indata):
 	config.logfile.write('Highres: updates y every x value (step = 1).\n')
 
 
-    config.logfile.write('Using a total of '+str(len(data))+' clusters.\n')
+    if os.path.exists(config.path+'/meta.statstable'): config.logfile.write('Using a total of '+str(len(data))+' clusters.\n')
     
     graph_info = {'good':{},'total':{}}
     for x_current in x_range:
@@ -71,97 +73,98 @@ def makegraphs(indata):
 	    graph_info[rc_type][ x_current ] = {'all':0,'16s':0,'its':0,'both':0,'None':0,'any':0,'16s_mono':0,'its_mono':0,'both_mono':0,'both_16s_mono':0,'both_its_mono':0,'any_mono':0}
 
     config.logfile.write('Counting clusters ... \n')
-    for cid in data:
-	for x_current in x_range:
-	    breaker = []
-	    compare_pairs = [	['total',data[cid]['number of reads in total']],    ['good',data[cid]['number of reads in total']-data[cid]['number of adaper reads']-data[cid]['number of strange primers']]    ]
-	    for tmp in compare_pairs:
-		[rc_type, comp_value] = tmp
-	    
-		if comp_value > x_current:
-		    graph_info[rc_type][ x_current ]['all'] += 1
-
-		    if data[cid]['16s'] and data[cid]['its']:
-			graph_info[rc_type][ x_current ]['both'] += 1
-			graph_info[rc_type][ x_current ]['any'] += 1
-			if data[cid]['16s monoclonal'] and data[cid]['its monoclonal']:
-			    graph_info[rc_type][ x_current ]['both_mono'] += 1
-			    graph_info[rc_type][ x_current ]['any_mono'] += 1
-			if not data[cid]['16s monoclonal'] and data[cid]['its monoclonal']:
-			    graph_info[rc_type][ x_current ]['both_its_mono'] += 1
-			if data[cid]['16s monoclonal'] and not data[cid]['its monoclonal']:
-			    graph_info[rc_type][ x_current ]['both_16s_mono'] += 1
-
-		    elif data[cid]['16s'] and not data[cid]['its']:
-			graph_info[rc_type][ x_current ]['16s'] += 1
-			graph_info[rc_type][ x_current ]['any'] += 1
-			if data[cid]['16s monoclonal']:
-			    graph_info[rc_type][ x_current ]['16s_mono'] += 1
-			    graph_info[rc_type][ x_current ]['any_mono'] += 1
-		    
-		    elif data[cid]['its'] and not data[cid]['16s']:
-			graph_info[rc_type][ x_current ]['its'] += 1
-			graph_info[rc_type][ x_current ]['any'] += 1
-			if data[cid]['its monoclonal']:
-			    graph_info[rc_type][ x_current ]['its_mono'] += 1
-			    graph_info[rc_type][ x_current ]['any_mono'] += 1
-			
-		    elif not data[cid]['16s'] and not data[cid]['its']:
-			graph_info[rc_type][ x_current ]['None'] += 1
-		    
-		    else: print 'ERROR: this should not be possible'
-		    
-		else: breaker.append(True)
-	    if len(breaker) == len(compare_pairs): break
-
-    config.logfile.write('Calculating percentages ... \n')
-    for rc_type in ['total','good']:
-	f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.values' ,'w' )
-	f.write(
-	    'x'			+'\t'+ 
-	    'all'		+'\t'+ 
-	    'None'		+'\t'+ 
-	    '16s'		+'\t'+ 
-	    '16s_mono'		+'\t'+ 
-	    '16s_mono %'	+'\t'+ 
-	    'its'		+'\t'+ 
-	    'its_mono'		+'\t'+ 
-	    'its_mono %'	+'\t'+ 
-	    'both'		+'\t'+ 
-	    'both_mono'		+'\t'+ 
-	    'both_mono %'	+'\t'+ 
-	    'both'		+'\t'+ 
-	    'both_16s_mono'	+'\t'+ 
-	    'both_16s_mono %'	+'\t'+ 
-	    'both'		+'\t'+ 
-	    'both_its_mono'	+'\t'+ 
-	    'both_its_mono %'	+'\t'+
-	    'any'		+'\t'+ 
-	    'any_mono'		+'\t'+ 
-	    'any_mono %'	+'\n'
-	)
-	f.close()
-    for x_current in x_range:
-	for rc_type in ['total','good']:
-	    f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+'.values' ,'a' )
-	    f.write(str(x_current) +'\t'+     str(graph_info[rc_type][ x_current ]['all'])	+'\t'+	str(graph_info[rc_type][ x_current ]['None'])	+'\t'	)
-
-	    for [total_id,count_id] in [['16s','16s_mono'],['its','its_mono'],['both','both_mono'],['both','both_16s_mono'],['both','both_its_mono'],['any','any_mono']]:
-		total  = graph_info[rc_type][ x_current ][total_id]
-		count = graph_info[rc_type][ x_current ][count_id]
+    if os.path.exists(config.path+'/meta.statstable'):
+	for cid in data:
+	    for x_current in x_range:
+		breaker = []
+		compare_pairs = [	['total',data[cid]['number of reads in total']],    ['good',data[cid]['number of reads in total']-data[cid]['number of adaper reads']-data[cid]['number of strange primers']]    ]
+		for tmp in compare_pairs:
+		    [rc_type, comp_value] = tmp
 		
-		f.write(	str(total)+'\t'+	str(count)+'\t'    )
-		if total:
-		    tmp_percentage = round(100*float(count)/float(total),2)
-		    graph_info[rc_type][ x_current ][count_id] = tmp_percentage
-		    f.write(str(tmp_percentage)+'\t')
-		else:
-		    graph_info[rc_type][ x_current ][count_id] = 0.0
-		    f.write('0.0\t')
-	    f.write('\t'+str(x_current)+'\n')
-	    f.close()
+		    if comp_value > x_current:
+			graph_info[rc_type][ x_current ]['all'] += 1
+    
+			if data[cid]['16s'] and data[cid]['its']:
+			    graph_info[rc_type][ x_current ]['both'] += 1
+			    graph_info[rc_type][ x_current ]['any'] += 1
+			    if data[cid]['16s monoclonal'] and data[cid]['its monoclonal']:
+				graph_info[rc_type][ x_current ]['both_mono'] += 1
+				graph_info[rc_type][ x_current ]['any_mono'] += 1
+			    if not data[cid]['16s monoclonal'] and data[cid]['its monoclonal']:
+				graph_info[rc_type][ x_current ]['both_its_mono'] += 1
+			    if data[cid]['16s monoclonal'] and not data[cid]['its monoclonal']:
+				graph_info[rc_type][ x_current ]['both_16s_mono'] += 1
+    
+			elif data[cid]['16s'] and not data[cid]['its']:
+			    graph_info[rc_type][ x_current ]['16s'] += 1
+			    graph_info[rc_type][ x_current ]['any'] += 1
+			    if data[cid]['16s monoclonal']:
+				graph_info[rc_type][ x_current ]['16s_mono'] += 1
+				graph_info[rc_type][ x_current ]['any_mono'] += 1
+			
+			elif data[cid]['its'] and not data[cid]['16s']:
+			    graph_info[rc_type][ x_current ]['its'] += 1
+			    graph_info[rc_type][ x_current ]['any'] += 1
+			    if data[cid]['its monoclonal']:
+				graph_info[rc_type][ x_current ]['its_mono'] += 1
+				graph_info[rc_type][ x_current ]['any_mono'] += 1
+			    
+			elif not data[cid]['16s'] and not data[cid]['its']:
+			    graph_info[rc_type][ x_current ]['None'] += 1
+			
+			else: print 'ERROR: this should not be possible'
+			
+		    else: breaker.append(True)
+		if len(breaker) == len(compare_pairs): break
 
-    if 'a' in indata.graphs:
+	config.logfile.write('Calculating percentages ... \n')
+	for rc_type in ['total','good']:
+	    f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.values' ,'w' )
+	    f.write(
+		'x'			+'\t'+ 
+		'all'		+'\t'+ 
+		'None'		+'\t'+ 
+		'16s'		+'\t'+ 
+		'16s_mono'		+'\t'+ 
+		'16s_mono %'	+'\t'+ 
+		'its'		+'\t'+ 
+		'its_mono'		+'\t'+ 
+		'its_mono %'	+'\t'+ 
+		'both'		+'\t'+ 
+		'both_mono'		+'\t'+ 
+		'both_mono %'	+'\t'+ 
+		'both'		+'\t'+ 
+		'both_16s_mono'	+'\t'+ 
+		'both_16s_mono %'	+'\t'+ 
+		'both'		+'\t'+ 
+		'both_its_mono'	+'\t'+ 
+		'both_its_mono %'	+'\t'+
+		'any'		+'\t'+ 
+		'any_mono'		+'\t'+ 
+		'any_mono %'	+'\n'
+	    )
+	    f.close()
+	for x_current in x_range:
+	    for rc_type in ['total','good']:
+		f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+'.values' ,'a' )
+		f.write(str(x_current) +'\t'+     str(graph_info[rc_type][ x_current ]['all'])	+'\t'+	str(graph_info[rc_type][ x_current ]['None'])	+'\t'	)
+    
+		for [total_id,count_id] in [['16s','16s_mono'],['its','its_mono'],['both','both_mono'],['both','both_16s_mono'],['both','both_its_mono'],['any','any_mono']]:
+		    total  = graph_info[rc_type][ x_current ][total_id]
+		    count = graph_info[rc_type][ x_current ][count_id]
+		    
+		    f.write(	str(total)+'\t'+	str(count)+'\t'    )
+		    if total:
+			tmp_percentage = round(100*float(count)/float(total),2)
+			graph_info[rc_type][ x_current ][count_id] = tmp_percentage
+			f.write(str(tmp_percentage)+'\t')
+		    else:
+			graph_info[rc_type][ x_current ][count_id] = 0.0
+			f.write('0.0\t')
+		f.write('\t'+str(x_current)+'\n')
+		f.close()
+
+    if 'a' in indata.graphs and os.path.exists(config.path+'/meta.statstable'):
 	config.logfile.write('Preparing variables for plotting ... \n')
 	for rc_type in ['total','good']:
 
@@ -226,7 +229,7 @@ def makegraphs(indata):
 	    config.logfile.write('Created: '+config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+' (.pdf and .values)'+'.\n')
 	    plt.close()
 
-    if 'b' in indata.graphs:
+    if 'b' in indata.graphs and os.path.exists(config.path+'/meta.statstable'):
 	config.logfile.write('Preparing variables for plotting ... \n')
 	for cluster_type in ['its','16s','both']:
 
@@ -294,7 +297,7 @@ def makegraphs(indata):
 	    config.logfile.write('Created: '+config.path+'/graphs/'+cluster_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+' (.pdf and .values)'+'.\n')
 	    plt.close()
 
-    if 'c' in indata.graphs:
+    if 'c' in indata.graphs and os.path.exists(config.path+'/meta.statstable'):
 	config.logfile.write('Preparing variables for plotting ... \n')
 	for rc_type in ['total','good']:
 
@@ -346,6 +349,48 @@ def makegraphs(indata):
 	    plt.savefig(                     config.path+'/graphs/'+rc_type+'_pairs_per_barcode_with_amp.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+'.pdf')
 	    config.logfile.write('Created: '+config.path+'/graphs/'+rc_type+'_pairs_per_barcode_with_amp.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+' (.pdf and .values)'+'.\n')
 	    plt.close()
+
+    if os.path.exists(config.path+'/cluster.graphStats'):
+	
+	f = open(config.path+'/cluster.graphStats','r')
+	reads_in_clusters = eval(f.read())
+	f.close()
+	
+	temp_x=reads_in_clusters.keys()
+	temp_x.sort()
+	y=[];x =[]
+	for i in x_range:
+		x.append(i)
+		try: y.append(reads_in_clusters[i])
+		except KeyError: y.append(0)
+	x=x
+	y=y
+
+	import numpy as np
+	import matplotlib.pyplot as plt
+	from matplotlib import rc
+		
+	fig = plt.figure(figsize=(20, 15), dpi=100)
+	ax = fig.add_subplot(111)
+	ax.set_title(indata.sample+' Reads Pairs per Barcode Cluster (Raw reads directly after clustering). ' +config.path)
+	ax.plot(x, y, '-b', label = 'Total number of clusters')
+	
+	lines, labels   = ax.get_legend_handles_labels()
+	ax.legend(lines, labels, loc=7)
+
+	ax.grid(b=True, which='both')
+	ax.set_xlabel('Read pairs per Barcode Cluster (raw reads)')
+	ax.set_ylabel('Number of Clusters')
+	
+	ax.set_ylim(yscale[0],yscale[1])
+	ax.set_xlim(xscale[0],xscale[1])
+
+	ax.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/10))
+	ax.set_yticks(np.arange(yscale[0],yscale[1]+1,min(100,yscale[1]/10)))
+	plt.savefig(config.path+'/rawReadPairsPerBarcodeCluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.pdf')
+	plt.close()
+
+	config.logfile.write( 'done\n')
 
     config.logfile.write( 'done\n')
     return 0

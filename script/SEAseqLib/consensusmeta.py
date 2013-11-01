@@ -11,6 +11,12 @@ class RunStatCounter(object):
         self.junkclusters = 0
         self.lowreadclusters = 0
         
+        self.statstable = open(config.path+'/meta.statstable','w',1)
+        self.statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support']
+        #for amptype in ['ecoli','myco','lambda','m13']: statsheader.append(amptype+' reads');statsheader.append(amptype+' monoclonal');statsheader.append(amptype)
+        self.statstable.write('\t'.join(statsheader))
+
+        
     def addcluster(self, cluster):
         
         self.clustercount += 1
@@ -58,6 +64,30 @@ class RunStatCounter(object):
                 #self.ampliconcombinations[ampliconcombo]['monos']['All'] += 1
                 self.definedclustersMono += 1
     
+        #print to stats info file
+        #NOTE: ONLY for 16s its stuff!!!
+        #statstable.write( '\n')
+        self.statstable.write(str(cluster.id                                     )+'\t')#'clusterid'
+        self.statstable.write(str(cluster.readcount                              )+'\t')#'number of reads in total'
+        self.statstable.write(str(cluster.adaptercount                           )+'\t')#'number of adaper reads'
+        self.statstable.write(str(cluster.primererrors                           )+'\t')#'number of strange primers'
+        try:            self.statstable.write(str(cluster.amplicons['its'].readcount             )+'\t')#'its reads',
+        except KeyError:self.statstable.write(str(0                                              )+'\t')#'its reads',
+        try:            self.statstable.write(str(cluster.amplicons['16s'].readcount             )+'\t')#'16s reads',
+        except KeyError:self.statstable.write(str(0                                              )+'\t')#'16s reads',
+        try:            self.statstable.write(str(bool(cluster.amplicons['its'].allelecount)     )+'\t')#'its'
+        except KeyError:self.statstable.write(str(False                                          )+'\t')#'its'
+        try:            self.statstable.write(str(bool(cluster.amplicons['16s'].allelecount)     )+'\t')#'16s'
+        except KeyError:self.statstable.write(str(False                                          )+'\t')#'16s'
+        try:            self.statstable.write(str(cluster.amplicons['its'].monoclonal            )+'\t')#'its monoclonal'
+        except KeyError:self.statstable.write(str(False                                          )+'\t')#'its monoclonal'
+        try:            self.statstable.write(str(cluster.amplicons['16s'].monoclonal            )+'\t')#'16s monoclonal'
+        except KeyError:self.statstable.write(str(False                                          )+'\t')#'16s monoclonal'
+        for name, primerpair in self.config.primerpairs.iteritems(): pass
+        self.statstable.write(str(cluster.ampliconcount                          )+'\t')#'number of consensus types'
+        self.statstable.write(str(cluster.definedampliconcount                   )+'\n')#'number of consensus types with good support'
+
+    
     def createsummary(self, config):
         output = ''
         output += ('##### SUMMARY #####'+'\n')
@@ -80,6 +110,7 @@ class RunStatCounter(object):
             str(self.definedclusters)+' ('+str(round(100*float(self.definedclusters)/float(self.clustercount),2))+'%) has at least one defined amplicon out of these are '+str(self.definedclustersMono)+' ('+str(tmppercentage)+'%) monoclonal for the defined amplicon(s)\n'+
             '(ie there is only one consensus sequence of that type with more than '+str(config.minReadCountPerConsensus)+' reads and '+str(config.minReadPopSupportConsensus)+'% support, clustering done with '+str(config.minConsensusClusteringIdentity)+'% identity cutoff)\n'
             )
+        self.statstable.close()
         return output
 
 def meta(indata):
@@ -98,14 +129,15 @@ def meta(indata):
     config.load()
     config.getreads2process()
     
-    # set primerpairs
-    from SEAseqLib.mainLibrary import PrimerPair
-    config.primerpairs = {}
-    for line in config.primerset:
-        if line[0] != "#":
-            line = line.rstrip().split('\t')
-            try:config.primerpairs[line[0]] = PrimerPair(line[1],line[2],line[3])
-            except IndexError: print line;print 'ERROR: Wrong number of columns in primerset file.'; sys.exit()
+    config.loadPrimers()
+    ## set primerpairs
+    #from SEAseqLib.mainLibrary import PrimerPair
+    #config.primerpairs = {}
+    #for line in config.primerset:
+    #    if line[0] != "#":
+    #        line = line.rstrip().split('\t')
+    #        try:config.primerpairs[line[0]] = PrimerPair(line[1],line[2],line[3])
+    #        except IndexError: print line;print 'ERROR: Wrong number of columns in primerset file.'; sys.exit()
     
     import multiprocessing as mp
     man = mp.Manager()
@@ -137,11 +169,6 @@ def meta(indata):
     progress = Progress(config.numberOfBarcodeClustersIdentified, logfile=config.logfile, unit='cluster',mem=True)
     counter = RunStatCounter(config)
     
-    statstable = open(config.path+'/meta.statstable','w',1)
-    statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support']
-    #for amptype in ['ecoli','myco','lambda','m13']: statsheader.append(amptype+' reads');statsheader.append(amptype+' monoclonal');statsheader.append(amptype)
-    statstable.write('\t'.join(statsheader))
-
     #compressing takes forever skip this and do later if needed
     #import gzip
     #clusterdump = gzip.open(config.path+'/meta.clusters.pickle.gz','wb',9)
@@ -160,38 +187,14 @@ def meta(indata):
             #cPickle.dump(cluster,clusterdump)
             clusterdump.write(picklestring)
 
-	    #print to stats info file
-            #NOTE: ONLY for 16s its stuff!!!
-	    statstable.write( '\n')
-            statstable.write(str(cluster.id                                     )+'\t')#'clusterid'
-            statstable.write(str(cluster.readcount                              )+'\t')#'number of reads in total'
-            statstable.write(str(cluster.adaptercount                           )+'\t')#'number of adaper reads'
-            statstable.write(str(cluster.primererrors                           )+'\t')#'number of strange primers'
-            try:            statstable.write(str(cluster.amplicons['its'].readcount             )+'\t')#'its reads',
-            except KeyError:statstable.write(str(0                                              )+'\t')#'its reads',
-            try:            statstable.write(str(cluster.amplicons['16s'].readcount             )+'\t')#'16s reads',
-            except KeyError:statstable.write(str(0                                              )+'\t')#'16s reads',
-            try:            statstable.write(str(bool(cluster.amplicons['its'].allelecount)     )+'\t')#'its'
-            except KeyError:statstable.write(str(False                                          )+'\t')#'its'
-            try:            statstable.write(str(bool(cluster.amplicons['16s'].allelecount)     )+'\t')#'16s'
-            except KeyError:statstable.write(str(False                                          )+'\t')#'16s'
-            try:            statstable.write(str(cluster.amplicons['its'].monoclonal            )+'\t')#'its monoclonal'
-            except KeyError:statstable.write(str(False                                          )+'\t')#'its monoclonal'
-            try:            statstable.write(str(cluster.amplicons['16s'].monoclonal            )+'\t')#'16s monoclonal'
-            except KeyError:statstable.write(str(False                                          )+'\t')#'16s monoclonal'
-            statstable.write(str(cluster.ampliconcount                          )+'\t')#'number of consensus types'
-            statstable.write(str(cluster.definedampliconcount                   )+'\n')#'number of consensus types with good support'
-
             # do the pivkling on subprocess process only print here ...
             counter.addcluster(cluster)
             config.outfile.write(output)
 
-	    
 	clusterdump.close()
         if indata.tempFileFolder:
             import shutil
             shutil.move(indata.tempFileFolder+'/SEAseqtemp/meta.clusters.pickle',config.path+'/meta.clusters.pickle')
-	statstable.close()
 
     reader.join()
     	

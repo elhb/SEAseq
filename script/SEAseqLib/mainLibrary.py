@@ -592,6 +592,17 @@ class Configuration():
 	self.config.close()
 	self.config = self.config.name
 
+    def loadPrimers(self, ):
+	# set primerpairs
+	#from SEAseqLib.mainLibrary import PrimerPair
+	self.logfile.write('Loading primer pairs from '+self.primerset.name+'.\n')
+	self.primerpairs = {}
+	for line in self.primerset:
+	    if line[0] != "#":
+		line = line.rstrip().split('\t')
+		try:self.primerpairs[line[0]] = PrimerPair(line[1],line[2],line[3])
+		except IndexError: print line;print 'ERROR: Wrong number of columns in primerset file.'; sys.exit()
+
 class sequence():
 	def __init__(self,header,seq,qual):
 		self.header = header.rstrip()
