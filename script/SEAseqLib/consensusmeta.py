@@ -14,7 +14,7 @@ class RunStatCounter(object):
         self.statstable = open(config.path+'/meta.statstable','w',1)
         self.statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support']
         #for amptype in ['ecoli','myco','lambda','m13']: statsheader.append(amptype+' reads');statsheader.append(amptype+' monoclonal');statsheader.append(amptype)
-        self.statstable.write('\t'.join(statsheader))
+        self.statstable.write('\t'.join(self.statsheader))
 
         
     def addcluster(self, cluster):
