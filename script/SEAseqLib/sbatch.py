@@ -27,16 +27,16 @@ def sbatch(indata):
                 f.write('#SBATCH -t 24:00:00'+'\n')
         else:
                 f.write('#SBATCH -t 1:00:00'+'\n')
-        f.write(
-            '#SBATCH -J clust_'+config.jobName+'_'+config.path+'\n'+
-            '#SBATCH -e '+config.absolutePath+'/sbatch.cluster.stderr.txt'+'\n'+
-            '#SBATCH -o '+config.absolutePath+'/sbatch.cluster.stdout.txt'+'\n'+
-            '#SBATCH --mail-type=All'+'\n'+
-            '#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n'+
-            'echo "$(date) Running on: $(hostname)"'+'\n'+
-            'cd '+os.getcwd()+'\n'+
-            'module load python/2.7'+'\n'+
-            sys.argv[0]+' clusterbarcodes -path '+config.path+' -p '+str(indata.cpus))
+        f.write(sys.argv[0]+' clusterbarcodes -path '+config.path+' -p '+str(indata.cpus))
+        f.write('#SBATCH -J clust_'+config.jobName+'_'+config.path+'\n')
+        f.write('#SBATCH -e '+config.absolutePath+'/sbatch.cluster.stderr.txt'+'\n')
+        f.write('#SBATCH -o '+config.absolutePath+'/sbatch.cluster.stdout.txt'+'\n')
+        f.write('#SBATCH --mail-type=All'+'\n')
+        f.write('#SBATCH --mail-user=erik.borgstrom@scilifelab.se'+'\n')
+        f.write('echo "$(date) Running on: $(hostname)"'+'\n')
+        f.write('cd '+os.getcwd()+'\n')
+        f.write('module load python/2.7'+'\n')
+        f.write(sys.argv[0]+' clusterbarcodes -path '+config.path+' -p '+str(indata.cpus))
         f.write('\n')
         f.close()
         

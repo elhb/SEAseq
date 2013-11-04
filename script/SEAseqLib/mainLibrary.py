@@ -530,6 +530,7 @@ class Configuration():
 		#if varName == 'trimmingRead2' :				self.trimmingRead2		= eval(varValue)
 	self.config.close()
 	if self.primerset: self.primerset = open(self.primerset,'r')
+	if type(self.jobName) == long: self.jobName = str(self.jobName)+'L'
 	self.config = self.config.name
 
     def openconnections(self, ):
