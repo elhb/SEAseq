@@ -14,8 +14,8 @@ def makegraphs(indata):
     # settings
     config.load()
 
-    if indata.graphs == 'all': indata.graphs = 'abcdefghijklmnopqrstuvxyz';
-    indata.graphs = list(indata.graphs)
+#    if indata.graphs == 'all': indata.graphs = 'abcdefghijklmnopqrstuvxyz';
+#    indata.graphs = list(indata.graphs)
     
     #read indata file
     if os.path.exists(config.path+'/meta.statstable'):
@@ -84,9 +84,12 @@ def makegraphs(indata):
 		    if comp_value > x_current:
 			graph_info[rc_type][ x_current ]['totalClusterCount'] += 1
     
-			if data[cid]['number of consensus types with good support']:
+			if data[cid]['number of consensus types with good support'] >= 1:
 			    graph_info[rc_type][ x_current ]['definedClusterCount'] += 1
-    
+			elif data[cid]['number of consensus types with good support'] == 0:
+			    graph_info[rc_type][ x_current ]['undefinedClusterCount'] += 1
+			else: print 'ERROR: this should not be possible'
+			
 			if data[cid]['monoclonal for all defined amplicons']:
 			    graph_info[rc_type][ x_current ]['monoForAllDefinedAmps'] += 1
     
@@ -114,48 +117,45 @@ def makegraphs(indata):
 			#    if data[cid]['its monoclonal']:
 			#	graph_info[rc_type][ x_current ]['its_mono'] += 1
 			#	graph_info[rc_type][ x_current ]['monoForAllDefinedAmps'] += 1
-			    
-			elif not data[cid]['number of consensus types with good support']:
-			    graph_info[rc_type][ x_current ]['undefinedClusterCount'] += 1
-			
-			else: print 'ERROR: this should not be possible'
+			    			
+
 			
 		    else: breaker.append(True)
 		if len(breaker) == len(compare_pairs): break
 
 	config.logfile.write('Calculating percentages ... \n')
-	for rc_type in ['total','good']:
-	    f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.values' ,'w' )
-	    f.write(
-		'x'			+'\t'+ 
-		'totalClusterCount'		+'\t'+ 
-		'undefinedClusterCount'		+'\t'+ 
-		'definedClusterCount'		+'\t'+ 
-		'monoForAllDefinedAmps'		+'\t'+ 
-		'monoForAllDefinedAmps %'	+'\n'
-	    )
-	    f.close()
+	#for rc_type in ['total','good']:
+	#    f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.values' ,'w' )
+	#    f.write(
+	#	'x'			+'\t'+ 
+	#	'totalClusterCount'		+'\t'+ 
+	#	'undefinedClusterCount'		+'\t'+ 
+	#	'definedClusterCount'		+'\t'+ 
+	#	'monoForAllDefinedAmps'		+'\t'+ 
+	#	'monoForAllDefinedAmps %'	+'\n'
+	#    )
+	#    f.close()
 	for x_current in x_range:
 	    for rc_type in ['total','good']:
-		f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+'.values' ,'a' )
-		f.write(str(x_current) +'\t'+     str(graph_info[rc_type][ x_current ]['totalClusterCount'])	+'\t'+	str(graph_info[rc_type][ x_current ]['undefinedClusterCount'])	+'\t'	)
+		#f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+config.jobName+'.values' ,'a' )
+		#f.write(str(x_current) +'\t'+     str(graph_info[rc_type][ x_current ]['totalClusterCount'])	+'\t'+	str(graph_info[rc_type][ x_current ]['undefinedClusterCount'])	+'\t'	)
     
 		for [total_id,count_id] in [['definedClusterCount','monoForAllDefinedAmps']]:
 		    total  = graph_info[rc_type][ x_current ][total_id]
 		    count = graph_info[rc_type][ x_current ][count_id]
 		    
-		    f.write(	str(total)+'\t'+	str(count)+'\t'    )
+		    #f.write(	str(total)+'\t'+	str(count)+'\t'    )
 		    if total:
 			tmp_percentage = round(100*float(count)/float(total),2)
 			graph_info[rc_type][ x_current ][count_id] = tmp_percentage
-			f.write(str(tmp_percentage)+'\t')
+			#f.write(str(tmp_percentage)+'\t')
 		    else:
 			graph_info[rc_type][ x_current ][count_id] = 0.0
-			f.write('0.0\t')
-		f.write('\t'+str(x_current)+'\n')
-		f.close()
+			#f.write('0.0\t')
+		#f.write('\t'+str(x_current)+'\n')
+		#f.close()
 
-    if ('c' in indata.graphs and os.path.exists(config.path+'/meta.statstable')) or os.path.exists(config.path+'/meta.statstable'):
+    if os.path.exists(config.path+'/meta.statstable'):
 	config.logfile.write('Preparing variables for plotting ... \n')
 	for rc_type in ['total','good']:
 
@@ -176,8 +176,8 @@ def makegraphs(indata):
 		    
 	    fig = plt.figure(figsize=(20, 15), dpi=100)
 	    ax = fig.add_subplot(111)
-	    if incomplete: ax.set_title('WARNING: incomplete dataset! '+ indata.sample+' ' +config.path)
-	    else : ax.set_title(indata.sample+' ' +config.path)
+	    if incomplete: ax.set_title('WARNING: incomplete dataset! '+ config.jobName+' ' +config.path)
+	    else : ax.set_title(config.jobName+' ' +config.path)
 	    ax.plot(x, y4, '--b', label = 'Perc. mono. for all defined amplicons')
 	    ax2 = ax.twinx()
 	    ax2.plot(x, y1, '-r', label = 'Total number of clusters')
@@ -204,8 +204,8 @@ def makegraphs(indata):
 	    ax2.set_yticks(np.arange(yscale[0],yscale[1]+1,min(100,yscale[1]/10)))
 	    ax.set_yticks(np.arange(0,101,5))
 
-	    plt.savefig(                     config.path+'/graphs/'+rc_type+'_pairs_per_barcode_with_amp.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+'.pdf')
-	    config.logfile.write('Created: '+config.path+'/graphs/'+rc_type+'_pairs_per_barcode_with_amp.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+indata.sample+' (.pdf and .values)'+'.\n')
+	    plt.savefig(                     config.path+'/graphs/'+rc_type+'_pairs_per_barcode_with_amp.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+config.jobName+'.pdf')
+	    config.logfile.write('Created: '+config.path+'/graphs/'+rc_type+'_pairs_per_barcode_with_amp.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+config.jobName+' (.pdf and .values)'+'.\n')
 	    plt.close()
 
     if os.path.exists(config.path+'/cluster.graphStats'):
@@ -236,7 +236,7 @@ def makegraphs(indata):
 		
 	fig = plt.figure(figsize=(20, 15), dpi=100)
 	ax = fig.add_subplot(111)
-	ax.set_title(indata.sample+' Reads Pairs per Barcode Cluster (Raw reads directly after clustering). ' +config.path)
+	ax.set_title(config.jobName+' Reads Pairs per Barcode Cluster (Raw reads directly after clustering). ' +config.path)
 	ax.plot(x, y, '-b', label = 'Cumulative Cluster Count')
 	ax.plot(x, y2, '-r', label = 'Non-cumulative Cluster Count')
 	

@@ -14,13 +14,13 @@ class RunStatCounter(object):
         self.statstable = open(config.path+'/meta.statstable','w',1)
         self.statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support','monoclonal for all defined amplicons']
         #for amptype in ['ecoli','myco','lambda','m13']: statsheader.append(amptype+' reads');statsheader.append(amptype+' monoclonal');statsheader.append(amptype)
-        self.statstable.write('\t'.join(self.statsheader))
+        self.statstable.write('\t'.join(self.statsheader)+'\n')
 
         
     def addcluster(self, cluster):
         
         self.clustercount += 1
-        
+        monoForAllDefined = None
         if cluster.lowread:
             self.lowreadclusters += 1
             return
@@ -29,42 +29,42 @@ class RunStatCounter(object):
             return
         if cluster.definedampliconcount < 1:
             self.undefinedclusters += 1
-            return
-        
-        self.definedclusters += 1
-        
-        # count combo of defined amplicons
-        ampliconnames = cluster.definedamplicons.keys()
-        ampliconnames.sort()
-        ampliconcombo = '/'.join(ampliconnames)        
-        try:
-            self.ampliconcombinations[ampliconcombo]['count'] += 1
-        except KeyError:
-            self.ampliconcombinations[ampliconcombo] = {'count':1}
-            #self.ampliconcombinations[ampliconcombo]['monos'] = {'All':0}
-            self.ampliconcombinations[ampliconcombo]['monos'] = {}
-            self.ampliconcombinations[ampliconcombo]['poly'] = 0
-        
-        # count combo of monoclonal amplicons
-        monoAmps = {}
-        for ampname, amplicon in cluster.definedamplicons.iteritems():
-            if amplicon.monoclonal: monoAmps[amplicon.type] = amplicon.monoclonal
-        
-        monoForAllDefined = False
-        if not monoAmps.keys():
-            self.ampliconcombinations[ampliconcombo]['poly'] += 1
+            #return
         else:
-            mononames = monoAmps.keys()
-            mononames.sort()
-            monoCombo = '/'.join(mononames)
+            self.definedclusters += 1
+            
+            # count combo of defined amplicons
+            ampliconnames = cluster.definedamplicons.keys()
+            ampliconnames.sort()
+            ampliconcombo = '/'.join(ampliconnames)        
             try:
-                self.ampliconcombinations[ampliconcombo]['monos'][monoCombo] += 1
+                self.ampliconcombinations[ampliconcombo]['count'] += 1
             except KeyError:
-                self.ampliconcombinations[ampliconcombo]['monos'][monoCombo] = 1
-            if monoCombo == ampliconcombo:
-                #self.ampliconcombinations[ampliconcombo]['monos']['All'] += 1
-                self.definedclustersMono += 1
-                monoForAllDefined = True
+                self.ampliconcombinations[ampliconcombo] = {'count':1}
+                #self.ampliconcombinations[ampliconcombo]['monos'] = {'All':0}
+                self.ampliconcombinations[ampliconcombo]['monos'] = {}
+                self.ampliconcombinations[ampliconcombo]['poly'] = 0
+            
+            # count combo of monoclonal amplicons
+            monoAmps = {}
+            for ampname, amplicon in cluster.definedamplicons.iteritems():
+                if amplicon.monoclonal: monoAmps[amplicon.type] = amplicon.monoclonal
+            
+            monoForAllDefined = False
+            if not monoAmps.keys():
+                self.ampliconcombinations[ampliconcombo]['poly'] += 1
+            else:
+                mononames = monoAmps.keys()
+                mononames.sort()
+                monoCombo = '/'.join(mononames)
+                try:
+                    self.ampliconcombinations[ampliconcombo]['monos'][monoCombo] += 1
+                except KeyError:
+                    self.ampliconcombinations[ampliconcombo]['monos'][monoCombo] = 1
+                if monoCombo == ampliconcombo:
+                    #self.ampliconcombinations[ampliconcombo]['monos']['All'] += 1
+                    self.definedclustersMono += 1
+                    monoForAllDefined = True
     
         #print to stats info file
         #NOTE: ONLY for 16s its stuff!!!
@@ -87,7 +87,7 @@ class RunStatCounter(object):
         except KeyError:self.statstable.write(str(False                                          )+'\t')#'16s monoclonal'
         for name, primerpair in self.config.primerpairs.iteritems(): pass
         self.statstable.write(str(cluster.ampliconcount                          )+'\t')#'number of consensus types'
-        self.statstable.write(str(cluster.definedampliconcount                   )+'\n')#'number of consensus types with good support'
+        self.statstable.write(str(cluster.definedampliconcount                   )+'\t')#'number of consensus types with good support'
         self.statstable.write(str(monoForAllDefined                              )+'\n')#'cluster is mono for all defined amplicons'
 
     
@@ -101,7 +101,7 @@ class RunStatCounter(object):
 
         for ampliconcombo, data in self.ampliconcombinations.iteritems():
             count = data['count']
-            output += (  str(count)+' ('+str(round(100*float(count)/float(self.clustercount),2))+'%) '+ ampliconcombo+' '+ 'whereof:'+'\n')
+            output += (  str(count)+' ('+str(round(100*float(count)/float(self.clustercount),2))+'% of total, '+str(round(100*float(count)/float(self.definedclusters),2))+'% of defined) '+ ampliconcombo+' '+ 'whereof:'+'\n')
             for monoCombo, count2 in data['monos'].iteritems():
                 output += (  '\t'+' '+str(count2)+' ('+str(round(100*float(count2)/float(count),2))+'%) '+'were monoclonal for'+' '+monoCombo+'\n')
             output += (  '\t'+' '+str(data['poly'])+' ('+str(round(100*float(data['poly'])/float(count),2))+'%) '+'were polyclonal for the defined amplicon(s)\n')

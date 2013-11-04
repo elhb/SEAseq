@@ -437,6 +437,7 @@ class Configuration():
 	self.minBlastCoverage	= None
 	self.shortTimeJobs	= None
 	self.jobName		= None
+	self.mostCommonToShow	= None
 
 	# for each run
 	self.cmd		= cmd
@@ -585,6 +586,7 @@ class Configuration():
 		'gidatabase'+				'\t'	+str(self.gidatabase)+		'\t'+	'# dictionary of gi id to organism name mappings'+	'\n'+
 		'minBlastIdentity'+			'\t'	+str(self.minBlastIdentity)+	'\t'+	'# minimum blast identity to consider the blast hit'+	'\n'+
 		'minBlastCoverage'+			'\t'	+str(self.minBlastCoverage)+	'\t'+	'# minimum alignment length coverage to consider the blast hit'+	'\n'+
+		'mostCommonToShow'+			'\t'	+str(self.mostCommonToShow)+	'\t'+	'# the number of most common genomes in hitlists for >1 defined all mono clusters'+	'\n'+
 		#''+			'\t'	+str(self)+		'\t'+	'# '+	'\n'+
 		'# A None value usually means that the variable is not yet set.\n'
 		)

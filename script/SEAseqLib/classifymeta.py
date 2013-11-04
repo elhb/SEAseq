@@ -400,11 +400,15 @@ def classifymeta(indata):
                     try: mostCommonOrganism[amplicon]['organisms'][organism]+=1
                     except KeyError:mostCommonOrganism[amplicon]['organisms'][organism]=1
         
-        mostCommonCountToShow = 10
+        mostCommonCountToShow = config.mostCommonToShow
         import operator
         for amplicon, info in mostCommonOrganism.iteritems():
             config.outfile.write( 'Amplicon '+amplicon+' had '+str(mostCommonOrganism[amplicon]['numberOfHitlists'])+' hitLists, the '+str(mostCommonCountToShow)+' most common organisms were:\n')
-            for organism, count in sorted(mostCommonOrganism[amplicon]['organisms'].iteritems(), key=operator.itemgetter(1))[::-1][:mostCommonCountToShow]:
+            if mostCommonCountToShow > len(mostCommonOrganism[amplicon]['organisms']):
+                tmpList = sorted(mostCommonOrganism[amplicon]['organisms'].iteritems(), key=operator.itemgetter(1))[::-1]
+            else:
+                tmpList = sorted(mostCommonOrganism[amplicon]['organisms'].iteritems(), key=operator.itemgetter(1))[::-1][:mostCommonCountToShow]
+            for organism, count in tmpList:
                 config.outfile.write('\t'+str(count) +'\t('+str(round(100*float(count)/float(mostCommonOrganism[amplicon]['numberOfHitlists']),2))+'%) of the hitlists had hits towards\t'+organism+ '.\n')
 
         

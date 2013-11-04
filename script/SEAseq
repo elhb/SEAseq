@@ -100,6 +100,7 @@ def getindata(cmd):
 	argparser.add_argument(	'-gidb','-gidatabase',				dest='gidatabase',			metavar='<FILE>',	type=str,	required=False,	default='/bubo/proj/b2011011/SEAseq/reference/NCBI_CONCAT/all.gi2organism.db',	help='database for gi number to organism name conversion (None = fetch online from ncbi)')
 	argparser.add_argument(	'-id','-minBlastIdentity',			dest='minBlastIdentity',		metavar='<int>',	type=float,	required=False,	default=99.0,	help='Identity cutoff for BLAST hits (default 97 percent).')
 	argparser.add_argument(	'-alenc','-minBlastCoverage',			dest='minBlastCoverage',		metavar='<int>',	type=float,	required=False,	default=95.0,	help='Alignment length cutoff for BLAST hits (default 95 percent).')
+	argparser.add_argument(	'-mcs','-mostCommonToShow',			dest='mostCommonToShow',		metavar='<int>',	type=int,	required=False,	default=10,	help='The number of most common BLast hits to show in the end of summary (default 10).')
 
     if cmd == 'sbatch':
 	argparser.add_argument('--send',	dest='send', 	action='store_true', 			required=False,	default=False,	help='Send sbatch scripts to job-queue.')
@@ -127,23 +128,23 @@ def getindata(cmd):
 	argparser.add_argument(	'-y',			dest='yscale',	metavar='N-N',				type=str,	required=False,	default='0-1000',help='y axis scale (default 0-1000)')
 	argparser.add_argument(	'-sample',		dest='sample',	metavar='str',				type=str,	required=False,	default='Sample',help='Sample name to put in header and filename')
 	argparser.add_argument('--highres',	dest='highres', 	action='store_true', 			required=False,	default=False,	help='Use all x points to get high res data.')
-	argparser.add_argument(	'-g',			dest='graphs',	metavar='N',				type=str,	required=False,	default='a',	help='"all" or str with graph signs (default a).\n\n'+
-				'Available graph signs:\n\n'+
-				'a --> x  = "Minimum number of read pairs per cluster"\n'+
-				'      y1-5  = "Number of barcode cluster" for Total, 16S, ITS, BOTH and None clusters\n'+
-				'      y6-10 = "Percentage monoclonality"  for 16S, ITS and BOTH clusters\n'+
-				'      Makes one graph for "good pairs" and one for "total read pairs" per cluster.\n\n'+
-				'b --> x  = "Minimum number of read pairs per cluster"\n'+
-				'      y1 = "Number of barcode cluster with consensus sequences of TYPE, total readpairs"\n'+
-				'      y2 = "Percentage barcode clusters monoclonal for TYPE, total readpairs"\n'+
-				'      y3 = "Number of barcode cluster with consensus sequences of TYPE, good readpairs"\n'+
-				'      y4 = "Percentage barcode clusters monoclonal for TYPE, good readpairs"\n'+
-				'      Makes one graph each for TYPE = ITS, 16S and BOTH.\n\n'+
-				'c --> x  = "Minimum number of read pairs per cluster"\n'+
-				'      y1-2 = "Number of barcode cluster" for Total and (16S, ITS or BOTH) clusters\n'+
-				'      y3   = "Percentage monoclonality" percentage of clusters where there are only one version (/sequence) of the defined amplicon(s)\n'+
-				'      Makes one graph for "good pairs" and one for "total read pairs" per cluster.\n\n'
-			       )
+	#argparser.add_argument(	'-g',			dest='graphs',	metavar='N',				type=str,	required=False,	default='a',	help='"all" or str with graph signs (default a).\n\n'+
+	#			'Available graph signs:\n\n'+
+	#			'a --> x  = "Minimum number of read pairs per cluster"\n'+
+	#			'      y1-5  = "Number of barcode cluster" for Total, 16S, ITS, BOTH and None clusters\n'+
+	#			'      y6-10 = "Percentage monoclonality"  for 16S, ITS and BOTH clusters\n'+
+	#			'      Makes one graph for "good pairs" and one for "total read pairs" per cluster.\n\n'+
+	#			'b --> x  = "Minimum number of read pairs per cluster"\n'+
+	#			'      y1 = "Number of barcode cluster with consensus sequences of TYPE, total readpairs"\n'+
+	#			'      y2 = "Percentage barcode clusters monoclonal for TYPE, total readpairs"\n'+
+	#			'      y3 = "Number of barcode cluster with consensus sequences of TYPE, good readpairs"\n'+
+	#			'      y4 = "Percentage barcode clusters monoclonal for TYPE, good readpairs"\n'+
+	#			'      Makes one graph each for TYPE = ITS, 16S and BOTH.\n\n'+
+	#			'c --> x  = "Minimum number of read pairs per cluster"\n'+
+	#			'      y1-2 = "Number of barcode cluster" for Total and (16S, ITS or BOTH) clusters\n'+
+	#			'      y3   = "Percentage monoclonality" percentage of clusters where there are only one version (/sequence) of the defined amplicon(s)\n'+
+	#			'      Makes one graph for "good pairs" and one for "total read pairs" per cluster.\n\n'
+	#		       )
 
     import sys
     indata = argparser.parse_args(sys.argv[1:])
