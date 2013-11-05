@@ -256,6 +256,8 @@ def classifymeta(indata):
                 config.logfile.write('\tDone.\n');
             config.gidatabase = indata.tempFileFolder+'/SEAseqtemp/'+str(pid)+''+noPathFileName
 
+    config.loadPrimers()
+
     config.logfile.write('Starting to align clusters:\n ');
     if indata.debug: #single process // serial
 	config.logfile.write('debugging:\n ');
@@ -267,10 +269,12 @@ def classifymeta(indata):
 	#with progress:
         tmcounter = 0
 	for cluster in clusterGenerator(config, indata):
+                tmcounter +=1
+                if tmcounter <= indata.skip:
+                    progress.update(); continue
 		#progress.update()
 		results.append(foreachCluster(cluster))
-                tmcounter +=1
-                if tmcounter == 20: break
+                if indata.stop and tmcounter >= indata.stop: break
 	config.logfile.write('finished, making summary ... \n')
     else: # multiple processes in parallel
 	import multiprocessing
@@ -280,8 +284,6 @@ def classifymeta(indata):
 
     if indata.tempFileFolder: clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/classify.clusters.pickle','w')
     else:                     clusterdump = open(config.path+'/classify.clusters.pickle','w')
-
-    config.loadPrimers()
 
     # will paralellise this when stuff works
     tmcounter = 0

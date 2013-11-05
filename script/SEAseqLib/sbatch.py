@@ -27,7 +27,6 @@ def sbatch(indata):
                 f.write('#SBATCH -t 24:00:00'+'\n')
         else:
                 f.write('#SBATCH -t 1:00:00'+'\n')
-        f.write(sys.argv[0]+' clusterbarcodes -path '+config.path+' -p '+str(indata.cpus))
         f.write('#SBATCH -J clust_'+config.jobName+'_'+config.path+'\n')
         f.write('#SBATCH -e '+config.absolutePath+'/sbatch.cluster.stderr.txt'+'\n')
         f.write('#SBATCH -o '+config.absolutePath+'/sbatch.cluster.stdout.txt'+'\n')
@@ -95,7 +94,7 @@ def sbatch(indata):
             '#SBATCH -A '+uppmaxprojectid+''+'\n'+
             '#SBATCH -n 8 -p node'+'\n')
         if not indata.small:
-                f.write('#SBATCH -t 5:00:00'+'\n')
+                f.write('#SBATCH -t 15:00:00'+'\n')
         else:
                 f.write('#SBATCH -t 1:00:00'+'\n')
         f.write(
