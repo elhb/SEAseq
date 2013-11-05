@@ -43,7 +43,9 @@ def foreachCluster(tmp):
     
     if cluster.definedampliconcount == 0:
         output += '\t0 defined amplicons, cluster '+str(cluster.id)+'\n'
-        return [output, cluster]
+        #return [output, cluster]
+        import cPickle
+        return [output, cluster, cPickle.dumps(cluster)]
 
     # creating the temporary fasta file
     if indata.tempFileFolder:
@@ -72,7 +74,9 @@ def foreachCluster(tmp):
         import os
         os.remove(blastfile.name)
         output += '\tNo reads in fasta file, cluster '+str(cluster.id)+'\n'
-        return [output, cluster]
+        #return [output, cluster]
+        import cPickle
+        return [output, cluster, cPickle.dumps(cluster)]
 
 
     # Align consensus sequences by blast
@@ -211,7 +215,9 @@ def foreachCluster(tmp):
             if not in_both_reads:
                 output +=       '\t\t\tNo alignment supported by both reads with >='+str(config.minBlastIdentity)+'% identity and '+str(config.minBlastCoverage)+'% alignment length coverage'     +'\n'
     
-    return [output, cluster]
+    #return [output, cluster]
+    import cPickle
+    return [output, cluster, cPickle.dumps(cluster)]
 
 def classifymeta(indata):
 
@@ -272,25 +278,42 @@ def classifymeta(indata):
 	results = WorkerPool.imap_unordered(foreachCluster,clusterGenerator(config,indata),chunksize=1)
 	#results = WorkerPool.imap(          foreachcluster,clusterGenerator(config),chunksize=1)
 
+    if indata.tempFileFolder: clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/classify.clusters.pickle','w')
+    else:                     clusterdump = open(config.path+'/classify.clusters.pickle','w')
+
+    config.loadPrimers()
+
     # will paralellise this when stuff works
     tmcounter = 0
+    counter = RunStatCounter(config)
     moreThanOneAmpAndMono4All = 0
     moreThanOneAmpMono4AllAndAllHaveHits = 0
     orgInAllAmpsCounter = 0
     noMatchAmp = {}
     matches = {}
+    singleAmpliconHitlists = {}
     from SEAseqLib.mainLibrary import Progress
     progress = Progress(config.numberOfBarcodeClustersIdentified, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
     if indata.stop: progress = Progress(indata.stop, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
     with progress:
         for tmp in results:
+
             tmcounter +=1
             if tmcounter <= indata.skip:
                 progress.update(); continue
-            [output, cluster] = tmp
+            #[output, cluster] = tmp
+            [output, cluster,picklestring] = tmp
             config.outfile.write( output+'\n')
+            clusterdump.write(picklestring)
+            counter.addcluster(cluster)
             
-            if cluster.definedampliconcount > 1:
+            if cluster.definedampliconcount == 1:
+                amplicon = cluster.definedamplicons.keys()[0]
+                if cluster.blastHits[amplicon]:
+                    singleAmpliconHitlists[cluster.id] = {}
+                    singleAmpliconHitlists[cluster.id][amplicon] = [organism for organism in cluster.blastHits[amplicon]]
+                
+            elif cluster.definedampliconcount > 1:
                 
                 # get combo
                 ampliconnames = cluster.definedamplicons.keys()
@@ -343,18 +366,15 @@ def classifymeta(indata):
             progress.update()
             if indata.stop and tmcounter >= indata.stop: break
 
+    config.outfile.write(counter.createsummary(config))
+
     config.outfile.write('##### SUMMARY #####'+'\n')
-    #assert len(data) - noblasthit_its - noblasthit_16s - blasthitsagree - hitsdonotagree == 0, '\n\nError '+str(len(data))+' - '+str(noblasthit_its)+' - '+str(noblasthit_16s)+' - '+str(blasthitsagree)+' - '+str(hitsdonotagree)+' != 0\n\n'
     config.outfile.write(      'out of '+str(moreThanOneAmpAndMono4All)+' analyzed clusters with more than one amplicon defined and monoclonal for all the defined amplicon, were:'     +'\n')
     config.outfile.write(      '\t'+str(moreThanOneAmpMono4AllAndAllHaveHits) +' ('+str(round(100*float(moreThanOneAmpMono4AllAndAllHaveHits)/float(moreThanOneAmpAndMono4All),2))+'%) clusters that had at least one blast hit for all defined amplicons, out of these were:\n')
     config.outfile.write(      '\t\t'+str(orgInAllAmpsCounter) +' ('+str(round(100*float(orgInAllAmpsCounter)/float(moreThanOneAmpMono4AllAndAllHaveHits),2))+'%) clusters where atleast one organism were identified within all the hitLists of all defined amplicons.\n')
     for amplicon in noMatchAmp:  
         config.outfile.write(  '\t'+str(len(noMatchAmp[amplicon])) +' ('+str(round(100*float(len(noMatchAmp[amplicon]))/float(moreThanOneAmpAndMono4All),2))+'%) clusters had no BLAST hits for '+amplicon+' supported by both reads with >='+str(config.minBlastIdentity)+'% identity and '+str(config.minBlastCoverage)+'% alignment length coverage.'     +'\n')
-    #config.outfile.write(      str(hitsdonotagree+blasthitsagree) +' ('+str(round(100*float(hitsdonotagree+blasthitsagree)/float(len(data)),2))+'%) have hits for both ITS and 16S.'     +'\n')
-    #if hitsdonotagree+blasthitsagree > 0:
-    #    config.outfile.write(  str(hitsdonotagree) +' ('+str(round(100*float(hitsdonotagree)/float(len(data)),2))+'%) removed because none of the ITS and 16S hits did agree.'+         ' ('+str(round(100*float(hitsdonotagree)/float(hitsdonotagree+blasthitsagree),2))+'% out of clusters with hits for both)'     +'\n')
-    #    config.outfile.write(  'For '+str(blasthitsagree) +' ('+str(round(100*float(blasthitsagree)/float(len(data)),2))+'%) clusters did the ITS and 16S hits agree at least once.'+' ('+str(round(100*float(blasthitsagree)/float(hitsdonotagree+blasthitsagree),2))+'% out of clusters with hits for both)'     +'\n')
-    #
+
     config.logfile.write('All clusters aligned, starting random match estimation ...\n')
     if matches:
         groups = {}
@@ -382,8 +402,6 @@ def classifymeta(indata):
                 if not notInAllHitLists: # ie organism in All hitLists
                     atLeastOneOrgInAllHitLists = True
             if atLeastOneOrgInAllHitLists: random_hits += 1
-
-        
 
         config.outfile.write(
             '\nThere was '+str(random_hits)+' ('+str(round(100*float(random_hits)/float(total_tries),2))+'%) occasion when at least one organism was present in all BLAST-hitList, when trying '+
@@ -416,7 +434,157 @@ def classifymeta(indata):
         
     else:
         config.outfile.write('No clusters found with hits for both were found.\n')
-        
+    config.outfile.write('\n')
+    if singleAmpliconHitlists:
+        config.outfile.write('Checking organism distribution for clusters with single amplicons:\n')
+        groups = {}
+        for cluster, amplicons in singleAmpliconHitlists.iteritems():
+            for amplicon, hitList in amplicons.iteritems():
+                try:
+                    groups[amplicon].append(hitList)
+                except KeyError:
+                    groups[amplicon]=[hitList]
+        mostCommonOrganism = {}
+        for amplicon, listOfHitLists in groups.iteritems():
+            mostCommonOrganism[amplicon] = {'numberOfHitlists':0,'organisms':{}}
+            for hitList in listOfHitLists:
+                mostCommonOrganism[amplicon]['numberOfHitlists']+=1
+                for organism in hitList:
+                    try: mostCommonOrganism[amplicon]['organisms'][organism]+=1
+                    except KeyError:mostCommonOrganism[amplicon]['organisms'][organism]=1
+        mostCommonCountToShow = config.mostCommonToShow
+        import operator
+        for amplicon, info in mostCommonOrganism.iteritems():
+            config.outfile.write( 'Amplicon '+amplicon+' had '+str(mostCommonOrganism[amplicon]['numberOfHitlists'])+' hitLists, the '+str(mostCommonCountToShow)+' most common organisms were:\n')
+            if mostCommonCountToShow > len(mostCommonOrganism[amplicon]['organisms']):
+                tmpList = sorted(mostCommonOrganism[amplicon]['organisms'].iteritems(), key=operator.itemgetter(1))[::-1]
+            else:
+                tmpList = sorted(mostCommonOrganism[amplicon]['organisms'].iteritems(), key=operator.itemgetter(1))[::-1][:mostCommonCountToShow]
+            for organism, count in tmpList:
+                config.outfile.write('\t'+str(count) +'\t('+str(round(100*float(count)/float(mostCommonOrganism[amplicon]['numberOfHitlists']),2))+'%) of the hitlists had hits towards\t'+organism+ '.\n')
+    else:
+        config.outfile.write('No clusters found with single amplicons and hits for that amp were found.\n')
+
     config.logfile.write('Classification done.\n')
 
+    clusterdump.close()
+    if indata.tempFileFolder:
+        import shutil
+        shutil.move(indata.tempFileFolder+'/SEAseqtemp/classify.clusters.pickle',config.path+'/classify.clusters.pickle')
+
     return 0
+
+class RunStatCounter(object):
+    def __init__(self, config):
+        self.config = config
+        self.ampliconcombinations = {}
+        self.clustercount = 0
+        self.definedclusters = 0
+        self.definedclustersMono = 0
+        self.undefinedclusters = 0
+        self.junkclusters = 0
+        self.lowreadclusters = 0
+        
+        self.statstable = open(config.path+'/meta.statstable','w',1)
+        self.statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support','monoclonal for all defined amplicons']
+        #for amptype in ['ecoli','myco','lambda','m13']: statsheader.append(amptype+' reads');statsheader.append(amptype+' monoclonal');statsheader.append(amptype)
+        self.statstable.write('\t'.join(self.statsheader)+'\n')
+
+    def addcluster(self, cluster):
+        
+        self.clustercount += 1
+        monoForAllDefined = None
+        if cluster.lowread:
+            self.lowreadclusters += 1
+            return
+        if cluster.ampliconpairs == 0:
+            self.junkclusters +=1
+            return
+        if cluster.definedampliconcount < 1:
+            self.undefinedclusters += 1
+            #return
+        else:
+            self.definedclusters += 1
+            
+            # count combo of defined amplicons
+            ampliconnames = cluster.definedamplicons.keys()
+            ampliconnames.sort()
+            ampliconcombo = '/'.join(ampliconnames)        
+            try:
+                self.ampliconcombinations[ampliconcombo]['count'] += 1
+            except KeyError:
+                self.ampliconcombinations[ampliconcombo] = {'count':1}
+                #self.ampliconcombinations[ampliconcombo]['monos'] = {'All':0}
+                self.ampliconcombinations[ampliconcombo]['monos'] = {}
+                self.ampliconcombinations[ampliconcombo]['poly'] = 0
+            
+            # count combo of monoclonal amplicons
+            monoAmps = {}
+            for ampname, amplicon in cluster.definedamplicons.iteritems():
+                if amplicon.monoclonal: monoAmps[amplicon.type] = amplicon.monoclonal
+            
+            monoForAllDefined = False
+            if not monoAmps.keys():
+                self.ampliconcombinations[ampliconcombo]['poly'] += 1
+            else:
+                mononames = monoAmps.keys()
+                mononames.sort()
+                monoCombo = '/'.join(mononames)
+                try:
+                    self.ampliconcombinations[ampliconcombo]['monos'][monoCombo] += 1
+                except KeyError:
+                    self.ampliconcombinations[ampliconcombo]['monos'][monoCombo] = 1
+                if monoCombo == ampliconcombo:
+                    #self.ampliconcombinations[ampliconcombo]['monos']['All'] += 1
+                    self.definedclustersMono += 1
+                    monoForAllDefined = True
+    
+        #print to stats info file
+        #NOTE: ONLY for 16s its stuff!!!
+        #statstable.write( '\n')
+        self.statstable.write(str(cluster.id                                     )+'\t')#'clusterid'
+        self.statstable.write(str(cluster.readcount                              )+'\t')#'number of reads in total'
+        self.statstable.write(str(cluster.adaptercount                           )+'\t')#'number of adaper reads'
+        self.statstable.write(str(cluster.primererrors                           )+'\t')#'number of strange primers'
+        try:            self.statstable.write(str(cluster.amplicons['its'].readcount             )+'\t')#'its reads',
+        except KeyError:self.statstable.write(str(0                                              )+'\t')#'its reads',
+        try:            self.statstable.write(str(cluster.amplicons['16s'].readcount             )+'\t')#'16s reads',
+        except KeyError:self.statstable.write(str(0                                              )+'\t')#'16s reads',
+        try:            self.statstable.write(str(bool(cluster.amplicons['its'].allelecount)     )+'\t')#'its'
+        except KeyError:self.statstable.write(str(False                                          )+'\t')#'its'
+        try:            self.statstable.write(str(bool(cluster.amplicons['16s'].allelecount)     )+'\t')#'16s'
+        except KeyError:self.statstable.write(str(False                                          )+'\t')#'16s'
+        try:            self.statstable.write(str(cluster.amplicons['its'].monoclonal            )+'\t')#'its monoclonal'
+        except KeyError:self.statstable.write(str(False                                          )+'\t')#'its monoclonal'
+        try:            self.statstable.write(str(cluster.amplicons['16s'].monoclonal            )+'\t')#'16s monoclonal'
+        except KeyError:self.statstable.write(str(False                                          )+'\t')#'16s monoclonal'
+        for name, primerpair in self.config.primerpairs.iteritems(): pass
+        self.statstable.write(str(cluster.ampliconcount                          )+'\t')#'number of consensus types'
+        self.statstable.write(str(cluster.definedampliconcount                   )+'\t')#'number of consensus types with good support'
+        self.statstable.write(str(monoForAllDefined                              )+'\n')#'cluster is mono for all defined amplicons'
+
+    def createsummary(self, config):
+        output = ''
+        output += ('##### SUMMARY #####'+'\n')
+        output += (  str(self.clustercount)   +' clusters processed, out of these were:'+'\n')
+        output += (  str(self.junkclusters)   +' ('+str(round(100*float(self.junkclusters   )/float(self.clustercount),2))+'%) clusters of only adapter sequences or faulty primers'+'\n')
+        output += (  str(self.lowreadclusters)+' ('+str(round(100*float(self.lowreadclusters)/float(self.clustercount),2))+'%) clusters with to few reads to be analysed'+'\n')
+        output += (  str(self.definedclusters)+' ('+str(round(100*float(self.definedclusters)/float(self.clustercount),2))+'%) clusters had defined amplicons'+'\n')
+
+        for ampliconcombo, data in self.ampliconcombinations.iteritems():
+            count = data['count']
+            output += (  str(count)+' ('+str(round(100*float(count)/float(self.clustercount),2))+'% of total, '+str(round(100*float(count)/float(self.definedclusters),2))+'% of defined) '+ ampliconcombo+' '+ 'whereof:'+'\n')
+            for monoCombo, count2 in data['monos'].iteritems():
+                output += (  '\t'+' '+str(count2)+' ('+str(round(100*float(count2)/float(count),2))+'%) '+'were monoclonal for'+' '+monoCombo+'\n')
+            output += (  '\t'+' '+str(data['poly'])+' ('+str(round(100*float(data['poly'])/float(count),2))+'%) '+'were polyclonal for the defined amplicon(s)\n')
+        output += (  str(self.undefinedclusters)+' ('+str(round(100*float(self.undefinedclusters)/float(self.clustercount),2))+'%) were undefined.\n')
+        
+        tmppercentage = 0
+        if self.definedclusters: tmppercentage = round(100*float(self.definedclustersMono)/float(self.definedclusters),2)
+        output += (
+            str(self.definedclusters)+' ('+str(round(100*float(self.definedclusters)/float(self.clustercount),2))+'%) has at least one defined amplicon out of these are '+str(self.definedclustersMono)+' ('+str(tmppercentage)+'%) monoclonal for the defined amplicon(s)\n'+
+            '(ie there is only one consensus sequence of that type with more than '+str(config.minReadCountPerConsensus)+' reads and '+str(config.minReadPopSupportConsensus)+'% support, clustering done with '+str(config.minConsensusClusteringIdentity)+'% identity cutoff)\n'
+            )
+        self.statstable.close()
+        return output
+

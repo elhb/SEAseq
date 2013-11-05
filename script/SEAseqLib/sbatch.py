@@ -109,7 +109,8 @@ def sbatch(indata):
             'module load bioinfo-tools blast/2.2.28+ biopython'+'\n'+
             'module unload python/2.6.6'+'\n'+
             'module load python/2.7'+'\n'+
-            sys.argv[0]+' classifymeta -path '+config.path+' -p '+str(indata.cpus)+'\n'
+            sys.argv[0]+' classifymeta -path '+config.path+' -p '+str(indata.cpus)+'\n'+
+            'grep "##### SUMMARY #####" '+config.path+'/classify.out.txt -A 10000000 > '+config.path+'/classify.summary.txt'+'\n'
         )
         f.close()
     
