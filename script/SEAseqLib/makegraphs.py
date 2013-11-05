@@ -93,67 +93,23 @@ def makegraphs(indata):
 			if data[cid]['monoclonal for all defined amplicons']:
 			    graph_info[rc_type][ x_current ]['monoForAllDefinedAmps'] += 1
     
-			#if data[cid]['16s'] and data[cid]['its']:
-			#    graph_info[rc_type][ x_current ]['both'] += 1
-			#    graph_info[rc_type][ x_current ]['definedClusterCount'] += 1
-			#    if data[cid]['16s monoclonal'] and data[cid]['its monoclonal']:
-			#	graph_info[rc_type][ x_current ]['both_mono'] += 1
-			#	graph_info[rc_type][ x_current ]['monoForAllDefinedAmps'] += 1
-			#    if not data[cid]['16s monoclonal'] and data[cid]['its monoclonal']:
-			#	graph_info[rc_type][ x_current ]['both_its_mono'] += 1
-			#    if data[cid]['16s monoclonal'] and not data[cid]['its monoclonal']:
-			#	graph_info[rc_type][ x_current ]['both_16s_mono'] += 1
-			# 
-			#elif data[cid]['16s'] and not data[cid]['its']:
-			#    graph_info[rc_type][ x_current ]['16s'] += 1
-			#    graph_info[rc_type][ x_current ]['definedClusterCount'] += 1
-			#    if data[cid]['16s monoclonal']:
-			#	graph_info[rc_type][ x_current ]['16s_mono'] += 1
-			#	graph_info[rc_type][ x_current ]['monoForAllDefinedAmps'] += 1
-			#
-			#elif data[cid]['its'] and not data[cid]['16s']:
-			#    graph_info[rc_type][ x_current ]['its'] += 1
-			#    graph_info[rc_type][ x_current ]['definedClusterCount'] += 1
-			#    if data[cid]['its monoclonal']:
-			#	graph_info[rc_type][ x_current ]['its_mono'] += 1
-			#	graph_info[rc_type][ x_current ]['monoForAllDefinedAmps'] += 1
-			    			
-
 			
 		    else: breaker.append(True)
 		if len(breaker) == len(compare_pairs): break
 
 	config.logfile.write('Calculating percentages ... \n')
-	#for rc_type in ['total','good']:
-	#    f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.values' ,'w' )
-	#    f.write(
-	#	'x'			+'\t'+ 
-	#	'totalClusterCount'		+'\t'+ 
-	#	'undefinedClusterCount'		+'\t'+ 
-	#	'definedClusterCount'		+'\t'+ 
-	#	'monoForAllDefinedAmps'		+'\t'+ 
-	#	'monoForAllDefinedAmps %'	+'\n'
-	#    )
-	#    f.close()
 	for x_current in x_range:
 	    for rc_type in ['total','good']:
-		#f = open( config.path+'/graphs/'+rc_type+'_read_pairs_per_barcode_cluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+config.jobName+'.values' ,'a' )
-		#f.write(str(x_current) +'\t'+     str(graph_info[rc_type][ x_current ]['totalClusterCount'])	+'\t'+	str(graph_info[rc_type][ x_current ]['undefinedClusterCount'])	+'\t'	)
     
 		for [total_id,count_id] in [['definedClusterCount','monoForAllDefinedAmps']]:
 		    total  = graph_info[rc_type][ x_current ][total_id]
 		    count = graph_info[rc_type][ x_current ][count_id]
 		    
-		    #f.write(	str(total)+'\t'+	str(count)+'\t'    )
 		    if total:
 			tmp_percentage = round(100*float(count)/float(total),2)
 			graph_info[rc_type][ x_current ][count_id] = tmp_percentage
-			#f.write(str(tmp_percentage)+'\t')
 		    else:
 			graph_info[rc_type][ x_current ][count_id] = 0.0
-			#f.write('0.0\t')
-		#f.write('\t'+str(x_current)+'\n')
-		#f.close()
 
     if os.path.exists(config.path+'/meta.statstable'):
 	config.logfile.write('Preparing variables for plotting ... \n')
@@ -180,9 +136,9 @@ def makegraphs(indata):
 	    else : ax.set_title(config.jobName+' ' +config.path)
 	    ax.plot(x, y4, '--b', label = 'Perc. mono. for all defined amplicons')
 	    ax2 = ax.twinx()
-	    ax2.plot(x, y1, '-r', label = 'Total number of clusters')
-	    ax2.plot(x, y2, '-b', label = 'Number of defined clusters')
-	    ax2.plot(x, y3, '-k', label = 'Number of undefined clusters')
+	    ax2.plot(x, y1, '-b', label = 'Total number of clusters')
+	    ax2.plot(x, y2, '-g', label = 'Number of defined clusters')
+	    ax2.plot(x, y3, '-r', label = 'Number of undefined clusters')
 	    
 	    lines, labels   = ax.get_legend_handles_labels()
 	    lines2, labels2 = ax2.get_legend_handles_labels()

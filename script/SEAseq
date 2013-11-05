@@ -83,6 +83,7 @@ def getindata(cmd):
     argparser.add_argument('-tmp','-tempFileFolder',				dest='tempFileFolder',			metavar='<path>',	type=str,	required=False,	default=False,	help='path to folder where temporary files should be written to (default False). Now forced to $SNIC_TMP if on a "*.uppmax.uu.se"-host ')
     
     if cmd == 'setVariables':
+	argparser.add_argument('--subSpecies',					dest='subSpecies', 			action='store_true', 			required=False,	default=False,	help='Show subspecies information or not (default False).')
 	argparser.add_argument('-j','-jobName',					dest='jobName',				metavar='<name>',	type=str,	required=False,	default='',	help='Name be able to identify sample, only 11first char will be visible for jobinfo (default "")')
         argparser.add_argument('--src','--skipReadCounting',			dest='skipReadCounting', 		action='store_true', 			required=False,	default=False,	help='Skip read counting (for speeding up debug runs, sets readcount to 30M/infile).')
 	argparser.add_argument(	'-bm','-maxBeadBarcodeMissMatch',		dest='maxBeadBarcodeMissMatch',		metavar='N',		type=int,	required=False,	default=0,	help='Number off missmatches allowed in barcode sequence during clustering (default 0)')

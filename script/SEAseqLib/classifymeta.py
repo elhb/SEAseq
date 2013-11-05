@@ -166,7 +166,8 @@ def foreachCluster(tmp):
                     except KeyError:
                         organism = gi2orgname(gi_number)
                         local_gi2org[gi_number] = organism
-                    if perc_identity >= config.minBlastIdentity and perc_coverage >= config.minBlastCoverage:
+                    if not config.subSpecies: organism = ' '.join(organism.split(' ')[:2])
+                    if perc_identity >= config.minBlastIdentity and perc_coverage >= config.minBlastCoverage and organism not in in_r1:
                         in_r1[organism] = alignment
                         try:
                             hitInfo[organism]['r1']['pi'].append(perc_identity)
@@ -187,7 +188,8 @@ def foreachCluster(tmp):
                     except KeyError:
                         organism = gi2orgname(gi_number)
                         local_gi2org[gi_number] = organism
-                    if perc_identity >= config.minBlastIdentity and perc_coverage >= config.minBlastCoverage:
+                    if not config.subSpecies: organism = ' '.join(organism.split(' ')[:2])
+                    if perc_identity >= config.minBlastIdentity and perc_coverage >= config.minBlastCoverage and organism not in in_r2:
                         in_r2[organism] = alignment
                         try:
                             hitInfo[organism]['r2']['pi'].append(perc_identity)
