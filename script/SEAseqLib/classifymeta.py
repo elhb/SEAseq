@@ -61,8 +61,12 @@ def foreachCluster(tmp):
         amplicons[amplicon.type] = {}
         for consensus in amplicon.goodalleles:
             amplicons[amplicon.type][str(consensus.id)] = {'r1':None,'r2':None}
-            r1 = consensus.sequence.seq.split('NNNNNNNNNN')[0]
-            r2 = consensus.sequence.seq.split('NNNNNNNNNN')[1]
+            try:
+                r1 = consensus.sequence.seq.split('NNNNNNNNNN')[0]
+                r2 = consensus.sequence.seq.split('NNNNNNNNNN')[1]
+            except IndexError:
+                config.logfile.write('WARNING: Skipping amplicon '+amplicon.type+', consensus '+str(consensus.id)+' for cluster '+str(cluster.id)+' beacause splitting consensus sequence on N10 failed.\n')
+                continue
             blastfile.write('>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|r1\n'+r1+'\n'+
                             '>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|r2\n'+r2+'\n')
             fastaentries +=1
@@ -260,27 +264,28 @@ def classifymeta(indata):
 
     config.logfile.write('Starting to align clusters:\n ');
     if indata.debug: #single process // serial
-	config.logfile.write('debugging:\n ');
+        config.logfile.write('debugging:\n ');
         import sys
-	sys.stdout.write('debugging:\n ')
-	config.logfile.write('Running in debug mode ')
-	results=[] # create holder for processed reads
-	#progress = Progress(config.numberOfBarcodeClustersIdentified, logfile=config.logfile) # creates a progress "bar" thingy
-	#with progress:
-        tmcounter = 0
-	for cluster in clusterGenerator(config, indata):
+        sys.stdout.write('debugging:\n ')
+        config.logfile.write('Running in debug mode ...\n')
+        results=[] # create holder for processed reads
+        from SEAseqLib.mainLibrary import Progress
+        progress = Progress(config.numberOfBarcodeClustersIdentified, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
+        if indata.stop: progress = Progress(indata.stop, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
+        with progress:
+            tmcounter = 0
+            for cluster in clusterGenerator(config, indata):
                 tmcounter +=1
-                if tmcounter <= indata.skip:
-                    progress.update(); continue
-		#progress.update()
-		results.append(foreachCluster(cluster))
+                progress.update()
+                if tmcounter <= indata.skip: continue
+                results.append(foreachCluster(cluster))
                 if indata.stop and tmcounter >= indata.stop: break
-	config.logfile.write('finished, making summary ... \n')
+        config.logfile.write('finished, making summary ... \n')
     else: # multiple processes in parallel
-	import multiprocessing
-	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
-	results = WorkerPool.imap_unordered(foreachCluster,clusterGenerator(config,indata),chunksize=1)
-	#results = WorkerPool.imap(          foreachcluster,clusterGenerator(config),chunksize=1)
+        import multiprocessing
+        WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
+        results = WorkerPool.imap_unordered(foreachCluster,clusterGenerator(config,indata),chunksize=1)
+        #results = WorkerPool.imap(          foreachcluster,clusterGenerator(config),chunksize=1)
 
     if indata.tempFileFolder: clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/classify.clusters.pickle','w')
     else:                     clusterdump = open(config.path+'/classify.clusters.pickle','w')
