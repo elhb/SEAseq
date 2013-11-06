@@ -6,11 +6,11 @@ def clusterGenerator(config,indata):
     #filename=config.path+'/meta.clusters.pickle.gz'
     filename=config.path+'/meta.clusters.pickle'
     #clusterdump = gzip.open(filename,'rb')
-    clusterdump = open(filename)
+    clusterundump = open(filename,mode='r', buffering=1024*64)
     
     while True:
         try:
-            cluster = cPickle.load(clusterdump)
+            cluster = cPickle.load(clusterundump)
             yield [cluster,config,indata]
         except EOFError:
             config.logfile.write('All clusters read from file.\n')
@@ -65,7 +65,10 @@ def foreachCluster(tmp):
                 r1 = consensus.sequence.seq.split('NNNNNNNNNN')[0]
                 r2 = consensus.sequence.seq.split('NNNNNNNNNN')[1]
             except IndexError:
+                config.logfile = open(config.logfile.name,'a')
                 config.logfile.write('WARNING: Skipping amplicon '+amplicon.type+', consensus '+str(consensus.id)+' for cluster '+str(cluster.id)+' beacause splitting consensus sequence on N10 failed.\n')
+                output += 'WARNING: Skipping amplicon '+amplicon.type+', consensus '+str(consensus.id)+' for cluster '+str(cluster.id)+' beacause splitting consensus sequence on N10 failed.\n'
+                config.logfile.close()
                 continue
             blastfile.write('>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|r1\n'+r1+'\n'+
                             '>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|r2\n'+r2+'\n')
@@ -75,6 +78,7 @@ def foreachCluster(tmp):
     
     # check that there were reads to align
     if fastaentries == 0:
+        cluster.blastHits = 'No fasta produced.'
         import os
         os.remove(blastfile.name)
         output += '\tNo reads in fasta file, cluster '+str(cluster.id)+'\n'
@@ -218,7 +222,7 @@ def foreachCluster(tmp):
                 cluster.blastHits[amplicon][organism] = hitInfo[organism]
             if not in_both_reads:
                 output +=       '\t\t\tNo alignment supported by both reads with >='+str(config.minBlastIdentity)+'% identity and '+str(config.minBlastCoverage)+'% alignment length coverage'     +'\n'
-    
+
     #return [output, cluster]
     import cPickle
     return [output, cluster, cPickle.dumps(cluster)]
@@ -235,7 +239,7 @@ def classifymeta(indata):
     # settings
     config.load()
     
-    if indata.tempFileFolder:
+    if indata.tempFileFolder and not indata.debug:
         config.logfile.write('Copying database to temporary location for fast access:\n ');
         import os, shutil, glob
         pid = ''#+os.getpid()
@@ -304,7 +308,6 @@ def classifymeta(indata):
     if indata.stop: progress = Progress(indata.stop, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
     with progress:
         for tmp in results:
-
             tmcounter +=1
             if tmcounter <= indata.skip:
                 progress.update(); continue
@@ -316,7 +319,7 @@ def classifymeta(indata):
             
             if cluster.definedampliconcount == 1:
                 amplicon = cluster.definedamplicons.keys()[0]
-                if cluster.blastHits[amplicon]:
+                if cluster.blastHits != 'No fasta produced.' and cluster.blastHits[amplicon]:
                     singleAmpliconHitlists[cluster.id] = {}
                     singleAmpliconHitlists[cluster.id][amplicon] = [organism for organism in cluster.blastHits[amplicon]]
                 
@@ -369,6 +372,7 @@ def classifymeta(indata):
                             matches[cluster.id][amplicon] = [organism for organism in cluster.blastHits[amplicon]]
                 
                 if atLeastOneOrgInAllAmps: orgInAllAmpsCounter += 1
+    
     
             progress.update()
             if indata.stop and tmcounter >= indata.stop: break
@@ -492,7 +496,7 @@ class RunStatCounter(object):
         self.junkclusters = 0
         self.lowreadclusters = 0
         
-        self.statstable = open(config.path+'/meta.statstable','w',1)
+        self.statstable = open(config.path+'/classify.statstable','w',1)
         self.statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support','monoclonal for all defined amplicons']
         #for amptype in ['ecoli','myco','lambda','m13']: statsheader.append(amptype+' reads');statsheader.append(amptype+' monoclonal');statsheader.append(amptype)
         self.statstable.write('\t'.join(self.statsheader)+'\n')
@@ -594,4 +598,3 @@ class RunStatCounter(object):
             )
         self.statstable.close()
         return output
-
