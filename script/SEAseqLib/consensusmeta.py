@@ -219,7 +219,8 @@ def foreachcluster_meta(cluster_pairs):
     if cluster.readcount < lowreadcutoff:
 	output += 'Less than '+str(lowreadcutoff)+' read pairs.\n'
         cluster.lowread = True
-	return [output,cluster]
+        import cPickle
+	return [output, cluster, cPickle.dumps(cluster)]
     
     else:
         cluster.lowread = False
@@ -302,16 +303,16 @@ def getClustersAndPairs(config,clusterq):
             tmpcounter += 1
             cluster = BarcodeCluster(pair.cid)
             cluster.addreadpair(pair)
-	elif pair.cid > currentclusterid+1:
+	elif pair.cid > cluster.id+1:
 	    while clusterq.qsize() > 160 or clusterq.full(): time.sleep(1);
             clusterq.put([cluster,config])
             tmpcounter += 1
 	    if not missingClustersFlag:
 		config.logfile.write('WARNING: missing cluster(s), are you running on a subset of data?\n')
 		missingClustersFlag = True
-	    for i in xrange(currentclusterid+1,pair.cid): missingClusters.append(str(i))
-	    currentclusterid = pair.cid
-            cluster = BarcodeCluster(currentclusterid)
+	    for i in xrange(cluster.id+1,pair.cid): missingClusters.append(str(i))
+	    tmp = pair.cid
+            cluster = BarcodeCluster(tmp)
             cluster.addreadpair(pair)
 	else: sys.stdout.write('ERROR 1979 in consensus creation get clusters and pairs.\nCluster id in pair is '+str(pair.cid)+' and the current cluster id is '+str(currentclusterid)+'\n')
     if missingClustersFlag: config.logfile.write('WARNING: Cluster(s) '+', '.join(missingClusters[:-1])+' & '+missingClusters[-1]+' were missing ('+str(len(missingClusters))+' clusters), are you running on a subset of data?\n')
