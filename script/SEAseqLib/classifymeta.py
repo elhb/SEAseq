@@ -68,6 +68,7 @@ def foreachCluster(tmp):
                 config.logfile = open(config.logfile.name,'a')
                 config.logfile.write('WARNING: Skipping amplicon '+amplicon.type+', consensus '+str(consensus.id)+' for cluster '+str(cluster.id)+' beacause splitting consensus sequence on N10 failed.\n')
                 output += 'WARNING: Skipping amplicon '+amplicon.type+', consensus '+str(consensus.id)+' for cluster '+str(cluster.id)+' beacause splitting consensus sequence on N10 failed.\n'
+                print 'WARNING: Skipping amplicon '+amplicon.type+', consensus '+str(consensus.id)+' for cluster '+str(cluster.id)+' beacause splitting consensus sequence on N10 failed.'
                 config.logfile.close()
                 continue
             blastfile.write('>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|r1\n'+r1+'\n'+
