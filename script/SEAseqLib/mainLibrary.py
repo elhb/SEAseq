@@ -1183,7 +1183,7 @@ class BarcodeCluster(object):
 		f.close()
 		for consensus_identities in data.split('>Cluster ')[1:]:
 			consensusid = consensus_identities.split('\n')[0]
-			if not consensusid: print data.split('>Cluster ')
+			if not consensusid: print 'WARNING!:',data.split('>Cluster ')
 			consensus = Consensus(consensusid)
 			for line in consensus_identities.split('\n')[1:]:
 			    line=line.rstrip()
@@ -1228,7 +1228,12 @@ class BarcodeCluster(object):
 						except KeyError: tmpseqs[read_id]  = seq
 			self.consensuses[consensusid].alignmentStr = tmpcons
 			for readid, seq in tmpseqs.iteritems():
-				self.consensuses[consensusid].readpairs[int(readid)].alignmentStr = seq
+				try: self.consensuses[consensusid].readpairs[int(readid)].alignmentStr = seq
+				except KeyError:
+					config.logfile = open(config.logfile.name,'a',1)
+					config.logfile.write('WARNING: cluster '+str(self.id)+', read '+str(readid).rstrip()+' is not supposed to be in consensus '+str(consensusid)+'.\n')
+					config.logfile.close()
+					print 'WARNING: cluster '+str(self.id)+', read '+str(readid)+' is not supposed to be in consensus '+str(consensusid)+'.'
 	
 	def loadconsensussequences(self, config, indata):
 		##load singelton consensus sequences
