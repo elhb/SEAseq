@@ -134,7 +134,7 @@ def foreachCluster(tmp):
         readnumber =blast_record.query.split('|tempSep|')[2]
         
         amplicons[amptype][allele][readnumber] = blast_record
-        if blast_record == None: output += amptype+' '+allele+' '+readnumber+'ajajajaj\n'
+        if blast_record == None: output += amptype+' '+allele+' '+readnumber+'ajajajaj\n'; print 'ERROR: '+str(amptype)+' '+str(allele)+' '+str(readnumber)+'ajajajaj\n'
     
     # parse through the blast result one amplicon at the time
     for amplicon in amplicons:
@@ -223,6 +223,23 @@ def foreachCluster(tmp):
                 cluster.blastHits[amplicon][organism] = hitInfo[organism]
             if not in_both_reads:
                 output +=       '\t\t\tNo alignment supported by both reads with >='+str(config.minBlastIdentity)+'% identity and '+str(config.minBlastCoverage)+'% alignment length coverage'     +'\n'
+
+    if len(cluster.blastHits) > 1 and (cluster.definedampliconcount == [cluster.amplicons[amplicon].monoclonal for amplicon in cluster.definedamplicons].count(True)):
+        cluster.organismsInAllAmplicons = []
+        for organism in cluster.blastHits[cluster.blastHits.keys()[0]]:
+            inAll = True
+            for amplicon, organisms in cluster.blastHits.iteritems():
+                if organism not in organisms: inAll = False
+            if inAll: cluster.organismsInAllAmplicons.append(organism)
+        cluster.hitReduction = {amplicon:len(organisms) for amplicon, organisms in cluster.blastHits.iteritems()}
+        cluster.hitReduction['inAll'] = len(cluster.organismsInAllAmplicons)
+        
+        output +=       '\tOrganims in all amplicons:'     +'\n'
+        for organism in cluster.organismsInAllAmplicons:
+            output += '\t\t'+str(organism)     +'\n'
+        output += str(cluster.hitReduction)+'\n'
+        if len(cluster.organismsInAllAmplicons) >1:output += 'cluster is '+', '.join(cluster.organismsInAllAmplicons[:-1])+' or ' +cluster.organismsInAllAmplicons[-1] +'\n'
+        elif cluster.organismsInAllAmplicons:output += 'cluster is '+cluster.organismsInAllAmplicons[-1] +'\n'
 
     #return [output, cluster]
     import cPickle
