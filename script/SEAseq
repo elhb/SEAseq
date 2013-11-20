@@ -104,6 +104,7 @@ def getindata(cmd):
 	argparser.add_argument(	'-mcs','-mostCommonToShow',			dest='mostCommonToShow',		metavar='<int>',	type=int,	required=False,	default=10,	help='The number of most common BLast hits to show in the end of summary (default 10).')
 
     if cmd == 'sbatch':
+	argparser.add_argument(	'-prj','-project',dest='project',	metavar='<b20xxxxx>',	type=str,	required=False,	default='b2011011',	help='uppmaxproject (default b2011011)')
 	argparser.add_argument('--send',	dest='send', 	action='store_true', 			required=False,	default=False,	help='Send sbatch scripts to job-queue.')
 	argparser.add_argument('--sendonly',	dest='sendonly',action='store_true', 			required=False,	default=False,	help='Do not generate the files only Send sbatch scripts to job-queue.')
 	argparser.add_argument('--small',	dest='small', 	action='store_true', 			required=False,	default=False,	help='make for smaller dataset job-queue.')

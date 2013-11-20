@@ -13,7 +13,7 @@ def sbatch(indata):
     
     import os
     import sys
-    uppmaxprojectid = 'b2011168'
+    uppmaxprojectid = indata.project
 
     if not indata.sendonly:
         config.logfile.write('Creating sbatch scripts.\n')
