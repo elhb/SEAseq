@@ -57,6 +57,8 @@ def clusterbarcodes(indata):
     summary = SEAseqSummary()
     f1 = open(config.absolutePath+'/nonCreads.1.fq','w')
     f2 = open(config.absolutePath+'/nonCreads.2.fq','w')
+    totalMMs = 0
+    totalHandles = 0
     with progress:
 	for pair in results:
 	    progress.update()
@@ -64,9 +66,14 @@ def clusterbarcodes(indata):
 	    if pair.handle_start==None or pair.handle_end==None:
 		f1.write(pair.r1.header + '\n'+pair.r1.seq+'\n+\n'+pair.r1.qual+'\n')
 		f2.write(pair.r2.header + '\n'+pair.r2.seq+'\n+\n'+pair.r2.qual+'\n')
+            else:
+                totalHandles+=1
+                totalMMs += pair.missMatchesInTheHandle
     if not indata.debug:WorkerPool.close()
     if not indata.debug:WorkerPool.join()
     config.outfile.write(str( summary.part1() )+'\n')
+    config.outfile.write('\nFound '+str(round(100*float(totalMMs)/float(totalHandles*20),2))+'% missmatches in the C handle sequences.\n')
+    config.outfile.write('Total MMs: '+str(totalMMs)+', total handles: '+str(totalHandles)+'.\n')
     config.logfile.write('Part1: finished barcode sequences identified.\n')
     f1.close()
     f2.close()

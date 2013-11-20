@@ -696,6 +696,7 @@ class readpair():
 		if perfect_match:
 		    handle_start = perfect_match.start()
 		    handle_end = perfect_match.end()
+		    self.missMatchesInTheHandle = 0
 		
 		elif config.maxHandleMissMatch:
 			mindist = [10000,-1]
@@ -710,6 +711,7 @@ class readpair():
 			if mindist[0] < config.maxHandleMissMatch:
 				handle_start = i
 				handle_end = i+len(handle.seq)
+				self.missMatchesInTheHandle = mindist[0]
 			else:
 				handle_start = None
 				handle_end = None
