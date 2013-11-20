@@ -1091,13 +1091,13 @@ class BarcodeCluster(object):
 			command = [	'cd-hit-454',
 				'-i',indata.tempFileFolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa',
 				'-o',indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa',
-				'-g','1',
+				'-g','1',#possibly change to 0 for more accurate though slower progress?? or other way around
 				'-c',str(config.minConsensusClusteringIdentity/100.0)
 				]
 		else:	command = [	'cd-hit-454',
 				'-i',config.path+'/sortedReads/temporary.'+str(self.id)+'.fa',
 				'-o',config.path+'/sortedReads/cluster.'+str(self.id)+'.fa',
-				'-g','1',
+				'-g','1',#possibly change to 0 for more accurate though slower progress?? or other way around
 				'-c',str(config.minConsensusClusteringIdentity/100.0)
 				]
 
