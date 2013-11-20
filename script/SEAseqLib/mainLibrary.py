@@ -974,6 +974,7 @@ class BarcodeCluster(object):
 		if verb: output = 'PAIRS:\n'
 		
 		tofilestr = ''
+		seqsForFasta = {}
 		for pair in self.readpairs:
 		    
 		    tmpcounter += 1
@@ -1062,7 +1063,21 @@ class BarcodeCluster(object):
 		    
 		    # prepare for clustering by writing read pair to tempfile and saving temporary id number and mappinf header to pair-object
 		    tem_seq = pair.r1.seq[pair.handle_end:][len( config.primerpairs[pair.p1].fwd )+1:]+'NNNNNNNNNN'+pair.r2.revcomp().seq[:-(len(    config.primerpairs[pair.p1].rev   )+1)]
-		    tofilestr += '>'+str(pair.id)+'\n'+ tem_seq +'\n'
+		    seqsForFasta[pair.id] = tem_seq
+		    #tofilestr += '>'+str(pair.id)+'\n'+ tem_seq +'\n'
+		
+		#sort sequences by number of occurances of uniqe species
+		import operator
+		temporaryDict = {}
+		for pairID, temporarySequence in seqsForFasta.iteritems():
+			try: temporaryDict[temporarySequence].append(pairID)
+			except KeyError: temporaryDict[temporarySequence] = [pairID]
+		temporaryDict2 = {}
+		for temporarySequence, pairIDList in temporaryDict.iteritems():
+			try: temporaryDict2[len(pairIDList)] += pairIDList
+			except KeyError: temporaryDict2[len(pairIDList)] = pairIDList
+		for numberOfUniqeSequences, pairIDList in sorted(temporaryDict2.iteritems(), key=operator.itemgetter(0))[::-1]:
+			for pairID in pairIDList: tofilestr += '>'+str(pairID)+'\n'+ seqsForFasta[pairID] +'\n'
 		
 		if indata.tempFileFolder:
 			import os
