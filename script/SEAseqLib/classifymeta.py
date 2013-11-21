@@ -180,6 +180,8 @@ def foreachCluster(tmp):
                         organism = gi2orgname(gi_number)
                         local_gi2org[gi_number] = organism
                     if not config.subSpecies: organism = ' '.join(organism.split(' ')[:2])
+                    import re
+                    if re.match('Prevotella',organism) and config.skipPrevotella: continue
                     if perc_identity >= config.minBlastIdentity and perc_coverage >= config.minBlastCoverage and organism not in in_r1:
                         in_r1[organism] = alignment
                         try:
@@ -224,6 +226,7 @@ def foreachCluster(tmp):
             if not in_both_reads:
                 output +=       '\t\t\tNo alignment supported by both reads with >='+str(config.minBlastIdentity)+'% identity and '+str(config.minBlastCoverage)+'% alignment length coverage'     +'\n'
 
+    #if cluster is monoclonal for all defined and there are more than one amplicon check overlap and make a classification
     if len(cluster.blastHits) > 1 and (cluster.definedampliconcount == [cluster.amplicons[amplicon].monoclonal for amplicon in cluster.definedamplicons].count(True)):
         cluster.organismsInAllAmplicons = []
         for organism in cluster.blastHits[cluster.blastHits.keys()[0]]:

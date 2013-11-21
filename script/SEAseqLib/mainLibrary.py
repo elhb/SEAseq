@@ -1,7 +1,7 @@
 import sys
 import os
 MASTER = os.getpid()
-version = 'ALPHA 1.4'
+version = 'ALPHA 1.5'
 
 ######################### MAIN #########################
 
@@ -439,6 +439,7 @@ class Configuration():
 	self.jobName		= None
 	self.mostCommonToShow	= None
 	self.subSpecies		= False
+	self.skipPrevotella	= False
 
 	# for each run
 	self.cmd		= cmd
@@ -590,6 +591,7 @@ class Configuration():
 		'minBlastCoverage'+			'\t'	+str(self.minBlastCoverage)+	'\t'+	'# minimum alignment length coverage to consider the blast hit'+	'\n'+
 		'mostCommonToShow'+			'\t'	+str(self.mostCommonToShow)+	'\t'+	'# the number of most common genomes in hitlists for >1 defined all mono clusters'+	'\n'+
 		'subSpecies'+				'\t'	+str(self.subSpecies)+		'\t'+	'# flag for showing the subspecies information or not'+	'\n'+
+		'skipPrevotella'+			'\t'	+str(self.skipPrevotella)+	'\t'+	'# flag for skipping all Prevotella Hits or not'+	'\n'+
 		#''+			'\t'	+str(self)+		'\t'+	'# '+	'\n'+
 		'# A None value usually means that the variable is not yet set.\n'
 		)
