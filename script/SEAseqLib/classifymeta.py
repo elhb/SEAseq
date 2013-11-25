@@ -3,9 +3,9 @@ def clusterGenerator(config,indata):
     import cPickle
     import gzip
     
-    #filename=config.path+'/meta.clusters.pickle.gz'
-    filename=config.path+'/meta.clusters.pickle'
-    #clusterdump = gzip.open(filename,'rb')
+    import os
+    if   os.path.exists(config.path+'/meta.clusters.pickle'):    filename = config.path+'/meta.clusters.pickle'
+    elif os.path.exists(config.path+'/meta.clusters.pickle.gz'): filename = config.path+'/meta.clusters.pickle.gz'
     clusterundump = open(filename,mode='r', buffering=1024*64)
     if clusterundump.name.split('.')[-1] in ['gz','gzip']:
         clusterundump.close()

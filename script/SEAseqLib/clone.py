@@ -50,8 +50,8 @@ def clone(indata):
             toLink += [[indata.clonePath+'/meta.smaller.out.txt',indata.path+'/meta.smaller.out.txt']]
             toLink += [[indata.clonePath+'/meta.statstable',indata.path+'/meta.statstable']]
         elif os.path.exists(indata.clonePath+'/meta.clusters.pickle.gz'):
-            toLink += [[indata.clonePath+'/meta.clusters.pickle',indata.path+'/meta.clusters.pickle.gz']]
-            toLink += [[indata.clonePath+'/meta.smaller.out.txt',indata.path+'/meta.smaller.out.txt.gz']]
+            toLink += [[indata.clonePath+'/meta.clusters.pickle.gz',indata.path+'/meta.clusters.pickle.gz']]
+            toLink += [[indata.clonePath+'/meta.smaller.out.txt.gz',indata.path+'/meta.smaller.out.txt.gz']]
             toLink += [[indata.clonePath+'/meta.statstable',indata.path+'/meta.statstable.gz']]
         toLink += [[indata.clonePath+'/meta.log.txt',indata.path+'/meta.log.txt']]
         toLink += [[indata.clonePath+'/meta.out.txt',indata.path+'/meta.out.txt']]
