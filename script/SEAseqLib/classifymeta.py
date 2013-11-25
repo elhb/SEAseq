@@ -7,6 +7,9 @@ def clusterGenerator(config,indata):
     filename=config.path+'/meta.clusters.pickle'
     #clusterdump = gzip.open(filename,'rb')
     clusterundump = open(filename,mode='r', buffering=1024*64)
+    if clusterundump.name.split('.')[-1] in ['gz','gzip']:
+        clusterundump.close()
+        clusterundump = gzip.open(clusterundump.name)
     
     while True:
         try:

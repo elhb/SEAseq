@@ -7,7 +7,7 @@ def init(indata):
 
     if os.path.exists(indata.path+'/'+'config'):
 	sys.stderr.write('This analysis has already been initiated try another command.\n')
-	return
+	return 1
     
     config = Configuration(indata.path, indata.cmd)
     
@@ -35,4 +35,4 @@ def init(indata):
     config.save()
 
     config.logfile.write('Analysis '+config.absolutePath+' sucesfully initiated.\n')
-    return 0
+    return config

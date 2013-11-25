@@ -12,6 +12,7 @@ def setVariables(indata):
     for varName,varValue in config.__dict__.iteritems():
         oldValues[varName] = varValue
 
+    indata.absolutePath = os.path.abspath(indata.path)
     for varName,varValue in indata.__dict__.iteritems():
         try:
             if oldValues[varName] != varValue:

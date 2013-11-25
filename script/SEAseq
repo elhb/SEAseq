@@ -19,7 +19,7 @@ def main():
 	sys.stderr.write('Please specify a command, if you need help run SEAseq help.\n')
 	cmd = None
 
-    if cmd not in ['Help','help','-help','--help','-h','init','addfqs','clusterbarcodes','sortreads','meta','sbatch','makegraphs','classifymeta','setVariables']:sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n');sys.exit()
+    if cmd not in ['clone','Help','help','-help','--help','-h','init','addfqs','clusterbarcodes','sortreads','meta','sbatch','makegraphs','classifymeta','setVariables']:sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n');sys.exit()
 
     if cmd and cmd not in ['Help','help','-help','--help','-h']: indata = getindata(cmd)
     elif not cmd: return 1
@@ -30,6 +30,7 @@ def main():
 				    +'Usage:\tSEAseq <command> -path <analysis folder> [options]\n\n'
 				    +'Commands:\n'
 				    +'\tinit'		+' '.join(['' for i in range(20-len('init'))])			+'Initiate a new anlysis\n'
+				    +'\tclone'		+' '.join(['' for i in range(20-len('clone'))])			+'Clone some parts of other analysis to save cpu power and space\n'
 				    +'\tsetVariables'	+' '.join(['' for i in range(20-len('setVariables'))])		+'Set non default values to variables\n'
 				    +'\taddfqs'		+' '.join(['' for i in range(20-len('addfqs'))])		+'Add fastq files to be analysed\n'
 				    +'\tclusterbarcodes'+' '.join(['' for i in range(20-len('clusterbarcodes'))])	+'cluster reads according to barcode sequence\n'
@@ -44,6 +45,9 @@ def main():
     if cmd == 'init':
 	from SEAseqLib.init import init
 	init(indata)
+    elif cmd == 'clone':
+	from SEAseqLib.clone import clone
+	clone(indata)
     elif cmd == 'setVariables':
 	from SEAseqLib.setVariables import setVariables
 	setVariables(indata)
@@ -82,6 +86,10 @@ def getindata(cmd):
     argparser.add_argument('-path',						dest='path',				metavar='<path>',	type=str,	required=True,	default=False,	help='Set the analysis path.')
     argparser.add_argument('-tmp','-tempFileFolder',				dest='tempFileFolder',			metavar='<path>',	type=str,	required=False,	default=False,	help='path to folder where temporary files should be written to (default False). Now forced to $SNIC_TMP if on a "*.uppmax.uu.se"-host ')
     
+    if cmd == 'clone':
+	argparser.add_argument('-clonePath',					dest='clonePath',			metavar='<path>',	type=str,	required=True,	default=False,	help='path to clone from.')
+	argparser.add_argument('--clusterAndSort',				dest='cloneClusterAndSort', 		action='store_true', 			required=False,	default=False,	help='clone cluster and sort steps (default False).')
+	argparser.add_argument('--meta',					dest='cloneMeta', 			action='store_true', 			required=False,	default=False,	help='clone cluster sort and meta steps (default False).')
     if cmd == 'setVariables':
 	argparser.add_argument('--subSpecies',					dest='subSpecies', 			action='store_true', 			required=False,	default=False,	help='Show subspecies information or not (default False).')
 	argparser.add_argument('-j','-jobName',					dest='jobName',				metavar='<name>',	type=str,	required=False,	default='',	help='Name be able to identify sample, only 11first char will be visible for jobinfo (default "")')
@@ -105,11 +113,15 @@ def getindata(cmd):
 	argparser.add_argument('--skipPrevotella',				dest='skipPrevotella', 			action='store_true', 			required=False,	default=False,	help='Skip all Prevotella hits (default False).')
 
     if cmd == 'sbatch':
-	argparser.add_argument(	'-prj','-project',dest='project',	metavar='<b20xxxxx>',	type=str,	required=False,	default='b2011011',	help='uppmaxproject (default b2011011)')
+	argparser.add_argument(	'-prj','-project',dest='project',metavar='<b20xxxxx>',	type=str,	required=False,	default='b2011011',	help='uppmaxproject (default b2011011)')
 	argparser.add_argument('--send',	dest='send', 	action='store_true', 			required=False,	default=False,	help='Send sbatch scripts to job-queue.')
 	argparser.add_argument('--sendonly',	dest='sendonly',action='store_true', 			required=False,	default=False,	help='Do not generate the files only Send sbatch scripts to job-queue.')
 	argparser.add_argument('--small',	dest='small', 	action='store_true', 			required=False,	default=False,	help='make for smaller dataset job-queue.')
-    
+	argparser.add_argument('--skipCluster',	dest='skipCluster',action='store_true', 		required=False,	default=False,	help='Skip this sbatch file (default False).')
+	argparser.add_argument('--skipSort',	dest='skipSort',action='store_true', 		required=False,	default=False,	help='Skip this sbatch file (default False).')
+	argparser.add_argument('--skipMeta',	dest='skipMeta',action='store_true', 		required=False,	default=False,	help='Skip this sbatch file (default False).')
+	argparser.add_argument('--skipClassify',dest='skipClassify',action='store_true', 		required=False,	default=False,	help='Skip this sbatch file (default False).')
+
     if cmd == 'addfqs':
 	argparser.add_argument(	'-r1',			dest='reads1',	metavar='FILE',				type=file,	required=True, 			help='Indata "fastq"-file read1.')
 	argparser.add_argument(	'-r2',			dest='reads2',	metavar='FILE',				type=file,	required=True,	default=None,	help='Indata "fastq"-file read2.')
@@ -152,6 +164,7 @@ def getindata(cmd):
     import sys
     indata = argparser.parse_args(sys.argv[1:])
     if indata.path[-1] == '/': indata.path=indata.path[:-1]
+    if cmd =='clone' and indata.clonePath[-1] == '/': indata.clonePath=indata.clonePath[:-1]
 
     from socket import gethostname;
     import commands
