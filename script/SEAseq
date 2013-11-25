@@ -19,7 +19,7 @@ def main():
 	sys.stderr.write('Please specify a command, if you need help run SEAseq help.\n')
 	cmd = None
 
-    if cmd not in ['clone','Help','help','-help','--help','-h','init','addfqs','clusterbarcodes','sortreads','meta','sbatch','makegraphs','classifymeta','setVariables']:sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n');sys.exit()
+    if cmd not in ['compare','clone','Help','help','-help','--help','-h','init','addfqs','clusterbarcodes','sortreads','meta','sbatch','makegraphs','classifymeta','setVariables']:sys.stderr.write('Invalid command. Please specify a command, if you need help run SEAseq help.\n');sys.exit()
 
     if cmd and cmd not in ['Help','help','-help','--help','-h']: indata = getindata(cmd)
     elif not cmd: return 1
@@ -31,6 +31,7 @@ def main():
 				    +'Commands:\n'
 				    +'\tinit'		+' '.join(['' for i in range(20-len('init'))])			+'Initiate a new anlysis\n'
 				    +'\tclone'		+' '.join(['' for i in range(20-len('clone'))])			+'Clone some parts of other analysis to save cpu power and space\n'
+				    +'\tcompare'	+' '.join(['' for i in range(20-len('compare'))])		+"compare stuff because it's fun\n"
 				    +'\tsetVariables'	+' '.join(['' for i in range(20-len('setVariables'))])		+'Set non default values to variables\n'
 				    +'\taddfqs'		+' '.join(['' for i in range(20-len('addfqs'))])		+'Add fastq files to be analysed\n'
 				    +'\tclusterbarcodes'+' '.join(['' for i in range(20-len('clusterbarcodes'))])	+'cluster reads according to barcode sequence\n'
@@ -45,6 +46,9 @@ def main():
     if cmd == 'init':
 	from SEAseqLib.init import init
 	init(indata)
+    elif cmd == 'compare':
+	from SEAseqLib.compare import compare
+	compare(indata)
     elif cmd == 'clone':
 	from SEAseqLib.clone import clone
 	clone(indata)
@@ -86,6 +90,8 @@ def getindata(cmd):
     argparser.add_argument('-path',						dest='path',				metavar='<path>',	type=str,	required=True,	default=False,	help='Set the analysis path.')
     argparser.add_argument('-tmp','-tempFileFolder',				dest='tempFileFolder',			metavar='<path>',	type=str,	required=False,	default=False,	help='path to folder where temporary files should be written to (default False). Now forced to $SNIC_TMP if on a "*.uppmax.uu.se"-host ')
     
+    if cmd == 'compare':
+	pass
     if cmd == 'clone':
 	argparser.add_argument('-clonePath',					dest='clonePath',			metavar='<path>',	type=str,	required=True,	default=False,	help='path to clone from.')
 	argparser.add_argument('--clusterAndSort',				dest='cloneClusterAndSort', 		action='store_true', 			required=False,	default=False,	help='clone cluster and sort steps (default False).')

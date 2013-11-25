@@ -396,6 +396,8 @@ class Configuration():
 	self.init_outfile	= self.path + '/' + 'init.out.txt'
 	self.clone_logfile	= self.path + '/' + 'clone.log.txt'
 	self.clone_outfile	= self.path + '/' + 'clone.out.txt'
+	self.compare_logfile	= self.path + '/' + 'compare.log.txt'
+	self.compare_outfile	= self.path + '/' + 'compare.out.txt'
 	self.addfqs_logfile	= self.path + '/' + 'addfqs.log.txt'
 	self.addfqs_outfile	= self.path + '/' + 'addfqs.out.txt'
 	self.cluster_logfile	= self.path + '/' + 'cluster.log.txt'
@@ -473,6 +475,9 @@ class Configuration():
 	elif cmd == 'clone':
 	    self.logfile = self.clone_logfile
 	    self.outfile = self.clone_outfile
+	elif cmd == 'compare':
+	    self.logfile = self.compare_logfile
+	    self.outfile = self.compare_outfile
 	elif cmd == 'sbatch':
 	    self.logfile = self.sbatch_logfile
 	    self.outfile = self.sbatch_outfile
