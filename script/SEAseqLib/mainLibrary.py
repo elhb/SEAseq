@@ -107,7 +107,7 @@ def getPairs(config):
 	# choose random reads to analyze from fastq files
 	if config.random:
 		import random
-		numreads=config.randomumreads
+		numreads=config.random
 		if config.stop: numreads = config.stop
 		config.logfile.write('Choosing '+str(config.random)+' random pairs to analyze ... ')
 		readNumbersToPrint = {}
