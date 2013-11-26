@@ -39,7 +39,7 @@ def sbatch(indata):
             f.write('echo "$(date) Running on: $(hostname)"'+'\n')
             f.write('cd '+os.getcwd()+'\n')
             f.write('module load python/2.7'+'\n')
-            f.write(sys.argv[0]+' clusterbarcodes -path '+config.path+' -p '+str(indata.cpus))
+            f.write(sys.argv[0]+' clusterbarcodes -path '+config.path+' -p '+str(indata.cpus)+' -stop '+str(indata.stop)+' -skip '+str(indata.skip))
             f.write('\n')
             f.close()
         
@@ -63,7 +63,7 @@ def sbatch(indata):
                 'echo "$(date) Running on: $(hostname)"'+'\n'+
                 'cd '+os.getcwd()+'\n'+
                 'module load python/2.7'+'\n'+
-                sys.argv[0]+' sortreads -path '+config.path+' -p '+str(indata.cpus))
+                sys.argv[0]+' sortreads -path '+config.path+' -p '+str(indata.cpus)+' -stop '+str(indata.stop)+' -skip '+str(indata.skip))
             f.write('\n')
             f.close()
         

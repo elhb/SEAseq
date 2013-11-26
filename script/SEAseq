@@ -135,7 +135,7 @@ def getindata(cmd):
     if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta' or cmd == 'classifymeta' or cmd == 'sbatch':
 	argparser.add_argument(	'-p',			dest='cpus',	metavar='N',				type=int,	required=False,	default=1,	help='The number of processes to run in parallel (default 1).')
     
-    if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta' or cmd == 'classifymeta':
+    if cmd == 'sortreads' or cmd == 'clusterbarcodes' or cmd == 'meta' or cmd == 'classifymeta' or cmd == 'sbatch':
 	argparser.add_argument(	'-skip',		dest='skip',	metavar='N',				type=int,	required=False,	default=0,	help='Skip the first N read pairs in files (default 0).')
 	argparser.add_argument(	'-stop',		dest='stop',	metavar='N',				type=int,	required=False,	default=0,	help='Stop after N read pairs, set to 0 to disable (default 0).')
 
