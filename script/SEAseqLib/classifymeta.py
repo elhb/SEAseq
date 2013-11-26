@@ -244,8 +244,8 @@ def foreachCluster(tmp):
         for organism in cluster.organismsInAllAmplicons:
             output += '\t\t'+str(organism)     +'\n'
         output += str(cluster.hitReduction)+'\n'
-        if len(cluster.organismsInAllAmplicons) >1:output += 'cluster is '+', '.join(cluster.organismsInAllAmplicons[:-1])+' or ' +cluster.organismsInAllAmplicons[-1] +'\n'
-        elif cluster.organismsInAllAmplicons:output += 'cluster is '+cluster.organismsInAllAmplicons[-1] +'\n'
+        if   len(cluster.organismsInAllAmplicons) >1:   output += 'cluster is '+', '.join(cluster.organismsInAllAmplicons[:-1])+' or ' +cluster.organismsInAllAmplicons[-1] +'\n'
+        elif len(cluster.organismsInAllAmplicons) ==1:  output += 'cluster is '+cluster.organismsInAllAmplicons[-1] +'\n'
 
     #return [output, cluster]
     import cPickle
