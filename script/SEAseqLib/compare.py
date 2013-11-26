@@ -43,7 +43,7 @@ def compare(indata):
             except KeyError:overlaps[line.rstrip()]=1
 
     config.logfile.write('Analyzing organism distribution ...\n')    
-    config.outfile.write('Organism distribution:\nTotal '+str(temp0)+' clusters\n')
+    config.outfile.write('Organism distribution:\nTotal '+str(temp0)+' clusters, '+str(len(clusterOrganisms))+' organism combinations/classifications.\n')
     config.outfile.write('#\t%\tclassification\n')
     #total = sum([count for defenition, count in clusterOrganisms.iteritems()])
     import operator
