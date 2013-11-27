@@ -45,16 +45,16 @@ def clone(indata):
         toLink += [[indata.clonePath+'/sort.log.txt',indata.path+'/sort.log.txt']]
         toLink += [[indata.clonePath+'/sort.out.txt',indata.path+'/sort.out.txt']]
     if indata.cloneMeta:
-        if os.path.exists(indata.clonePath+'/meta.clusters.pickle'):
-            toLink += [[indata.clonePath+'/meta.clusters.pickle',indata.path+'/meta.clusters.pickle']]
-            toLink += [[indata.clonePath+'/meta.smaller.out.txt',indata.path+'/meta.smaller.out.txt']]
-            toLink += [[indata.clonePath+'/meta.statstable',indata.path+'/meta.statstable']]
-        elif os.path.exists(indata.clonePath+'/meta.clusters.pickle.gz'):
-            toLink += [[indata.clonePath+'/meta.clusters.pickle.gz',indata.path+'/meta.clusters.pickle.gz']]
-            toLink += [[indata.clonePath+'/meta.smaller.out.txt.gz',indata.path+'/meta.smaller.out.txt.gz']]
-            toLink += [[indata.clonePath+'/meta.statstable',indata.path+'/meta.statstable.gz']]
-        toLink += [[indata.clonePath+'/meta.log.txt',indata.path+'/meta.log.txt']]
-        toLink += [[indata.clonePath+'/meta.out.txt',indata.path+'/meta.out.txt']]
+        if      os.path.exists(indata.clonePath+'/meta.clusters.pickle'):    toLink += [[indata.clonePath+'/meta.clusters.pickle',   indata.path+'/meta.clusters.pickle']]
+        elif    os.path.exists(indata.clonePath+'/meta.clusters.pickle.gz'): toLink += [[indata.clonePath+'/meta.clusters.pickle.gz',indata.path+'/meta.clusters.pickle.gz']]
+        if      os.path.exists(indata.clonePath+'/meta.smaller.out.txt'):      toLink += [[indata.clonePath+'/meta.smaller.out.txt',   indata.path+'/meta.smaller.out.txt']]
+        elif    os.path.exists(indata.clonePath+'/meta.smaller.out.txt.gz'):   toLink += [[indata.clonePath+'/meta.smaller.out.txt.gz',indata.path+'/meta.smaller.out.txt.gz']]
+        if      os.path.exists(indata.clonePath+'/meta.statstable'):      toLink += [[indata.clonePath+'/meta.statstable',   indata.path+'/meta.statstable']]
+        elif    os.path.exists(indata.clonePath+'/meta.statstable.gz'):   toLink += [[indata.clonePath+'/meta.statstable.gz',indata.path+'/meta.statstable.gz']]
+        if      os.path.exists(indata.clonePath+'/meta.log.txt'):      toLink += [[indata.clonePath+'/meta.log.txt',   indata.path+'/meta.log.txt']]
+        elif    os.path.exists(indata.clonePath+'/meta.log.txt.gz'):   toLink += [[indata.clonePath+'/meta.log.txt.gz',indata.path+'/meta.log.txt.gz']]
+        if      os.path.exists(indata.clonePath+'/meta.out.txt'):      toLink += [[indata.clonePath+'/meta.out.txt',   indata.path+'/meta.out.txt']]
+        elif    os.path.exists(indata.clonePath+'/meta.out.txt.gz'):   toLink += [[indata.clonePath+'/meta.out.txt.gz',indata.path+'/meta.out.txt.gz']]
     for src, dst in toLink:
         config.logfile.write('Linking from source: '+src+' -> '+dst+'.\n')
         os.symlink(src,dst)
