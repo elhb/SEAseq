@@ -156,8 +156,8 @@ def makegraphs(indata):
 	    ax.set_xlim(xscale[0],xscale[1])
 	    ax2.set_xlim(xscale[0],xscale[1])
 
-	    ax.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/10))
-	    ax2.set_yticks(np.arange(yscale[0],yscale[1]+1,min(100,yscale[1]/10)))
+	    ax.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/20))
+	    ax2.set_yticks(np.arange(yscale[0],yscale[1]+1,yscale[1]/20))
 	    ax.set_yticks(np.arange(0,101,5))
 
 	    plt.savefig(                     config.path+'/graphs/'+rc_type+'_pairs_per_barcode_with_amp.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+config.jobName+'.pdf')
@@ -206,8 +206,8 @@ def makegraphs(indata):
 	ax.set_ylim(yscale[0],yscale[1])
 	ax.set_xlim(xscale[0],xscale[1])
 
-	ax.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/10))
-	ax.set_yticks(np.arange(yscale[0],yscale[1]+1,min(100,yscale[1]/10)))
+	ax.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/20))
+	ax.set_yticks(np.arange(yscale[0],yscale[1]+1,yscale[1]/20))
 	plt.savefig(config.path+'/rawReadPairsPerBarcodeCluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.pdf')
 	plt.close()
 
