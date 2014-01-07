@@ -90,8 +90,9 @@ def compare(indata):
     remove = []
     amplicons = getAmplicons(overlaps)
     for data,count in overlaps.iteritems():
+        data_str = data
         data = eval(data)
-        if 0 in [data[amplicon] for amplicon in amplicons]: remove.append(str(data))
+        if 0 in [data[amplicon] for amplicon in amplicons]: remove.append(str(data_str))
     for data in remove:
         temp1 -= overlaps[data]
         del overlaps[data]
@@ -103,12 +104,13 @@ def compare(indata):
     remove = []
     amplicons = getAmplicons(overlaps)
     for data,count in overlaps.iteritems():
+        data_str = data
         data = eval(data)
         bothOk = True
         for amplicon in amplicons:
             if data['inAll'] == 0: bothOk = False
         if not bothOk:
-            remove.append(str(data))
+            remove.append(str(data_str))
     for data in remove:
         temp1 -= overlaps[data]
         del overlaps[data]
@@ -121,12 +123,13 @@ def compare(indata):
     remove = []
     amplicons = getAmplicons(overlaps)
     for data,count in overlaps.iteritems():
+        data_str = data
         data = eval(data)
         bothOk = True
         for amplicon in amplicons:
             if data[amplicon] == data['inAll'] or data['inAll'] == 0: bothOk = False
         if not bothOk:
-            remove.append(str(data))
+            remove.append(str(data_str))
     for data in remove:
         temp1 -= overlaps[data]
         del overlaps[data]
