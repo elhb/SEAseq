@@ -117,6 +117,7 @@ def getindata(cmd):
 	argparser.add_argument(	'-alenc','-minBlastCoverage',			dest='minBlastCoverage',		metavar='<int>',	type=float,	required=False,	default=95.0,	help='Alignment length cutoff for BLAST hits (default 95 percent).')
 	argparser.add_argument(	'-mcs','-mostCommonToShow',			dest='mostCommonToShow',		metavar='<int>',	type=int,	required=False,	default=10,	help='The number of most common BLast hits to show in the end of summary (default 10).')
 	argparser.add_argument('--skipPrevotella',				dest='skipPrevotella', 			action='store_true', 			required=False,	default=False,	help='Skip all Prevotella hits (default False).')
+	argparser.add_argument(	'-rl','-readLength',				dest='readLength',			metavar='<int>',	type=int,	required=False,	default=None,	help='Read length limit (longer will be trimmed, default None).')
 
     if cmd == 'sbatch':
 	argparser.add_argument(	'-prj','-project',dest='project',metavar='<b20xxxxx>',	type=str,	required=False,	default='b2011011',	help='uppmaxproject (default b2011011)')

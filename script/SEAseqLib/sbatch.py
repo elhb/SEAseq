@@ -31,7 +31,7 @@ def sbatch(indata):
                     f.write('#SBATCH -t 24:00:00'+'\n')
             else:
                     f.write('#SBATCH -t 1:00:00'+'\n')
-            f.write('#SBATCH -J clust_'+config.jobName+'_'+config.path+'\n')
+            f.write('#SBATCH -J clust_'+str(config.jobName)+'_'+config.path+'\n')
             f.write('#SBATCH -e '+config.absolutePath+'/sbatch.cluster.stderr.txt'+'\n')
             f.write('#SBATCH -o '+config.absolutePath+'/sbatch.cluster.stdout.txt'+'\n')
             f.write('#SBATCH --mail-type=All'+'\n')

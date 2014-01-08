@@ -167,6 +167,13 @@ def getPairs(config):
 					else: config.logfile.write(' this is not a DNA sequence ('+r1line.rstrip()+') could something be wrong with your fastq file?.\n\n');raise ValueError#os.kill(MASTER);sys.exit();#REALLYNOTOPTIMAL
 				r1seq = r1line.rstrip()
 				r2seq = r2line.rstrip()
+				if config.readLength:
+					config.readLength = int(config.readLength)
+					if config.readLength > len(r1seq) or config.readLength > len(r2seq):
+						config.logfile.write('WARNING: readlength limit is '+str(config.readLength)+'bp, r1 is '+str(len(r1seq))+'bp and r2 is '+str(len(r2seq))+'bp.\n')
+					else:
+						if config.readLength < len(r1seq): r1seq = r1seq[:config.readLength]
+						if config.readLength < len(r2seq): r2seq = r2seq[:config.readLength]
 			elif tmp == 3: # "+"-line do some format check
 					if counter in {1:True,67:True,438:True,9675:True,53678:True,864513:True,1337354:True,317955:True,1226844:True,20389:True,118261:True}:
 						if r1line[0] != r2line[0] or r1line[0] != '+': config.logfile.write('Error Format not fastq!');raise ValueError#os.kill(MASTER);sys.exit(1);#REALLYNOTOPTIMAL
@@ -174,6 +181,14 @@ def getPairs(config):
 					tmp=0 # reset line counter
 					r1qual = r1line.rstrip() #get qual strings
 					r2qual = r2line.rstrip()
+
+					if config.readLength:
+						config.readLength = int(config.readLength)
+						if config.readLength > len(r1qual) or config.readLength > len(r2qual):
+							config.logfile.write('WARNING: readlength limit is '+str(config.readLength)+'bp, r1 is '+str(len(r1qual))+'bp and r2 is '+str(len(r2qual))+'bp.\n')
+						else:
+							if config.readLength < len(r1qual): r1qual = r1qual[:config.readLength]
+							if config.readLength < len(r2qual): r2qual = r2qual[:config.readLength]
 					
 					#yield readpair
 					if not config.random: yield [readpair(header.rstrip(), read(header.rstrip(),r1seq,r1qual), read(header.rstrip(),r2seq,r2qual)),config]
@@ -444,6 +459,7 @@ class Configuration():
 	self.mostCommonToShow	= None
 	self.subSpecies		= False
 	self.skipPrevotella	= False
+	self.readLength		= None
 
 	# for each run
 	self.cmd		= cmd
@@ -575,6 +591,7 @@ class Configuration():
 		'jobName'+				'\t'	+str(self.jobName)+		'\t'+	'# Name of job in sbatch files etc'+	'\n'+
 		'infilesDictionary'+			'\t'	+str(self.infilesDictionary)+	'\t'+	'# Dictionary storing locations of pairs of input fastqfiles'+	'\n'+
 		'readCountsList'+			'\t'	+str(self.readCountsList)+	'\t'+	'# List with the read pair count within each fastq file pair'+	'\n'+
+		'readLength'+				'\t'	+str(self.readLength)+		'\t'+	'# Limits the readlengths to this value, if any read is longer it will be trimmed in the 3prime end, if read is shorter a warning will be displayed.'+	'\n'+
 
 		'#\n# SETTINGS FOR BEAD BARCODES CLUSTERING AND IDENTIFICATION:\n#\n'+
 		'numberOfClusterSeeds'+			'\t'	+str(self.numberOfClusterSeeds)+'\t'+	'# Number of sequences to use as seeds during clustering to identify bead barcodes '+	'\n'+
@@ -1314,11 +1331,29 @@ class Amplicon(object):
 			sys.stderr.write('ERROR: Amplicon type does not match the Consensus type.\n')
 			raise ValueError
 
+	def sortalleles(self):
+		#sort alleles by number of reads/consesussequence
+
+		import operator
+
+		temporaryDict = {}
+		for consensus in self.allels:
+			try:		temporaryDict[consensus.readcount].append(consensus)
+			except KeyError:temporaryDict[consensus.readcount] = [consensus]
+		
+		sortedAlleles = []
+		for count, consensuses in sorted(temporaryDict.iteritems(), key=operator.itemgetter(0))[::-1]:
+			for consensus in consensuses: sortedAlleles.append(consensus)
+		
+		self.allels = sortedAlleles
+			
 	def checkmono(self, config):
 		output = ''
 		output += '\t'+self.type+' '+str(self.readcount)+' reads in total.\n'
 		self.allelecount = 0
 		self.monoclonal = None
+		
+		self.sortalleles()
 		
 		for consensus in self.allels:
 			consensus.percentagesupport = 100*float(consensus.readcount)/float(self.readcount)
