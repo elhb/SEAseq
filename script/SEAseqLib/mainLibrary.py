@@ -460,6 +460,7 @@ class Configuration():
 	self.subSpecies		= False
 	self.skipPrevotella	= False
 	self.readLength		= None
+	self.allowedAllelLevelVariation = None
 
 	# for each run
 	self.cmd		= cmd
@@ -608,8 +609,16 @@ class Configuration():
 		'#\n# SETTINGS FOR CLUSTERING OF READS TO CONSENSUS SEQUENCES AND AMPLICONS:\n#\n'+
 		'minReadCountPerConsensus'+		'\t'	+str(self.minReadCountPerConsensus)+	'\t'+	'# minimum number of reads needed for a consensus sequence to be considered as a variant of an amplicon'+	'\n'+
 		'minReadPopSupportConsensus'+		'\t'	+str(self.minReadPopSupportConsensus)+	'\t'+	'# minimum %support of read pop needed for a consensus sequence to be considered as a variant of an amplicon'+	'\n'+
-		'minConsensusClusteringIdentity'+	'\t'	+str(self.minConsensusClusteringIdentity)+'\t'+	'# minimum identity for two reads to cluster as one consensus sequence'+	'\n'+
-		'primerset'+				'\t'	+str(self.primerset)+		'\t'+	'# the primer set to be used when identifying amplicon supporting reads'+	'\n'+
+		'minConsensusClusteringIdentity'+	'\t'	+str(self.minConsensusClusteringIdentity)+'\t'+	'# minimum identity for two reads to cluster as one consensus sequence'+	'\n')
+	if type(self.primerset) == file:
+		self.config.write(
+		'primerset'+				'\t'	+str(self.primerset.name)+		'\t'+	'# the primer set to be used when identifying amplicon supporting reads'+	'\n')
+	else:
+		self.config.write(
+		'primerset'+				'\t'	+str(self.primerset)+		'\t'+	'# the primer set to be used when identifying amplicon supporting reads'+	'\n')
+	self.config.write(
+		'allowedAllelLevelVariation'+		'\t'	+str(self.allowedAllelLevelVariation)+'\t'+'# allowed "fraction variation" of allele readcount compared to most represented allele (readcount/mostrepresented >= 1-fraction).'+	'\n'+
+
 
 		'#\n# SETTINGS FOR ALIGNMENT OF CONSENSUS SEQUENCES TO GENOMES:\n#\n'+
 		'blastDb'+				'\t'	+str(self.blastDb)+		'\t'+	'# database to be used for the alignment of amplicon variants'+	'\n'+
@@ -1355,13 +1364,22 @@ class Amplicon(object):
 		
 		self.sortalleles()
 		
+		mostRepresentedConsensus = self.allels[0]
+		allowedAllelLevelVariation = config.allowedAllelLevelVariation #0.6 = 60% variation ie second allele most have readcount >= 40% of "mostRepresentedConsensus" allele readcount
+		
 		for consensus in self.allels:
 			consensus.percentagesupport = 100*float(consensus.readcount)/float(self.readcount)
 			if consensus.readcount > 1 and consensus.percentagesupport > 1:
-				output += '\t\tConsensus '+consensus.id+' supported by '+str(round(consensus.percentagesupport,2))+'% of readpop ('+str(consensus.readcount)+' reads)\t'+consensus.sequence.seq+'\n'
-			if  consensus.percentagesupport >= config.minReadPopSupportConsensus and consensus.readcount >= config.minReadCountPerConsensus:
-				self.allelecount += 1
-				self.goodalleles.append(consensus)
+				output += '\t\tConsensus '+consensus.id+' supported by '+str(round(consensus.percentagesupport,2))+'% of readpop ('+str(consensus.readcount)+' reads)\t'+str(round(100*float(consensus.readcount)/float(mostRepresentedConsensus.readcount),0))+'%\t'+consensus.sequence.seq+'\n'
+			if consensus.readcount >= config.minReadCountPerConsensus:
+				if  consensus.percentagesupport >= config.minReadPopSupportConsensus:
+					if allowedAllelLevelVariation:
+						if (float(consensus.readcount)/float(mostRepresentedConsensus.readcount)) >= (1.0-allowedAllelLevelVariation):
+							self.allelecount += 1
+							self.goodalleles.append(consensus)
+					else:
+						self.allelecount += 1
+						self.goodalleles.append(consensus)
 		
 		if self.allelecount == 1:
 			self.monoclonal = True
