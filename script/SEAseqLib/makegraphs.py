@@ -68,16 +68,19 @@ def makegraphs(indata):
     if os.path.exists(config.path+'/meta.statstable'): config.logfile.write('Using a total of '+str(len(data))+' clusters.\n')
     
     graph_info = {'good':{},'total':{}}
+    graph_info_non_cumulative = {'good':{},'total':{}}
     for x_current in x_range:
 	for rc_type in ['total','good']:
 	    graph_info[rc_type][ x_current ] = {'totalClusterCount':0,'16s':0,'its':0,'both':0,'undefinedClusterCount':0,'definedClusterCount':0,'16s_mono':0,'its_mono':0,'both_mono':0,'both_16s_mono':0,'both_its_mono':0,'monoForAllDefinedAmps':0}
+	    graph_info_non_cumulative[rc_type][ x_current ] = {'totalClusterCount':0,'undefinedClusterCount':0,'definedClusterCount':0,'monoForAllDefinedAmps':0}
 
     config.logfile.write('Counting clusters ... \n')
     if os.path.exists(config.path+'/meta.statstable'):
+	#for cumulative count
 	for cid in data:
+	    compare_pairs = [	['total',data[cid]['number of reads in total']],    ['good',data[cid]['number of reads in total']-data[cid]['number of adaper reads']-data[cid]['number of strange primers']]    ]
 	    for x_current in x_range:
 		breaker = []
-		compare_pairs = [	['total',data[cid]['number of reads in total']],    ['good',data[cid]['number of reads in total']-data[cid]['number of adaper reads']-data[cid]['number of strange primers']]    ]
 		for tmp in compare_pairs:
 		    [rc_type, comp_value] = tmp
 		
@@ -97,20 +100,51 @@ def makegraphs(indata):
 		    else: breaker.append(True)
 		if len(breaker) == len(compare_pairs): break
 
+	#for noncumulative count
+	for cid in data:
+	    compare_pairs = [	['total',data[cid]['number of reads in total']],    ['good',data[cid]['number of reads in total']-data[cid]['number of adaper reads']-data[cid]['number of strange primers']]    ]
+	    for tmp in compare_pairs:
+		[rc_type, comp_value] = tmp
+		
+		x_current = comp_value
+		if x_current > xscale[1]: continue
+
+		graph_info_non_cumulative[rc_type][ x_current ]['totalClusterCount'] += 1
+
+		if data[cid]['number of consensus types with good support'] >= 1:
+		    graph_info_non_cumulative[rc_type][ x_current ]['definedClusterCount'] += 1
+		elif data[cid]['number of consensus types with good support'] == 0:
+		    graph_info_non_cumulative[rc_type][ x_current ]['undefinedClusterCount'] += 1
+		else: print 'ERROR: this should not be possible'
+		
+		if data[cid]['monoclonal for all defined amplicons']:
+		    graph_info_non_cumulative[rc_type][ x_current ]['monoForAllDefinedAmps'] += 1
+		
+
 	config.logfile.write('Calculating percentages ... \n')
 	for x_current in x_range:
 	    for rc_type in ['total','good']:
     
 		for [total_id,count_id] in [['definedClusterCount','monoForAllDefinedAmps']]:
+		    #for cumulative count
 		    total  = graph_info[rc_type][ x_current ][total_id]
 		    count = graph_info[rc_type][ x_current ][count_id]
-		    
 		    if total:
 			tmp_percentage = round(100*float(count)/float(total),2)
 			graph_info[rc_type][ x_current ][count_id] = tmp_percentage
 		    else:
 			graph_info[rc_type][ x_current ][count_id] = 0.0
+		    
+		    #for noncumulative count
+		    total  = graph_info_non_cumulative[rc_type][ x_current ][total_id]
+		    count = graph_info_non_cumulative[rc_type][ x_current ][count_id]		    
+		    if total:
+			tmp_percentage = round(100*float(count)/float(total),2)
+			graph_info_non_cumulative[rc_type][ x_current ][count_id] = tmp_percentage
+		    else:
+			graph_info_non_cumulative[rc_type][ x_current ][count_id] = 0.0
 
+    #for cumulative count
     if os.path.exists(config.path+'/meta.statstable'):
 	config.logfile.write('Preparing variables for plotting ... \n')
 	for rc_type in ['total','good']:
@@ -164,6 +198,60 @@ def makegraphs(indata):
 	    config.logfile.write('Created: '+config.path+'/graphs/'+rc_type+'_pairs_per_barcode_with_amp.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+config.jobName+' (.pdf and .values)'+'.\n')
 	    plt.close()
 
+    #for noncumulative count
+    if os.path.exists(config.path+'/meta.statstable'):
+	config.logfile.write('Preparing variables for plotting ... \n')
+	for rc_type in ['total','good']:
+
+	    temp_x=graph_info_non_cumulative[rc_type].keys()
+	    temp_x.sort()
+	    x =[];y1=[];y2=[];y3=[];y4=[];
+	    for i in temp_x:
+		    x.append(i)
+		    y1.append(graph_info_non_cumulative[rc_type][i]['totalClusterCount'])
+		    y2.append(graph_info_non_cumulative[rc_type][i]['definedClusterCount'])
+		    y3.append(graph_info_non_cumulative[rc_type][i]['undefinedClusterCount'])
+		    y4.append(graph_info_non_cumulative[rc_type][i]['monoForAllDefinedAmps'])
+
+	    config.logfile.write('Creating graphics ... \n')
+	    import numpy as np
+	    import matplotlib.pyplot as plt
+	    from matplotlib import rc
+		    
+	    fig = plt.figure(figsize=(20, 15), dpi=100)
+	    ax = fig.add_subplot(111)
+	    if incomplete: ax.set_title('WARNING: incomplete dataset! '+ config.jobName+' ' +config.path)
+	    else : ax.set_title(config.jobName+' ' +config.path)
+	    ax.plot(x, y4, '--b', label = 'Perc. mono. for all defined amplicons')
+	    ax2 = ax.twinx()
+	    ax2.plot(x, y1, '-b', label = 'Total number of clusters')
+	    ax2.plot(x, y2, '-g', label = 'Number of defined clusters')
+	    ax2.plot(x, y3, '-r', label = 'Number of undefined clusters')
+	    
+	    lines, labels   = ax.get_legend_handles_labels()
+	    lines2, labels2 = ax2.get_legend_handles_labels()
+	    ax2.legend(lines + lines2, labels + labels2, loc=7)
+	    #ax.legend(lines, labels, loc=7)
+
+	    ax.grid(b=True, which='both')
+	    ax.set_xlabel('Read pairs per Barcode Cluster ( '+rc_type+' reads )')
+	    ax.set_ylabel('Percentage Monoclonal')
+	    ax2.set_ylabel('Number of Clusters')
+	    
+	    ax.set_ylim(0,100)
+	    ax2.set_ylim(yscale[0],yscale[1])
+	    
+	    ax.set_xlim(xscale[0],xscale[1])
+	    ax2.set_xlim(xscale[0],xscale[1])
+
+	    ax.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/20))
+	    ax2.set_yticks(np.arange(yscale[0],yscale[1]+1,yscale[1]/20))
+	    ax.set_yticks(np.arange(0,101,5))
+
+	    plt.savefig(                     config.path+'/graphs/'+rc_type+'_pairs_per_barcode_with_amp.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+config.jobName+'.noncumulative.pdf')
+	    config.logfile.write('Created: '+config.path+'/graphs/'+rc_type+'_pairs_per_barcode_with_amp.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+config.jobName+' (.pdf and .values)'+'.\n')
+	    plt.close()
+
     if os.path.exists(config.path+'/cluster.graphStats'):
 	
 	f = open(config.path+'/cluster.graphStats','r')
@@ -208,7 +296,7 @@ def makegraphs(indata):
 
 	ax.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/20))
 	ax.set_yticks(np.arange(yscale[0],yscale[1]+1,yscale[1]/20))
-	plt.savefig(config.path+'/rawReadPairsPerBarcodeCluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.pdf')
+	plt.savefig(config.path+'/graphs/rawReadPairsPerBarcodeCluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.pdf')
 	plt.close()
 
 	config.logfile.write( 'done\n')
