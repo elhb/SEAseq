@@ -139,11 +139,11 @@ def sbatch(indata):
             'gzip -v9 '+config.path+'/meta.out.txt &'+'\n'
             'gzip -v9 '+config.path+'/meta.smaller.out.txt &'+'\n'
             'gzip -v9 '+config.path+'/meta.statstable &'+'\n'
-            'gzip -v9 '+config.path+'/meta.clusters.pickle &'+'\n')
+            'gzip -v9 '+config.path+'/clusters.pickle &'+'\n')
         if corenumber == 8: f.write('wait'+'\n')
         f.write('gzip -v9 '+config.path+'/classify.out.txt &'+'\n'
             'gzip -v9 '+config.path+'/classify.statstable &'+'\n'
-            'gzip -v9 '+config.path+'/classify.clusters.pickle &'+'\n'            
+            #'gzip -v9 '+config.path+'/clusters.pickle &'+'\n'            
             'wait'+'\n'
         )
         f.close()

@@ -1,23 +1,5 @@
-def clusterGenerator(config,indata):
-    
-    import cPickle
-    import gzip
-    
-    import os
-    if   os.path.exists(config.path+'/meta.clusters.pickle'):    filename = config.path+'/meta.clusters.pickle'
-    elif os.path.exists(config.path+'/meta.clusters.pickle.gz'): filename = config.path+'/meta.clusters.pickle.gz'
-    clusterundump = open(filename,mode='r', buffering=1024*64)
-    if clusterundump.name.split('.')[-1] in ['gz','gzip']:
-        clusterundump.close()
-        clusterundump = gzip.open(clusterundump.name)
-    
-    while True:
-        try:
-            cluster = cPickle.load(clusterundump)
-            yield [cluster,config,indata]
-        except EOFError:
-            config.logfile.write('All clusters read from file.\n')
-            break
+def classify_main():
+    pass
 
 def foreachCluster(tmp):
     
@@ -48,7 +30,7 @@ def foreachCluster(tmp):
         output += '\t0 defined amplicons, cluster '+str(cluster.id)+'\n'
         #return [output, cluster]
         import cPickle
-        return [output, cluster, cPickle.dumps(cluster)]
+        return [output, cluster, cPickle.dumps(cluster,-1)]
 
     # creating the temporary fasta file
     if indata.tempFileFolder:
@@ -88,7 +70,7 @@ def foreachCluster(tmp):
         output += '\tNo reads in fasta file, cluster '+str(cluster.id)+'\n'
         #return [output, cluster]
         import cPickle
-        return [output, cluster, cPickle.dumps(cluster)]
+        return [output, cluster, cPickle.dumps(cluster,-1)]
 
 
     # Align consensus sequences by blast
@@ -237,7 +219,7 @@ def foreachCluster(tmp):
             for amplicon, organisms in cluster.blastHits.iteritems():
                 if organism not in organisms: inAll = False
             if inAll: cluster.organismsInAllAmplicons.append(organism)
-        cluster.hitReduction = {amplicon:len(organisms) for amplicon, organisms in cluster.blastHits.iteritems()}
+        cluster.hitReduction = { amplicon:len(organisms) for amplicon, organisms in cluster.blastHits.iteritems() }
         cluster.hitReduction['inAll'] = len(cluster.organismsInAllAmplicons)
         
         output +=       '\tOrganims in all amplicons:'     +'\n'
@@ -249,7 +231,7 @@ def foreachCluster(tmp):
 
     #return [output, cluster]
     import cPickle
-    return [output, cluster, cPickle.dumps(cluster)]
+    return [output, cluster, cPickle.dumps(cluster,-1)]
 
 def classifymeta(indata):
 
@@ -263,7 +245,7 @@ def classifymeta(indata):
     # settings
     config.load()
     
-    if indata.tempFileFolder and not indata.debug:
+    if indata.tempFileFolder and not indata.debug and indata.tempFileFolder != config.path:
         config.logfile.write('Copying database to temporary location for fast access:\n ');
         import os, shutil, glob
         pid = ''#+os.getpid()
@@ -290,6 +272,7 @@ def classifymeta(indata):
 
     config.loadPrimers()
 
+    from SEAseqLib.mainLibrary import Progress, clusterGenerator
     config.logfile.write('Starting to align clusters:\n ');
     if indata.debug: #single process // serial
         config.logfile.write('debugging:\n ');
@@ -297,7 +280,6 @@ def classifymeta(indata):
         sys.stdout.write('debugging:\n ')
         config.logfile.write('Running in debug mode ...\n')
         results=[] # create holder for processed reads
-        from SEAseqLib.mainLibrary import Progress
         progress = Progress(config.numberOfBarcodeClustersIdentified, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
         if indata.stop: progress = Progress(indata.stop, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
         with progress:
@@ -315,8 +297,8 @@ def classifymeta(indata):
         results = WorkerPool.imap_unordered(foreachCluster,clusterGenerator(config,indata),chunksize=1)
         #results = WorkerPool.imap(          foreachcluster,clusterGenerator(config),chunksize=1)
 
-    if indata.tempFileFolder: clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/classify.clusters.pickle','w')
-    else:                     clusterdump = open(config.path+'/classify.clusters.pickle','w')
+    if indata.tempFileFolder: clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle','wb')
+    else:                     clusterdump = open(config.path+'/clusters.pickle','wb')
 
     # will paralellise this when stuff works
     tmcounter = 0
@@ -327,7 +309,6 @@ def classifymeta(indata):
     noMatchAmp = {}
     matches = {}
     singleAmpliconHitlists = {}
-    from SEAseqLib.mainLibrary import Progress
     progress = Progress(config.numberOfBarcodeClustersIdentified, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
     if indata.stop: progress = Progress(indata.stop, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
     with progress:
@@ -505,7 +486,7 @@ def classifymeta(indata):
     clusterdump.close()
     if indata.tempFileFolder:
         import shutil
-        shutil.move(indata.tempFileFolder+'/SEAseqtemp/classify.clusters.pickle',config.path+'/classify.clusters.pickle')
+        shutil.move(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle',config.path+'/clusters.pickle')
 
     return 0
 
@@ -622,3 +603,5 @@ class RunStatCounter(object):
             )
         self.statstable.close()
         return output
+    
+if __name__ == "__main__": classify_main()

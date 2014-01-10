@@ -346,6 +346,29 @@ def classify_cluser(config,infile="temporary.cluster.files/1.reads",database="re
 	
 	return results
 
+def clusterGenerator(config,indata):
+    
+    import cPickle
+    import gzip
+    
+    import os
+    import sys
+    if   os.path.exists(config.path+'/clusters.pickle'):    filename = config.path+'/clusters.pickle'
+    elif os.path.exists(config.path+'/clusters.pickle.gz'): filename = config.path+'/clusters.pickle.gz'
+    else: config.logfile.write('Please run the "SEAseq meta" step first.\nNow exiting program.\n');sys.exit()
+    clusterundump = open(filename,mode='rb', buffering=1024*64)
+    if clusterundump.name.split('.')[-1] in ['gz','gzip']:
+        clusterundump.close()
+        clusterundump = gzip.open(clusterundump.name)
+    
+    while True:
+        try:
+            cluster = cPickle.load(clusterundump)
+            yield [cluster,config,indata]
+        except EOFError:
+            config.logfile.write('All clusters read from file.\n')
+            break
+
 ######################### CLASSES #########################
 
 class Progress():

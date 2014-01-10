@@ -45,8 +45,8 @@ def clone(indata):
         toLink += [[indata.clonePath+'/sort.log.txt',indata.path+'/sort.log.txt']]
         toLink += [[indata.clonePath+'/sort.out.txt',indata.path+'/sort.out.txt']]
     if indata.cloneMeta:
-        if      os.path.exists(indata.clonePath+'/meta.clusters.pickle'):    toLink += [[indata.clonePath+'/meta.clusters.pickle',   indata.path+'/meta.clusters.pickle']]
-        elif    os.path.exists(indata.clonePath+'/meta.clusters.pickle.gz'): toLink += [[indata.clonePath+'/meta.clusters.pickle.gz',indata.path+'/meta.clusters.pickle.gz']]
+        if      os.path.exists(indata.clonePath+'/clusters.pickle'):    toLink += [[indata.clonePath+'/clusters.pickle',   indata.path+'/clusters.pickle']]
+        elif    os.path.exists(indata.clonePath+'/clusters.pickle.gz'): toLink += [[indata.clonePath+'/clusters.pickle.gz',indata.path+'/clusters.pickle.gz']]
         if      os.path.exists(indata.clonePath+'/meta.smaller.out.txt'):      toLink += [[indata.clonePath+'/meta.smaller.out.txt',   indata.path+'/meta.smaller.out.txt']]
         elif    os.path.exists(indata.clonePath+'/meta.smaller.out.txt.gz'):   toLink += [[indata.clonePath+'/meta.smaller.out.txt.gz',indata.path+'/meta.smaller.out.txt.gz']]
         if      os.path.exists(indata.clonePath+'/meta.statstable'):      toLink += [[indata.clonePath+'/meta.statstable',   indata.path+'/meta.statstable']]

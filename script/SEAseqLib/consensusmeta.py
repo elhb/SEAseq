@@ -174,9 +174,9 @@ def meta(indata):
     
     #compressing takes forever skip this and do later if needed
     #import gzip
-    #clusterdump = gzip.open(config.path+'/meta.clusters.pickle.gz','wb',9)
-    if indata.tempFileFolder: clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/meta.clusters.pickle','w')
-    else:                     clusterdump = open(config.path+'/meta.clusters.pickle','w')
+    #clusterdump = gzip.open(config.path+'/clusters.pickle.gz','wb',9)
+    if indata.tempFileFolder: clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle','wb')
+    else:                     clusterdump = open(config.path+'/clusters.pickle','wb')
     
     #import cPickle
 
@@ -197,7 +197,7 @@ def meta(indata):
 	clusterdump.close()
         if indata.tempFileFolder:
             import shutil
-            shutil.move(indata.tempFileFolder+'/SEAseqtemp/meta.clusters.pickle',config.path+'/meta.clusters.pickle')
+            shutil.move(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle',config.path+'/clusters.pickle')
 
     reader.join()
     	
@@ -220,7 +220,7 @@ def foreachcluster_meta(cluster_pairs):
 	output += 'Less than '+str(lowreadcutoff)+' read pairs.\n'
         cluster.lowread = True
         import cPickle
-	return [output, cluster, cPickle.dumps(cluster)]
+	return [output, cluster, cPickle.dumps(cluster,-1)]
     
     else:
         cluster.lowread = False
@@ -264,7 +264,7 @@ def foreachcluster_meta(cluster_pairs):
         output += filesOut + '\n'
 
         import cPickle
-	return [output, cluster, cPickle.dumps(cluster)]
+	return [output, cluster, cPickle.dumps(cluster,-1)]
 
 def clusteriterator(clusterq, indata):  # a generator that yields clusters from queue until it finds a cluster = END
     while True:
