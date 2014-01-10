@@ -109,16 +109,19 @@ def makegraphs(indata):
 		x_current = comp_value
 		if x_current > xscale[1]: continue
 
-		graph_info_non_cumulative[rc_type][ x_current ]['totalClusterCount'] += 1
-
-		if data[cid]['number of consensus types with good support'] >= 1:
-		    graph_info_non_cumulative[rc_type][ x_current ]['definedClusterCount'] += 1
-		elif data[cid]['number of consensus types with good support'] == 0:
-		    graph_info_non_cumulative[rc_type][ x_current ]['undefinedClusterCount'] += 1
-		else: print 'ERROR: this should not be possible'
+		try:
+		    graph_info_non_cumulative[rc_type][ x_current ]['totalClusterCount'] += 1
 		
-		if data[cid]['monoclonal for all defined amplicons']:
-		    graph_info_non_cumulative[rc_type][ x_current ]['monoForAllDefinedAmps'] += 1
+		    if data[cid]['number of consensus types with good support'] >= 1:
+			graph_info_non_cumulative[rc_type][ x_current ]['definedClusterCount'] += 1
+		    elif data[cid]['number of consensus types with good support'] == 0:
+			graph_info_non_cumulative[rc_type][ x_current ]['undefinedClusterCount'] += 1
+		    else: print 'ERROR: this should not be possible'
+		    
+		    if data[cid]['monoclonal for all defined amplicons']:
+			graph_info_non_cumulative[rc_type][ x_current ]['monoForAllDefinedAmps'] += 1
+		
+		except KeyError: pass
 		
 
 	config.logfile.write('Calculating percentages ... \n')
@@ -297,9 +300,100 @@ def makegraphs(indata):
 	ax.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/20))
 	ax.set_yticks(np.arange(yscale[0],yscale[1]+1,yscale[1]/20))
 	plt.savefig(config.path+'/graphs/rawReadPairsPerBarcodeCluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.pdf')
+	config.logfile.write('Created: '+config.path+'/graphs/rawReadPairsPerBarcodeCluster.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+'.pdf'+'.\n')
 	plt.close()
 
 	config.logfile.write( 'done\n')
+
+    if os.path.exists(config.path+'/clusters.pickle') or os.path.exists(config.path+'/clusters.pickle.gz'):
+	#from SEAseqLib.classifymeta import clusterGenerator
+
+	config.logfile.write('Loading all amplicon alleles:\n ');
+        import sys
+        
+	from SEAseqLib.mainLibrary import Progress, clusterGenerator
+        progress = Progress(config.numberOfBarcodeClustersIdentified, logfile=config.logfile, unit='cluster',mem=True, printint = 5)
+        if indata.stop: progress = Progress(indata.stop, logfile=config.logfile, unit='cluster',mem=True, printint = 5)
+        
+	readsPerAmpliconAlleleDict = {'total':{'total':0}}
+	
+	with progress:
+            tmcounter = 0
+            for cluster in clusterGenerator(config, indata):
+                [cluster,config,indata] = cluster
+		tmcounter +=1
+                progress.update()
+                if tmcounter <= indata.skip: continue
+                
+		# do something wit the cluster
+		for amplicon in cluster.amplicons.values():
+		    readsPerAmpliconAlleleDict['total']['total'] +=1
+		    try:             readsPerAmpliconAlleleDict[amplicon.type]['total'] +=1
+		    except KeyError: readsPerAmpliconAlleleDict[amplicon.type]= {'total':1}
+		    
+		    for consensus in amplicon.allels:
+			try:             readsPerAmpliconAlleleDict['total'][consensus.readcount] += 1
+			except KeyError: readsPerAmpliconAlleleDict['total'][consensus.readcount]  = 1
+			try:             readsPerAmpliconAlleleDict[amplicon.type][consensus.readcount] += 1
+			except KeyError: readsPerAmpliconAlleleDict[amplicon.type][consensus.readcount]  = 1
+		
+                if indata.stop and tmcounter >= indata.stop: break
+        config.logfile.write('all alleles loaded.\n')
+
+	config.logfile.write('Preparing allele readcounts for plotting ... \n')
+
+	temp_x = x_range
+	plots = readsPerAmpliconAlleleDict.keys()
+	
+	xs = {};ys = {};
+	for i2 in range(len(plots)): xs[i2] = [];ys[i2] = [];
+	for i in temp_x:
+		
+		for i2 in range(len(plots)):
+		    xs[i2].append(i)
+		    try:   	     ys[i2].append(readsPerAmpliconAlleleDict[ plots[i2] ][i])
+		    except KeyError: ys[i2].append(0)
+
+	config.logfile.write('Creating graphics ... \n')
+	import numpy as np
+	import matplotlib.pyplot as plt
+	from matplotlib import rc
+		
+	fig = plt.figure(figsize=(20, 15), dpi=100)
+	ax = fig.add_subplot(111)
+	if incomplete: ax.set_title('WARNING: incomplete dataset! '+ config.jobName+' ' +config.path)
+	else : ax.set_title(config.jobName+' ' +config.path)
+	for i2 in range(len(plots)): ax.plot(xs[i2], ys[i2], label = 'Reads per Amplicon variant -- '+plots[i2])
+	#ax.plot(x, y4, '--b', label = 'Reads per Amplicon')
+	#ax2 = ax.twinx()
+	#ax2.plot(x, y1, '-b', label = 'Total number of clusters')
+	#ax2.plot(x, y2, '-g', label = 'Number of defined clusters')
+	#ax2.plot(x, y3, '-r', label = 'Number of undefined clusters')
+	
+	lines, labels   = ax.get_legend_handles_labels()
+	#lines2, labels2 = ax2.get_legend_handles_labels()
+	#ax2.legend(lines + lines2, labels + labels2, loc=7)
+	ax.legend(lines, labels, loc=7)
+
+	ax.grid(b=True, which='both')
+	ax.set_xlabel('Read pairs per amplicon allele/variant/consensus')
+	ax.set_ylabel('Number of Amplicons alleles (or variants or consensuses)')
+	#ax2.set_ylabel('Number of Clusters')
+	
+	#ax.set_ylim(0,100)
+	ax.set_ylim(yscale[0],yscale[1])
+	
+	ax.set_xlim(xscale[0],xscale[1])
+	#ax2.set_xlim(xscale[0],xscale[1])
+
+	#x.set_xticks(np.arange(xscale[0],xscale[1]+1,xscale[1]/20))
+	ax.set_yticks(np.arange(yscale[0],yscale[1]+1,yscale[1]/20))
+	#ax.set_yticks(np.arange(0,101,5))
+
+	plt.savefig(                     config.path+'/graphs/pairs_per_ampAllele.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+config.jobName+'.noncumulative.pdf')
+	config.logfile.write('Created: '+config.path+'/graphs/pairs_per_ampAllele.x_scale_'+str(xscale[0])+'-'+str(xscale[1])+'.y_scale_'+str(yscale[0])+'-'+str(yscale[1])+config.jobName+'.noncumulative.pdf'+'.\n')
+	plt.close()
+
 
     config.logfile.write( 'done\n')
     return 0
