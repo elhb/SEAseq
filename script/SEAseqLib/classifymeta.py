@@ -599,7 +599,7 @@ class RunStatCounter(object):
         if self.definedclusters: tmppercentage = round(100*float(self.definedclustersMono)/float(self.definedclusters),2)
         output += (
             str(self.definedclusters)+' ('+str(round(100*float(self.definedclusters)/float(self.clustercount),2))+'%) has at least one defined amplicon out of these are '+str(self.definedclustersMono)+' ('+str(tmppercentage)+'%) monoclonal for the defined amplicon(s)\n'+
-            '(ie there is only one consensus sequence of that type with more than '+str(config.minReadCountPerConsensus)+' reads and '+str(config.minReadPopSupportConsensus)+'% support, clustering done with '+str(config.minConsensusClusteringIdentity)+'% identity cutoff)\n'
+            '(ie there is only one consensus sequence of that type with more than '+str(config.minReadCountPerConsensus)+' reads and '+str(config.minReadPopSupportConsensus)+'% support, clustering done with '+str(config.minConsensusClusteringIdentity)+'% identity cutoff and '+str(100*config.allowedAllelLevelVariation)+'% allowed allele level variation)\n'
             )
         self.statstable.close()
         return output
