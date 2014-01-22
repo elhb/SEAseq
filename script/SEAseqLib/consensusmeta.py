@@ -11,7 +11,9 @@ class RunStatCounter(object):
         self.junkclusters = 0
         self.lowreadclusters = 0
         
-        self.statstable = open(config.path+'/meta.statstable','w',1)
+        import os
+	if os.path.islink(config.path+'/meta.statstable'): os.unlink(config.path+'/meta.statstable')
+	self.statstable = open(config.path+'/meta.statstable','w',1)
         self.statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support','monoclonal for all defined amplicons']
         #for amptype in ['ecoli','myco','lambda','m13']: statsheader.append(amptype+' reads');statsheader.append(amptype+' monoclonal');statsheader.append(amptype)
         self.statstable.write('\t'.join(self.statsheader)+'\n')
@@ -175,8 +177,12 @@ def meta(indata):
     #compressing takes forever skip this and do later if needed
     #import gzip
     #clusterdump = gzip.open(config.path+'/clusters.pickle.gz','wb',9)
-    if indata.tempFileFolder: clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle','wb')
-    else:                     clusterdump = open(config.path+'/clusters.pickle','wb')
+    if indata.tempFileFolder:
+	clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle','wb')
+    else:
+	import os
+	if os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
+	clusterdump = open(config.path+'/clusters.pickle','wb')
     
     #import cPickle
 
@@ -197,6 +203,8 @@ def meta(indata):
 	clusterdump.close()
         if indata.tempFileFolder:
             import shutil
+	    import os
+	    if os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
             shutil.move(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle',config.path+'/clusters.pickle')
 
     reader.join()

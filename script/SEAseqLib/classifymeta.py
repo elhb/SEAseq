@@ -96,6 +96,7 @@ def foreachCluster(tmp):
     blast_handle = StringIO(blast_handle[0])
     blast_handle.seek(0)
     records = NCBIXML.parse(blast_handle)
+    del blast_handle
     
     #load the mapping to organism name dictionary
     from SEAseqLib.mainLibrary import gi2orgname
@@ -158,11 +159,16 @@ def foreachCluster(tmp):
                 for hsp in alignment.hsps:
                     perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
                     perc_coverage = float(hsp.align_length)	/	float(r1.query_letters)	*100
-                    gi_number = alignment.title.split(' ')[1].split('|')[1]
+                    try: gi_number = alignment.title.split(' ')[1].split('|')[1]
+                    except IndexError:
+                        import sys
+                        sys.stderr.write( 'This alignment title is not good: '+alignment.title +'\tsplitting on zero.\n')
+                        gi_number = alignment.title.split(' ')[0].split('|')[1]
                     try:
                         organism = local_gi2org[gi_number]
                     except KeyError:
-                        organism = gi2orgname(gi_number)
+                        try: organism = gi2orgname(gi_number)
+                        except urllib2.URLError: organism = alignment.title.split(' ')[1:]
                         local_gi2org[gi_number] = organism
                     if not config.subSpecies: organism = ' '.join(organism.split(' ')[:2])
                     import re
@@ -186,7 +192,8 @@ def foreachCluster(tmp):
                     try:
                         organism = local_gi2org[gi_number]
                     except KeyError:
-                        organism = gi2orgname(gi_number)
+                        try: organism = gi2orgname(gi_number)
+                        except urllib2.URLError: organism = alignment.title.split(' ')[1:]
                         local_gi2org[gi_number] = organism
                     if not config.subSpecies: organism = ' '.join(organism.split(' ')[:2])
                     if perc_identity >= config.minBlastIdentity and perc_coverage >= config.minBlastCoverage and organism not in in_r2:
@@ -245,7 +252,7 @@ def classifymeta(indata):
     # settings
     config.load()
     
-    if indata.tempFileFolder and not indata.debug and indata.tempFileFolder != config.path:
+    if indata.tempFileFolder and not indata.debug and indata.tempFileFolder != config.path and config.blastDb != '/sw/data/uppnex/blast_databases/nt':
         config.logfile.write('Copying database to temporary location for fast access:\n ');
         import os, shutil, glob
         pid = ''#+os.getpid()
@@ -297,8 +304,12 @@ def classifymeta(indata):
         results = WorkerPool.imap_unordered(foreachCluster,clusterGenerator(config,indata),chunksize=1)
         #results = WorkerPool.imap(          foreachcluster,clusterGenerator(config),chunksize=1)
 
-    if indata.tempFileFolder: clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle','wb')
-    else:                     clusterdump = open(config.path+'/clusters.pickle','wb')
+    if indata.tempFileFolder:
+        clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle','wb')
+    else:
+        import os
+        if os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
+        clusterdump = open(config.path+'/clusters.pickle','wb')
 
     # will paralellise this when stuff works
     tmcounter = 0
@@ -486,6 +497,8 @@ def classifymeta(indata):
     clusterdump.close()
     if indata.tempFileFolder:
         import shutil
+        import os
+        if os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
         shutil.move(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle',config.path+'/clusters.pickle')
 
     return 0

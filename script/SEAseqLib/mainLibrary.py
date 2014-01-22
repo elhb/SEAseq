@@ -29,7 +29,8 @@ def initiate_file(filename, logfile, mode='w'):
     import re
     #if re.search('log',filename):	out = open(filename, mode,0)
     #else:				out = open(filename, mode,1)
-    out = open(filename, mode,1)
+    if os.path.islink(filename): out = open(filename, 'w',1)
+    else:			 out = open(filename, mode,1)
     
     if type(logfile) == file and mode != 'r': logfile.write('File '+filename+' sucessfully initiated.\n')
     
@@ -356,6 +357,20 @@ def clusterGenerator(config,indata):
     if   os.path.exists(config.path+'/clusters.pickle'):    filename = config.path+'/clusters.pickle'
     elif os.path.exists(config.path+'/clusters.pickle.gz'): filename = config.path+'/clusters.pickle.gz'
     else: config.logfile.write('Please run the "SEAseq meta" step first.\nNow exiting program.\n');sys.exit()
+    
+    if indata.tempFileFolder and not indata.debug and indata.tempFileFolder != config.path:
+        config.logfile.write('Copying pickle file to temporary location for fast access:\n ');
+        import os, shutil, glob
+	pid = os.getpid()
+        noPathFileName = filename.split('/')[-1]
+        src = filename
+        dst = indata.tempFileFolder+'/SEAseqtemp/'+str(pid)+'.'+noPathFileName
+        if not os.path.exists(dst):
+		config.logfile.write('\tcopying: '+src+' to '+dst+ '\n');
+		shutil.copyfile(src, dst)
+		config.logfile.write('\tDone.\n');
+        filename = dst
+
     clusterundump = open(filename,mode='rb', buffering=1024*64)
     if clusterundump.name.split('.')[-1] in ['gz','gzip']:
         clusterundump.close()
@@ -916,6 +931,7 @@ class SEAseqSummary():
 		#config.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n\n')
 		config.outfile.write(str( cc)+' clusters whereof '+str(counter)+' has more than one read\n\n')
 
+		if os.path.islink(config.path+'/cluster.graphStats'): os.unlink(config.path+'/cluster.graphStats')
 		f = open(config.path+'/cluster.graphStats','w')
 		f.write(str(reads_in_clusters))
 		f.close()

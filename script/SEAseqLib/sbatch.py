@@ -89,7 +89,8 @@ def sbatch(indata):
                 sys.argv[0]+' meta -path '+config.path+' -p '+str(indata.cpus))
             f.write(
                 '\n'+
-                'grep -vP "^((Read)|([0-9]+\t)|P|c|(Co))" '+config.path+'/meta.out.txt | cat -s > '+config.path+'/meta.smaller.out.txt\n'
+                'if [ -h '+config.path+'/meta.smaller.out.txt'+' ]; then echo "link";rm -v '+config.path+'/meta.smaller.out.txt'+'; else echo "nolinkOK";fi\n'+
+		'grep -vP "^((Read)|([0-9]+\t)|P|c|(Co))" '+config.path+'/meta.out.txt | cat -s > '+config.path+'/meta.smaller.out.txt\n'
             )
             f.close()
 
@@ -115,7 +116,8 @@ def sbatch(indata):
                 'module unload python/2.6.6'+'\n'+
                 'module load python/2.7'+'\n'+
                 sys.argv[0]+' classifymeta -path '+config.path+' -p '+str(indata.cpus)+'\n'+
-                'grep "##### SUMMARY #####" '+config.path+'/classify.out.txt -A 10000000 > '+config.path+'/classify.summary.txt'+'\n'
+                'if [ -h '+config.path+'/classify.summary.txt'+' ]; then echo "link";rm -v '+config.path+'/classify.summary.txt'+'; else echo "nolinkOK";fi\n'+
+		'grep "##### SUMMARY #####" '+config.path+'/classify.out.txt -A 10000000 > '+config.path+'/classify.summary.txt'+'\n'
             )
             f.close()
     
