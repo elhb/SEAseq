@@ -29,8 +29,8 @@ def initiate_file(filename, logfile, mode='w'):
     import re
     #if re.search('log',filename):	out = open(filename, mode,0)
     #else:				out = open(filename, mode,1)
-    if os.path.islink(filename): out = open(filename, 'w',1)
-    else:			 out = open(filename, mode,1)
+    if os.path.islink(filename): os.unlink(filename)
+    out = open(filename, mode,1)
     
     if type(logfile) == file and mode != 'r': logfile.write('File '+filename+' sucessfully initiated.\n')
     
