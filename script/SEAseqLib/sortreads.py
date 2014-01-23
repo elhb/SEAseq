@@ -94,6 +94,8 @@ def sortreads(indata):
     progress = Progress(config.reads2process, logfile=config.logfile, mem = True)
     with progress:
 	if config.sortFormat == 'fq':
+	    import os
+	    if os.path.exists(config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq') and os.path.islink(config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq'): os.unlink(config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq'); os.unlink(config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq');
 	    f1 = open(config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq','w')
 	    f2 = open(config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq','w')
 	elif config.sortFormat == 'fa':

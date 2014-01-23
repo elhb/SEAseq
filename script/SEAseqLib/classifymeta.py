@@ -308,7 +308,7 @@ def classifymeta(indata):
         clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle','wb')
     else:
         import os
-        if os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
+        if os.path.exists(config.path+'/clusters.pickle') and os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
         clusterdump = open(config.path+'/clusters.pickle','wb')
 
     # will paralellise this when stuff works
@@ -498,7 +498,7 @@ def classifymeta(indata):
     if indata.tempFileFolder:
         import shutil
         import os
-        if os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
+        if os.path.exists(config.path+'/clusters.pickle') and os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
         shutil.move(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle',config.path+'/clusters.pickle')
 
     return 0

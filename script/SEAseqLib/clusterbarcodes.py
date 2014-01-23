@@ -81,6 +81,8 @@ def clusterbarcodes(indata):
     config.logfile.write('Part2: Clustering the identified barcodes.\n')
     summary.reducebarcodes(config)
     config.logfile.write('Writing cluster info to file.\n')
+    import os
+    if os.path.exists(config.clusters_file) and os.path.islink(config.clusters_file): os.unlink(config.clusters_file)
     f = open(config.clusters_file,'w')
     f.write(str(summary.clusters))
     f.close()

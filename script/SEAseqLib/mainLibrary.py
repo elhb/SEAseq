@@ -29,7 +29,7 @@ def initiate_file(filename, logfile, mode='w'):
     import re
     #if re.search('log',filename):	out = open(filename, mode,0)
     #else:				out = open(filename, mode,1)
-    if os.path.islink(filename): os.unlink(filename)
+    if os.path.exists(filename) and os.path.islink(filename): os.unlink(filename)
     out = open(filename, mode,1)
     
     if type(logfile) == file and mode != 'r': logfile.write('File '+filename+' sucessfully initiated.\n')
@@ -878,10 +878,13 @@ class SEAseqSummary():
 			config.logfile.write('ERROR: could not find any uniqe barcodes, are you sure this dataset is correct, exciting.\n')
 			import sys
 			sys.exit(1)
+		import os
+		if os.path.exists(config.path+'/predetermined_cluster_centers.fa') and os.path.islink(config.path+'/predetermined_cluster_centers.fa'): os.unlink(config.path+'/predetermined_cluster_centers.fa')
 		tempfile = open(config.path+'/predetermined_cluster_centers.fa','w')
 		for bc in highest: tempfile.write('>'+bc+' '+str(self.barcodes[bc])+' readpairs\n'+bc+'\n')
 		tempfile.close()
 
+		if os.path.exists(config.path+'/raw_barcode_sequences.fa') and os.path.islink(config.path+'/raw_barcode_sequences.fa'): os.unlink(config.path+'/raw_barcode_sequences.fa')
 		tempfile = open(config.path+'/raw_barcode_sequences.fa','w')
 		for bc in self.barcodes: tempfile.write('>'+bc+' '+str(self.barcodes[bc])+' readpairs\n'+bc+'\n')
 		tempfile.close()
@@ -931,7 +934,7 @@ class SEAseqSummary():
 		#config.logfile.write('ok done now I\'ll just print and plot some info ... then done ... for real!\n\n')
 		config.outfile.write(str( cc)+' clusters whereof '+str(counter)+' has more than one read\n\n')
 
-		if os.path.islink(config.path+'/cluster.graphStats'): os.unlink(config.path+'/cluster.graphStats')
+		if os.path.exists(config.path+'/cluster.graphStats') and os.path.islink(config.path+'/cluster.graphStats'): os.unlink(config.path+'/cluster.graphStats')
 		f = open(config.path+'/cluster.graphStats','w')
 		f.write(str(reads_in_clusters))
 		f.close()

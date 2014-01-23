@@ -181,7 +181,7 @@ def meta(indata):
 	clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle','wb')
     else:
 	import os
-	if os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
+	if os.path.exists(config.path+'/clusters.pickle') and os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
 	clusterdump = open(config.path+'/clusters.pickle','wb')
     
     #import cPickle
@@ -204,7 +204,7 @@ def meta(indata):
         if indata.tempFileFolder:
             import shutil
 	    import os
-	    if os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
+	    if os.path.exists(config.path+'/clusters.pickle') and os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
             shutil.move(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle',config.path+'/clusters.pickle')
 
     reader.join()
