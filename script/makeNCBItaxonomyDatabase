@@ -1,0 +1,176 @@
+#! /bin/env python
+#! /usr/bin/env python2.7
+
+def downloadAndUnZip():
+    #
+    #IMPORTS
+    #
+    import time
+    start = time.time()
+    import os
+    import urllib
+    import tarfile
+    import zipfile
+    #
+    #Create temporary folder
+    #
+    os.mkdir('tmpFolder')
+    #
+    #download and extract taxdump
+    #
+    urllib.urlretrieve ("ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz", "tmpFolder/taxdump.tar.gz")
+    tar = tarfile.open("tmpFolder/taxdump.tar.gz")
+    tar.extractall(path='tmpFolder')
+    tar.close()
+    #
+    #download and extract gi to taxid mappings
+    #
+    urllib.urlretrieve ("ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/gi_taxid_nucl.zip", "tmpFolder/gi_taxid_nucl.zip")
+    zipped = zipfile.ZipFile('tmpFolder/gi_taxid_nucl.zip')
+    zipped.extractall('tmpFolder')
+    zipped.close()
+    #
+    # calculate time spent and return
+    #
+    end = round(time.time()-start,1)
+    return 'Downloading files took '+str(int(end/60))+' min '+str(end%60)+'seconds'
+
+def removeTemporaryFiles():
+    import shutil
+    shutil.rmtree('tmpFolder')    
+
+def createDB(dbname='NCBItaxonomy.db'):
+    
+    #
+    # imports
+    #
+    import time
+    import sqlite3
+    
+    #
+    # Download the files needed
+    #
+    print downloadAndUnZip()
+    
+    #
+    # Create the database
+    #
+    start = time.time()
+    conn = sqlite3.connect(dbname)
+    c = conn.cursor()
+    
+    #
+    # Create tables
+    #
+    c.execute('''CREATE TABLE gi2taxid (gi,taxid,PRIMARY KEY (gi))''')
+    c.execute('''CREATE TABLE taxid2name (taxid,name,PRIMARY KEY (taxid))''')
+    c.execute('''CREATE TABLE taxid2parent (taxid,parentTaxid,PRIMARY KEY (taxid))''')
+    c.execute('''CREATE TABLE taxid2rank (taxid,rank,PRIMARY KEY (taxid))''')
+    
+    #
+    # Set initial values of data containers and counters
+    #
+    tmpCounter  = 0  # entry counter
+    values      = [] # temporary data container 1
+    values2     = [] # temporary data container 2
+    updateEvery = 1000000 # write to database every "updateEvery" records
+    
+    #
+    # Fill the gi2taxid table
+    #
+    giDump    = open('tmpFolder/gi_taxid_nucl.dmp')
+    for line in giDump:
+        line = line.rstrip().split('\t')
+        gi    = int(line[0])
+        taxid = int(line[1])
+        tmpCounter+=1
+        values.append((gi,taxid))
+        if tmpCounter%updateEvery == 0:
+            c.executemany('INSERT INTO gi2taxid VALUES (?,?)', values)
+            values = []
+            conn.commit();
+            print tmpCounter,'giDump'
+    c.executemany('INSERT INTO gi2taxid VALUES (?,?)', values)
+    values = []
+    conn.commit();
+    print tmpCounter,'giDump DONE'
+    
+    #
+    # Fill the taxid2name table
+    #
+    namesDump = open('tmpFolder/names.dmp')
+    for line in namesDump:
+        line = line.rstrip().split('\t|\t')
+        taxid      = int(line[0])
+        name       = line[1]
+        uniqueName = line[2]
+        typeOfName = line[3].replace('\t|','')
+        if typeOfName == 'scientific name':
+            tmpCounter+=1
+            values.append((taxid,name))
+            if tmpCounter%updateEvery == 0:
+                c.executemany('INSERT INTO taxid2name VALUES (?,?)', values)
+                values = []
+                conn.commit();
+                print tmpCounter,'namesDump'
+    c.executemany('INSERT INTO taxid2name VALUES (?,?)', values)
+    values = []
+    conn.commit();
+    print tmpCounter,'namesDump DONE'
+
+    #
+    # Fill the taxid2parent and taxid2rank tables
+    #
+    nodesDump = open('tmpFolder/nodes.dmp')
+    for line in nodesDump:
+        line = line.rstrip().split('\t|\t')
+        taxid      = int(line[0])
+        parentTaxid= int(line[1])
+        rank       = line[2]
+        tmpCounter+=1
+        values.append((taxid,parentTaxid))
+        values2.append((taxid,rank))
+        if tmpCounter%updateEvery == 0:
+            c.executemany('INSERT INTO taxid2parent VALUES (?,?)', values)
+            c.executemany('INSERT INTO taxid2rank VALUES (?,?)', values2)
+            values = []
+            values2 = []
+            conn.commit();
+            print tmpCounter,'nodesDump'
+    c.executemany('INSERT INTO taxid2parent VALUES (?,?)', values)
+    c.executemany('INSERT INTO taxid2rank VALUES (?,?)', values2)
+    values = []
+    values2 = []
+    conn.commit();
+    print tmpCounter,'nodesDump DONE'
+    
+    #
+    # close all open connections
+    #
+    giDump.close()
+    namesDump.close()
+    nodesDump.close()
+    conn.close()
+    
+    #
+    # calculate time spent
+    #
+    end = round(time.time()-start,1)
+    print 'building the database took',int(end/60),'min',end%60,'seconds',int(round(tmpCounter/end,0)),'entrys per second'
+    
+    #
+    # Remove all the temporary files
+    #
+    removeTemporaryFiles()
+
+#
+# Actual performance
+#
+
+import sys
+try:
+    databaseName = sys.argv[1]
+    createDB(dbname=databaseName)
+except IndexError:
+    createDB()
+print 'All done.'
