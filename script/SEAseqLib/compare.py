@@ -116,8 +116,9 @@ def compare(indata):
         del overlaps[data]
     withOvelap = temp1
 
-    config.outfile.write('\n'+str(temp1)+' clusters with overlap:')
-    printTable(overlaps,config.outfile,temp1)
+    if overlaps:
+        config.outfile.write('\n'+str(temp1)+' clusters with overlap:')
+        printTable(overlaps,config.outfile,temp1)
     
     config.logfile.write('Removing clusters without reduction ...\n')
     remove = []
@@ -135,8 +136,9 @@ def compare(indata):
         del overlaps[data]
     withReduction = temp1
 
-    config.outfile.write('\n'+str(temp1)+' clusters with hitList reduction:')
-    printTable(overlaps,config.outfile,temp1)
+    if overlaps:
+        config.outfile.write('\n'+str(temp1)+' clusters with hitList reduction:')
+        printTable(overlaps,config.outfile,temp1)
     
     config.outfile.write('\nFor '+str(round(100*float(withReduction)/float(withOvelap),2)) + '% of the clusters with hitlist overlap, is the overlap list shorter than the "best" of the defined amplicon lists.\n')
     
