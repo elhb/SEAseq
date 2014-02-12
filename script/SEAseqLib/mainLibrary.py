@@ -246,7 +246,7 @@ def uipac(bases, back='uipac'): #U	Uracil NOT SUPPORTED!!!
 		elif bases == 'N': return ['A','G','T','C']
 
 def UIPAC2REGEXP(string):
-    return string.replace('R','[AG]').replace('Y','[CT]').replace('S','[GC]').replace('W','[AT]').replace('K','[GT]').replace('M','[AC]').replace('B','[CGT]').replace('D','[AGT]').replace('H','[ACT]').replace('V','[ACG]').replace('N','.')
+    return string.replace('R','[AG]').replace('Y','[CT]').replace('S','[GC]').replace('W','[AT]').replace('K','[GT]').replace('M','[AC]').replace('B','[CGT]').replace('D','[AGT]').replace('H','[ACT]').replace('V','[ACG]').replace('N','[AGTC]')
 
 def classify_cluser(config,infile="temporary.cluster.files/1.reads",database="reference/4amplicons/4amplicons.fasta"):
 
@@ -383,6 +383,68 @@ def clusterGenerator(config,indata):
         except EOFError:
             config.logfile.write('All clusters read from file.\n')
             break
+
+def getClassification(taxid=None,gi=None,database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.db'):
+    #
+    # imports
+    #
+    import time
+    import sys
+    import sqlite3
+    #
+    # set initial values
+    #
+    start = time.time()
+    classStr = []
+    rankStr = []
+    classification = {}
+    #print 'database:';print database
+    conn = sqlite3.connect(database)
+    c = conn.cursor()
+    name = None
+    rank = None
+    #
+    # get taxid
+    #
+    if gi and not taxid:
+        gi = int(gi)
+        gi = str(gi)
+        #print 'fetching taxid ...'
+        t = (gi,)
+        try: gi, taxid = c.execute('SELECT * FROM gi2taxid WHERE gi=?', t).fetchone()
+        except TypeError:
+            #print 'gi is funky, trying online fetch of organism name'
+            from Bio import Entrez
+            Entrez.email = "erik.borgstrom@scilifelab.se"
+            handle = Entrez.efetch(db="nucleotide", id=str(gi), retmode="xml")
+            records = Entrez.read(handle)
+            assert len(records) == 1
+            name = records[0]['GBSeq_organism']
+            t = (name,)
+            taxid, name = c.execute('SELECT * FROM taxid2name WHERE name=?', t).fetchone()
+        #print 'done'
+    if not gi and not taxid:
+        sys.stderr.write('Error: you need to supply either a gi number or taxid\n')
+    taxid = int(taxid)
+    classification['taxid'] = taxid
+    classification['gi']    = gi
+    #
+    # While not rank root build on the classstring
+    #
+    itercounter = 0
+    while name != 'root':
+        itercounter += 1
+        t = (taxid,)
+        taxid, name = c.execute('SELECT * FROM taxid2name WHERE taxid=?', t).fetchone()
+        taxid, rank = c.execute('SELECT * FROM taxid2rank WHERE taxid=?', t).fetchone()
+        oldtaxid, taxid = c.execute('SELECT * FROM taxid2parent WHERE taxid=?', t).fetchone()
+        classStr.append(name)
+        rankStr.append(rank)
+        classification[rank] = name
+        if itercounter > 20: break
+    end = round(time.time()-start,2)
+    #print 'search took',int(end/60),'min',end%60,'seconds'
+    return classification
 
 ######################### CLASSES #########################
 
@@ -804,6 +866,7 @@ class readpair():
 		forwardprimermatch = self.matchfwd(primerpair)
 		reverseprimermatch = self.matchrev(primerpair)
 		if forwardprimermatch and reverseprimermatch: self.matchingprimerpairs.append(primerpair)
+		return 0
 	
 	def matchfwd(self, primerpair):
 		import re
@@ -1099,7 +1162,7 @@ class BarcodeCluster(object):
 		    if verb: output += pair.p1+'\t'+pair.p2+'\t';
 		    
 		    # check that primers match
-		    if pair.p1 == '???' or pair.p1 != pair.p2 or len(pair.matchingprimerpairs) != 1:
+		    if pair.p1 == '???' or pair.p2 == '???' or pair.p1 != pair.p2 or len(pair.matchingprimerpairs) != 1:
 			if pair.p1 == '???' and pair.p1 == pair.p2:	pair.primererror = 'primers-not-identifiable'
 			if pair.p1 != pair.p2:				pair.primererror = 'fwd-rev-primer-missmatch'
 			if len(pair.matchingprimerpairs) > 1:		pair.primererror = 'more-than-one-pair-match'
@@ -1227,7 +1290,7 @@ class BarcodeCluster(object):
 		ccc_out, errdata = ccc.communicate()
 		if ccc.returncode != 0:
 			print 'cmd: '+' '.join( command )
-			print 'cluster='+str(cluster.id)+' cdhit-cluster-consensus view Error code', ccc.returncode, errdata
+			print 'cluster='+str(self.id)+' cdhit-cluster-consensus view Error code', ccc.returncode, errdata
 			print ccc_out
 			sys.exit()
 	
@@ -1236,14 +1299,14 @@ class BarcodeCluster(object):
 			output = ''
 			if indata.tempFileFolder:
 				datacombos = [
-				[indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(cluster.id)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
-				[indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(cluster.id)+'.fa.clstr','\nClustering details:\n'],
-				[indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(cluster.id)+'.aligned','\nAlignment details:\n']
+				[indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
+				[indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa.clstr','\nClustering details:\n'],
+				[indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.aligned','\nAlignment details:\n']
 				]
 			else:	datacombos = [
-				[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
-				[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.fa.clstr','\nClustering details:\n'],
-				[config.path+'/sortedReads/cluster.'+str(cluster.id)+'.aligned','\nAlignment details:\n']
+				[config.path+'/sortedReads/cluster.'+str(self.id)+'.consensus.fasta','\nCD-HIT consensus sequences:\n'],
+				[config.path+'/sortedReads/cluster.'+str(self.id)+'.fa.clstr','\nClustering details:\n'],
+				[config.path+'/sortedReads/cluster.'+str(self.id)+'.aligned','\nAlignment details:\n']
 				]
 			for info in datacombos:
 				filename , message = info
@@ -1361,6 +1424,213 @@ class BarcodeCluster(object):
 	def getDefinedAmplicons(self, ):
 		for amplicon in self.amplicons.values():
 			if amplicon.allelecount >= 1: self.definedamplicons[amplicon.type] = amplicon	
+
+	def createConsensusFasta(self,config,indata):
+		output = ''
+		if self.definedampliconcount == 0:
+		    output += '\t0 defined amplicons, cluster '+str(self.id)+'\n'
+		    #return [output, cluster]
+		    return (output ,1)
+
+		# creating the temporary fasta file
+		if indata.tempFileFolder:
+		    import os
+		    try: os.mkdir(indata.tempFileFolder+'/SEAseqtemp')
+		    except: pass
+		    self.blastfile = open(indata.tempFileFolder+'/SEAseqtemp/blastinput.'+str(self.id)+'.fa','w')
+		else:self.blastfile= open(         config.path+'/sortedReads/blastinput.'+str(self.id)+'.fa','w')    
+		output+= '\tmaking fasta for cluster '+str(self.id)+'\n'
+		fastaentries = 0
+		self.blastamplicons = {}
+		for amplicon in self.definedamplicons.values():
+		    self.blastamplicons[amplicon.type] = {}
+		    for consensus in amplicon.goodalleles:
+			self.blastamplicons[amplicon.type][str(consensus.id)] = {'r1':None,'r2':None}
+			try:
+			    r1 = consensus.sequence.seq.split('NNNNNNNNNN')[0]
+			    r2 = consensus.sequence.seq.split('NNNNNNNNNN')[1]
+			except IndexError:
+			    config.logfile = open(config.logfile.name,'a')
+			    config.logfile.write('WARNING: Skipping amplicon '+amplicon.type+', consensus '+str(consensus.id)+' for cluster '+str(self.id)+' beacause splitting consensus sequence on N10 failed.\n')
+			    output += 'WARNING: Skipping amplicon '+amplicon.type+', consensus '+str(consensus.id)+' for cluster '+str(self.id)+' beacause splitting consensus sequence on N10 failed.\n'
+			    print 'WARNING: Skipping amplicon '+amplicon.type+', consensus '+str(consensus.id)+' for cluster '+str(self.id)+' beacause splitting consensus sequence on N10 failed.'
+			    config.logfile.close()
+			    continue
+			self.blastfile.write('>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|r1\n'+r1+'\n'+
+					'>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|r2\n'+r2+'\n')
+			fastaentries +=1
+		self.blastfile.close()
+		output+=  '\tfasta file created (cluster '+str(self.id)+')\n'
+		
+		# check that there were reads to align
+		if fastaentries == 0:
+		    self.blastHits = 'No fasta produced.'
+		    import os
+		    os.remove(self.blastfile.name)
+		    output += '\tNo reads in fasta file, cluster '+str(self.id)+'\n'
+		    #return [output, cluster]
+		    return (output, 2)
+		else:
+			return (output, 0)
+
+	def blastAllAmplicons(self,config,indata):
+		output = ''
+		from Bio.Blast.Applications import NcbiblastnCommandline
+		from Bio.Blast import NCBIXML
+		from cStringIO import StringIO
+		import time
+		#setting up blast
+		BLAST_identity = config.minBlastIdentity
+		database = config.blastDb
+		max_target_seqs = 5000
+		cline = NcbiblastnCommandline(query=self.blastfile.name, db=database ,evalue=0.001, outfmt=5, num_threads=8,perc_identity=BLAST_identity,max_target_seqs=max_target_seqs)#, out=infile+'.blastout')
+		#cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn', out=infile+'.'+config.blastid+'.blastout')
+		import time
+		output+='\tStarting BLAST, cluster '+str(self.id)+'\n'
+		starttime = time.time()
+		blast_handle = cline.__call__()
+		#output+=str(self.id)+' '+ str(blast_handle)[0:100].replace('\n','--NEWLINE--')+'\n'
+		output+='\tBLAST search finished, cluster '+str(self.id)+', run time was '+str(round(time.time()-starttime))+'s.\n\n'
+		# remove temporary file
+		import os
+		os.remove(self.blastfile.name) 
+		#convert blast output to parsable handle
+		blast_handle = StringIO(blast_handle[0])
+		blast_handle.seek(0)
+		records = NCBIXML.parse(blast_handle)
+		del blast_handle
+			    		
+		# parse through the blast records and sort them by amplicon, allele and readnumber/part
+		for blast_record in records:
+	    
+		    # get the information from the query header
+		    amptype = blast_record.query.split('|tempSep|')[0]
+		    allele =blast_record.query.split('|tempSep|')[1]
+		    readnumber =blast_record.query.split('|tempSep|')[2]
+		    
+		    self.blastamplicons[amptype][allele][readnumber] = blast_record
+		    if blast_record == None: output += amptype+' '+allele+' '+readnumber+'ajajajaj\n'; print 'ERROR: '+str(amptype)+' '+str(allele)+' '+str(readnumber)+'ajajajaj\n'
+		
+		return output
+
+	def parseBlastAmplicons(self,config,indata):
+		output = ''
+		#store blast hits for the random match estimation
+		self.blastHits = {}
+
+		#load the mapping to organism name dictionary
+		from SEAseqLib.mainLibrary import gi2orgname
+		local_gi2org = {}
+		if config.gidatabase:
+		    tmp_file = open(config.gidatabase)
+		    tmp_string = tmp_file.read()
+		    tmp_file.close()
+		    local_gi2org = eval(tmp_string)
+
+		# parse through the blast result one amplicon at the time
+		for amplicon in self.blastamplicons:
+	    
+		    broken = False
+		    self.blastHits[amplicon] = {}
+		    consensuses = self.blastamplicons[amplicon]
+		    output += '\tAmplicon: '+amplicon     +'\n'
+	    
+		    # for each consensus get the blast records for the two sequences (reads) and check for completeness of file
+		    for consensus in consensuses:
+			output += '\t\tConsensus/Allele/Variant '+str(consensus)     +'\n'
+			try:
+			    r1 = consensuses[consensus]['r1']
+			    if r1 == None:
+				output += '\t\tno read1 matches\n'
+				continue
+			except KeyError:
+			    output += '\t\tConsensus cannot be read as read 1 sequence are not available from infile\n'
+			    output += 'WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?\n'
+			    continue
+			try:
+			    r2 = consensuses[consensus]['r2']
+			    if r2 == None:
+				output += '\t\tno read2 matches\n'
+				continue
+			except KeyError:
+			    output += '\t\tConsensus cannot be read as read 2 sequence are not available from infile\n'
+			    output += 'WARNING: Running on a uncomplete input file! Maybe the SEAseq meta program is still runnning?\n'
+			    continue
+	    
+			# get all organisms that part one maps to
+			hitInfo = {}
+			in_r1 = {}
+			in_r2 = {}
+			org2gi = {}
+			for in_read, read, readStr in [[in_r1,r1,'r1'],[in_r2,r2,'r2']]:
+				for alignment in read.alignments:
+				    for hsp in alignment.hsps:
+					perc_identity = float(hsp.identities) 	/	float(hsp.align_length)	*100
+					perc_coverage = float(hsp.align_length)	/	float(read.query_letters)*100
+					try: gi_number = alignment.title.split(' ')[1].split('|')[1]
+					except IndexError:
+					    import sys
+					    sys.stderr.write( 'This alignment title is not good: '+alignment.title +'\tsplitting on zero.\n')
+					    gi_number = alignment.title.split(' ')[0].split('|')[1]
+					try:
+					    organism = local_gi2org[gi_number]
+					except KeyError:
+					    try: organism = gi2orgname(gi_number)
+					    except urllib2.URLError: organism = alignment.title.split(' ')[1:]
+					    local_gi2org[gi_number] = organism
+					if not config.subSpecies: organism = ' '.join(organism.split(' ')[:2])
+					org2gi[organism] = gi_number
+					import re
+					if re.match('Prevotella',organism) and config.skipPrevotella: continue
+					if perc_identity >= config.minBlastIdentity and perc_coverage >= config.minBlastCoverage and organism not in in_read:
+					    in_read[organism] = alignment
+					    try:
+						hitInfo[organism][readStr]['pi'].append(perc_identity)
+						hitInfo[organism][readStr]['pc'].append(perc_coverage)
+						hitInfo[organism][readStr]['ss'].append(str(hsp.sbjct_start)+'-'+str(hsp.sbjct_start+hsp.align_length))
+					    except KeyError:
+						if readStr == 'r1': tmp = 'r2'
+						else: tmp = 'r1'
+						hitInfo[organism] = {readStr:{'pi':[perc_identity],'pc':[perc_coverage],'ss':[str(hsp.sbjct_start)+'-'+str(hsp.sbjct_start+hsp.align_length)]},tmp:{'pi':[],'pc':[],'ss':[]}}
+
+			# get all organisms that both parts map to and print them also print if no overlap is found
+			in_both_reads = []
+			for organism in in_r1:
+			    if organism in in_r2:
+				in_both_reads.append(organism)
+			for organism in in_both_reads:
+			    output +=       '\t\t\t'+organism    +'\n'
+			    output += '\t\t\t\tpart1:\tHIT#'+'\n\t\t\t\t\tHIT#'.join([str(i)+': identity='+str(hitInfo[organism]['r1']['pi'][i])+'%, coverage='+str(hitInfo[organism]['r1']['pc'][i])+'%, pos='+str(hitInfo[organism]['r1']['ss'][i]) for i in range(len(hitInfo[organism]['r1']['ss']))]) + '\n'
+			    output += '\t\t\t\tpart2:\tHIT#'+'\n\t\t\t\t\tHIT#'.join([str(i)+': identity='+str(hitInfo[organism]['r2']['pi'][i])+'%, coverage='+str(hitInfo[organism]['r2']['pc'][i])+'%, pos='+str(hitInfo[organism]['r2']['ss'][i]) for i in range(len(hitInfo[organism]['r2']['ss']))]) + '\n'
+			    self.blastHits[amplicon][organism] = hitInfo[organism]
+			if not in_both_reads:
+			    output +=       '\t\t\tNo alignment supported by both reads with >='+str(config.minBlastIdentity)+'% identity and '+str(config.minBlastCoverage)+'% alignment length coverage'     +'\n'
+	    
+		#if cluster is monoclonal for all defined and there are more than one amplicon check overlap and make a classification
+		monoclonalAmpliconsArray = [self.amplicons[amplicon].monoclonal for amplicon in self.definedamplicons]
+		if len(self.blastHits) > 1 and (self.definedampliconcount == monoclonalAmpliconsArray.count(True)):
+		    
+		    self.organismsInAllAmplicons = []
+		    
+		    for organism in self.blastHits[self.blastHits.keys()[0]]:
+			inAll = True
+			for amplicon, organisms in self.blastHits.iteritems():
+			    if organism not in organisms: inAll = False
+			if inAll: self.organismsInAllAmplicons.append(organism)
+			
+		    self.hitReduction = { amplicon:len(organisms) for amplicon, organisms in self.blastHits.iteritems() }
+		    self.hitReduction['inAll'] = len(self.organismsInAllAmplicons)
+		    
+		    output +=       '\tOrganims in all amplicons:'     +'\n'
+		    for organism in self.organismsInAllAmplicons:
+			output += '\t\t'+str(organism)     +'\n'
+			output += str(getClassification(gi=org2gi[organism]))
+			
+		    output += str(self.hitReduction)+'\n'
+		    if   len(self.organismsInAllAmplicons) >1:   output += 'cluster is '+', '.join(self.organismsInAllAmplicons[:-1])+' or ' +self.organismsInAllAmplicons[-1] +'\n'
+		    elif len(self.organismsInAllAmplicons) ==1:  output += 'cluster is '+self.organismsInAllAmplicons[-1] +'\n'
+		
+		return output
 
 class Amplicon(object):
 
