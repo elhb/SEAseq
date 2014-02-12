@@ -1517,6 +1517,7 @@ class BarcodeCluster(object):
 		output = ''
 		#store blast hits for the random match estimation
 		self.blastHits = {}
+		orgToClass = {}
 
 		#load the mapping to organism name dictionary
 		from SEAseqLib.mainLibrary import gi2orgname
@@ -1603,6 +1604,7 @@ class BarcodeCluster(object):
 			    output += '\t\t\t\tpart1:\tHIT#'+'\n\t\t\t\t\tHIT#'.join([str(i)+': identity='+str(hitInfo[organism]['r1']['pi'][i])+'%, coverage='+str(hitInfo[organism]['r1']['pc'][i])+'%, pos='+str(hitInfo[organism]['r1']['ss'][i]) for i in range(len(hitInfo[organism]['r1']['ss']))]) + '\n'
 			    output += '\t\t\t\tpart2:\tHIT#'+'\n\t\t\t\t\tHIT#'.join([str(i)+': identity='+str(hitInfo[organism]['r2']['pi'][i])+'%, coverage='+str(hitInfo[organism]['r2']['pc'][i])+'%, pos='+str(hitInfo[organism]['r2']['ss'][i]) for i in range(len(hitInfo[organism]['r2']['ss']))]) + '\n'
 			    self.blastHits[amplicon][organism] = hitInfo[organism]
+			    orgToClass[organism] = getClassification(gi=org2gi[organism])
 			if not in_both_reads:
 			    output +=       '\t\t\tNo alignment supported by both reads with >='+str(config.minBlastIdentity)+'% identity and '+str(config.minBlastCoverage)+'% alignment length coverage'     +'\n'
 	    
@@ -1610,25 +1612,71 @@ class BarcodeCluster(object):
 		monoclonalAmpliconsArray = [self.amplicons[amplicon].monoclonal for amplicon in self.definedamplicons]
 		if len(self.blastHits) > 1 and (self.definedampliconcount == monoclonalAmpliconsArray.count(True)):
 		    
+		    # find organisms present in all amplicons hitlists
 		    self.organismsInAllAmplicons = []
-		    
 		    for organism in self.blastHits[self.blastHits.keys()[0]]:
 			inAll = True
 			for amplicon, organisms in self.blastHits.iteritems():
-			    if organism not in organisms: inAll = False
+				if organism not in organisms: inAll = False
 			if inAll: self.organismsInAllAmplicons.append(organism)
-			
+
+		    # find classifications present within all organisms within hitlist for each amplicon (=consensus as they are monoclonal)
+		    classifications = {}
+		    for amplicon, organisms in self.blastHits.iteritems():
+			if len(organisms) == 0: output += amplicon+' has no BLAST-hits.\n';continue
+			classifications[amplicon] = {}
+			for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+				try: 		value = orgToClass[organisms.keys()[0]][rank]
+				except KeyError:value = 'NotSet'
+				#except IndexError:value = 'NotSet'
+				classifications[amplicon][rank] = value
+			for organism in organisms:
+				for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+					try: value = orgToClass[organism][rank]
+					except KeyError: value = 'NotSet'
+					if value != classifications[amplicon][rank]: classifications[amplicon][rank] = False
+			output +=       '\tAmplicon '+amplicon+' have the following classifications for all hits:'     +'\n'
+			for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+				if classifications[amplicon][rank]: output += '\t\t'+rank + '\t' + classifications[amplicon][rank]+'\n'
+				else: output += '\t\t'+rank + '\tnot same for all\n'	
+		    
+		    # find level classification that are the same for all amplicons
+		    classInAllAmps = {}
+		    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+			try: value = classifications[self.blastHits.keys()[0]][rank]
+			except KeyError: value = 'NotSet'
+			classInAllAmps[rank] = value
+		    for amplicon in self.blastHits.keys():
+			for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+				try:
+					if classifications[amplicon][rank] != classInAllAmps[rank]:classInAllAmps[rank] = False
+				except KeyError:classInAllAmps[rank] = False
+		    output +='\tAll amplicons have the following classifications:'     +'\n'
+		    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+			if classInAllAmps[rank]: output += '\t\t'+rank + '\t' + classInAllAmps[rank]+'\n'
+			else: output += '\t\t'+rank + '\tnot same for all\n'	
+		    
+		    
 		    self.hitReduction = { amplicon:len(organisms) for amplicon, organisms in self.blastHits.iteritems() }
 		    self.hitReduction['inAll'] = len(self.organismsInAllAmplicons)
 		    
 		    output +=       '\tOrganims in all amplicons:'     +'\n'
 		    for organism in self.organismsInAllAmplicons:
 			output += '\t\t'+str(organism)     +'\n'
-			output += str(getClassification(gi=org2gi[organism]))
 			
 		    output += str(self.hitReduction)+'\n'
 		    if   len(self.organismsInAllAmplicons) >1:   output += 'cluster is '+', '.join(self.organismsInAllAmplicons[:-1])+' or ' +self.organismsInAllAmplicons[-1] +'\n'
 		    elif len(self.organismsInAllAmplicons) ==1:  output += 'cluster is '+self.organismsInAllAmplicons[-1] +'\n'
+		    if len(classInAllAmps) > 0:
+			output += 'matching clasification: '
+			tmp1 = []
+			tmp2 = []
+			for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+			    if classInAllAmps[rank]: tmp1.append(classInAllAmps[rank]); tmp2.append(rank);
+			    else: break
+			output += ':'.join(tmp1)+' '
+			output += '('+':'.join(tmp2)+')\n'
+			output += str(tmp1)+'\t'+str(tmp2)
 		
 		return output
 

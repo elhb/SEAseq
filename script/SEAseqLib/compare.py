@@ -26,12 +26,16 @@ def compare(indata):
     config.logfile.write('Reading indata ...\n')
     temp0 = 0
     temp1 = 0
+    temp2 = 0
     clusterOrganisms = {}
     overlaps = {}
+    classifications = {}
+    ranks = {}
     import re
     for line in infile:
         clusterisLine   = re.search('cluster is',line)
         overlapLine     = re.match("{'",line)
+        classificationline = re.match("\[",line)#[u'Bacteria', 'NotSet'] ['superkingdom', 'kingdom']
         
         if clusterisLine:
             temp0 +=1 
@@ -41,6 +45,20 @@ def compare(indata):
             temp1 += 1
             try: overlaps[line.rstrip()]+=1
             except KeyError:overlaps[line.rstrip()]=1
+        elif classificationline:
+            temp2 += 1
+            tmp1 = eval(line.split('\t')[0])
+            tmp2 = eval(line.split('\t')[1])
+            if not tmp1 and not tmp2: temp2 -= 1
+            for i in range(len(tmp2)):
+                try:
+                    ranks[tmp2[i]] += 1
+                except KeyError:
+                    ranks[tmp2[i]]  = 1
+                    classifications[tmp2[i]] = {}
+                try:             classifications[tmp2[i]][tmp1[i]] += 1
+                except KeyError: classifications[tmp2[i]][tmp1[i]]  = 1
+
 
     config.logfile.write('Analyzing organism distribution ...\n')    
     config.outfile.write('Organism distribution:\nTotal '+str(temp0)+' clusters, '+str(len(clusterOrganisms))+' organism combinations/classifications.\n')
@@ -141,6 +159,18 @@ def compare(indata):
         printTable(overlaps,config.outfile,temp1)
     
     config.outfile.write('\nFor '+str(round(100*float(withReduction)/float(withOvelap),2)) + '% of the clusters with hitlist overlap, is the overlap list shorter than the "best" of the defined amplicon lists.\n')
+
+    config.outfile.write('\nOut of a total of '+str(temp2)+' cluster with BLAST hits for both amplicons:')
+    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+        try:count = ranks[rank]
+        except KeyError: count = 0
+        if count: percentage = round(100*float(count)/float(temp2),2)
+        else: percentage = 0.00
+        config.outfile.write('\n\t'+str(count)+' ('+str(percentage)+'%) all organisms in all amplicons match at the '+rank+' level out of theese are:')
+        values = classifications[rank]
+        for value, count in values.iteritems():
+            percentage = round(100*float(count)/float(temp2),2)
+            config.outfile.write('\n\t\t'+str(count)+' ('+str(percentage)+'%) are '+value+'.')
     
     config.logfile.write('Done.\n')
     infile.close()
