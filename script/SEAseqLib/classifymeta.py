@@ -99,7 +99,7 @@ def classifymeta(indata):
         import multiprocessing
         WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
         results = WorkerPool.imap_unordered(foreachCluster,clusterGenerator(config,indata),chunksize=1)
-        #results = WorkerPool.imap(          foreachcluster,clusterGenerator(config),chunksize=1)
+        #results = WorkerPool.imap(           foreachCluster,clusterGenerator(config,indata),chunksize=1)
 
     if indata.tempFileFolder:
         clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle','wb')
