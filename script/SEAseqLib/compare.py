@@ -31,11 +31,14 @@ def compare(indata):
     overlaps = {}
     classifications = {}
     ranks = {}
+    summaryHeader = False
     import re
     for line in infile:
         clusterisLine   = re.search('cluster is',line)
         overlapLine     = re.match("{'",line)
-        classificationline = re.match("\[",line)#[u'Bacteria', 'NotSet'] ['superkingdom', 'kingdom']
+        classificationline = re.match("taxdata",line)#[u'Bacteria', 'NotSet'] ['superkingdom', 'kingdom']
+        if not summaryHeader: summaryHeader = re.match('##### SUMMARY #####',line)
+        else: break
         
         if clusterisLine:
             temp0 +=1 
@@ -47,19 +50,24 @@ def compare(indata):
             except KeyError:overlaps[line.rstrip()]=1
         elif classificationline:
             temp2 += 1
-            tmp1 = eval(line.split('\t')[0])
-            tmp2 = eval(line.split('\t')[1])
-            if not tmp1 and not tmp2: temp2 -= 1
-            for i in range(len(tmp2)):
+            #tmp1 = eval(line.split('\t')[0])
+            classificationsInAllAmps = eval(line.split('\t')[1])
+            #if not tmp1 and not tmp2: temp2 -= 1
+            #for i in range(len(tmp2)):
+            for rank, rankValues in classificationsInAllAmps.iteritems():
+                if not rankValues: break
                 try:
-                    ranks[tmp2[i]] += 1
+                    ranks[rank] += 1
                 except KeyError:
-                    ranks[tmp2[i]]  = 1
-                    classifications[tmp2[i]] = {}
-                try:             classifications[tmp2[i]][tmp1[i]] += 1
-                except KeyError: classifications[tmp2[i]][tmp1[i]]  = 1
+                    ranks[rank]  = 1
+                    classifications[rank] = {}
+#                for rankValue in rankValues:
+                try:             classifications[rank][str(rankValues)] += 1
+                except KeyError: classifications[rank][str(rankValues)]  = 1
 
-
+    if not summaryHeader:
+        config.outfile.write('# WARNING: The classification outfile is not complete!\n')
+        config.logfile.write('# WARNING: The classification outfile is not complete!\n')
     config.logfile.write('Analyzing organism distribution ...\n')    
     config.outfile.write('Organism distribution:\nTotal '+str(temp0)+' clusters, '+str(len(clusterOrganisms))+' organism combinations/classifications.\n')
     config.outfile.write('#\t%\tclassification\n')
@@ -160,18 +168,23 @@ def compare(indata):
     
     config.outfile.write('\nFor '+str(round(100*float(withReduction)/float(withOvelap),2)) + '% of the clusters with hitlist overlap, is the overlap list shorter than the "best" of the defined amplicon lists.\n')
 
-    config.outfile.write('\nOut of a total of '+str(temp2)+' cluster with BLAST hits for both amplicons:')
+    config.outfile.write('\nOut of a total of '+str(temp2)+' cluster with BLAST hits for both amplicons there are:')
     for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
         try:count = ranks[rank]
         except KeyError: count = 0
         if count: percentage = round(100*float(count)/float(temp2),2)
         else: percentage = 0.00
-        config.outfile.write('\n\t'+str(count)+' ('+str(percentage)+'%) all organisms in all amplicons match at the '+rank+' level out of theese are:')
-        values = classifications[rank]
-        for value, count in values.iteritems():
-            percentage = round(100*float(count)/float(temp2),2)
-            config.outfile.write('\n\t\t'+str(count)+' ('+str(percentage)+'%) are '+value+'.')
-    
+        config.outfile.write('\n\t'+str(count)+' clusters ('+str(percentage)+'%) where the amplicons hitlist has >=1 match at the '+rank+' level, out of theese are:')
+        #print '\n\t'+str(count)+' clusters ('+str(percentage)+'%) where the amplicons hitlist has >=1 match at the '+rank+' level, out of theese are:'
+        if count:
+            #values = classifications[rank]
+            for value, count2 in classifications[rank].iteritems():
+                value = eval(value)
+                #print value
+                percentage = round(100*float(count2)/float(count),2)
+                if len(value) > 1: config.outfile.write('\n\t\t'+str(count2)+' ('+str(percentage)+'%) are '+', '.join(value[:-1])+' or '+value[-1]+'.')
+                else: config.outfile.write('\n\t\t'+str(count2)+' ('+str(percentage)+'%) are '+value[0]+'.')
+    config.outfile.write('\n\n')
     config.logfile.write('Done.\n')
     infile.close()
     

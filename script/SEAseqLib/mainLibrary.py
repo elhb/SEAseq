@@ -1668,18 +1668,18 @@ class BarcodeCluster(object):
 			    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
 				if classificationsInAllAmps[rank]:
 					if len(classificationsInAllAmps[rank]) > 1:
-						output += '\t\t'+rank +' is '+ ', '.join(classificationsInAllAmps[rank][:-1])+'or '+classificationsInAllAmps[rank][-1]+'.\n'
+						output += '\t\t'+rank +' is '+ ', '.join(classificationsInAllAmps[rank][:-1])+' or '+classificationsInAllAmps[rank][-1]+'.\n'
 					else:  output += '\t\t'+rank +' is '+classificationsInAllAmps[rank][0]+'.\n'
 					#tmp1.append(classificationsInAllAmps[rank]); tmp2.append(rank);
 				else: break
 			    #output += '\t\t'+':\n'.join([', '.join(rankValues[:-1])+' or '+rankValues[-1] for rankValues in tmp1])+'\n'
 			    #output += '('+':'.join(tmp2)+')\n'
 			    #output += str(tmp1)+'\t'+str(tmp2)+'\n'
-			    output += 'taxdata\t'str(classificationsInAllAmps)+'\n'
+			    output += 'taxdata\t'+str(classificationsInAllAmps)+'\n'
 			else:
 			    output += 'No classification overlap found.\n'
 			    #output += str([])+'\t'+str([])+'\n'
-			    output += 'taxdata\t'str(classificationsInAllAmps)+'\n'
+			    output += 'taxdata\t'+str(classificationsInAllAmps)+'\n'
 		    
 		#    # find level classification that are the same for all amplicons
 		#    classInAllAmps = {}
