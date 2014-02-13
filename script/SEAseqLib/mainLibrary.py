@@ -1675,9 +1675,11 @@ class BarcodeCluster(object):
 			    #output += '\t\t'+':\n'.join([', '.join(rankValues[:-1])+' or '+rankValues[-1] for rankValues in tmp1])+'\n'
 			    #output += '('+':'.join(tmp2)+')\n'
 			    #output += str(tmp1)+'\t'+str(tmp2)+'\n'
+			    output += 'taxdata\t'str(classificationsInAllAmps)+'\n'
 			else:
 			    output += 'No classification overlap found.\n'
 			    #output += str([])+'\t'+str([])+'\n'
+			    output += 'taxdata\t'str(classificationsInAllAmps)+'\n'
 		    
 		#    # find level classification that are the same for all amplicons
 		#    classInAllAmps = {}
