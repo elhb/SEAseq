@@ -1612,6 +1612,8 @@ class BarcodeCluster(object):
 		monoclonalAmpliconsArray = [self.amplicons[amplicon].monoclonal for amplicon in self.definedamplicons]
 		if len(self.blastHits) > 1 and (self.definedampliconcount == monoclonalAmpliconsArray.count(True)):
 		    
+		    self.hitReduction = { amplicon:len(organisms) for amplicon, organisms in self.blastHits.iteritems() }
+		    
 		    # find organisms present in all amplicons hitlists
 		    self.organismsInAllAmplicons = []
 		    for organism in self.blastHits[self.blastHits.keys()[0]]:
@@ -1621,40 +1623,77 @@ class BarcodeCluster(object):
 			if inAll: self.organismsInAllAmplicons.append(organism)
 
 		    # find classifications present within all organisms within hitlist for each amplicon (=consensus as they are monoclonal)
-		    classifications = {}
-		    for amplicon, organisms in self.blastHits.iteritems():
-			if len(organisms) == 0: output += amplicon+' has no BLAST-hits.\n';continue
-			classifications[amplicon] = {}
-			for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-				try: 		value = orgToClass[organisms.keys()[0]][rank]
-				except KeyError:value = 'NotSet'
-				#except IndexError:value = 'NotSet'
-				classifications[amplicon][rank] = value
-			for organism in organisms:
-				for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+		    if self.hitReduction and self.hitReduction[self.hitReduction.keys()[0]] > 0 and self.hitReduction[self.hitReduction.keys()[0]] < sum([value for value in self.hitReduction.values()]):
+			classifications = {}
+			classificationsInAllAmps = {}
+			for amplicon, organisms in self.blastHits.iteritems():
+			    if len(organisms) == 0: output += amplicon+' has no BLAST-hits.\n';continue
+			    classifications[amplicon] = {}
+			    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+				    #try: 		value = orgToClass[organisms.keys()[0]][rank]
+				    #except KeyError:value = 'NotSet'
+				    #except IndexError:value = 'NotSet'
+				    classifications[amplicon][rank] = []
+				    for organism in organisms:
 					try: value = orgToClass[organism][rank]
-					except KeyError: value = 'NotSet'
-					if value != classifications[amplicon][rank]: classifications[amplicon][rank] = False
-			output +=       '\tAmplicon '+amplicon+' have the following classifications for all hits:'     +'\n'
-			for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-				if classifications[amplicon][rank]: output += '\t\t'+rank + '\t' + classifications[amplicon][rank]+'\n'
-				else: output += '\t\t'+rank + '\tnot same for all\n'	
+					except KeyError:value = 'NotSet'
+					if value not in classifications[amplicon][rank]: classifications[amplicon][rank].append(value)
+			    #for organism in organisms:
+			    #	for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+			    #		try: value = orgToClass[organism][rank]
+			    #		except KeyError: value = 'NotSet'
+			    #		if value != classifications[amplicon][rank]: classifications[amplicon][rank] = False
+			    #output +=       '\tAmplicon '+amplicon+' have the following classifications for all hits:'     +'\n'
+			    #for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+			    #	if classifications[amplicon][rank]: output += '\t\t'+rank + '\t' + classifications[amplicon][rank]+'\n'
+			    #	else: output += '\t\t'+rank + '\tnot same for all\n'
+			if classifications:
+			    for firstAmpRank in classifications[ classifications.keys()[0] ]:
+					    firstAmpRankInAll = True
+					    for amplicon in classifications:
+						    if firstAmpRank not in classifications[amplicon]:
+							firstAmpRankInAll = False
+							print firstAmpRank, 'not in',classifications[amplicon].keys()
+					    if firstAmpRankInAll:
+						    classificationsInAllAmps[firstAmpRank] = []
+						    for rankValue in classifications[classifications.keys()[0]][firstAmpRank]:
+							    rankValueInAll = True
+							    for amplicon in classifications:
+								    if rankValue not in classifications[amplicon][firstAmpRank]: rankValueInAll = False
+							    if rankValueInAll: classificationsInAllAmps[firstAmpRank].append(rankValue)
+			if classificationsInAllAmps:
+			    output += '\tClassification overlaps:\n'
+			    tmp1 = []
+			    tmp2 = []
+			    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+				if classificationsInAllAmps[rank]:
+					if len(classificationsInAllAmps[rank]) > 1:
+						output += '\t\t'+rank +' is '+ ', '.join(classificationsInAllAmps[rank][:-1])+'or '+classificationsInAllAmps[rank][-1]+'.\n'
+					else:  output += '\t\t'+rank +' is '+classificationsInAllAmps[rank][0]+'.\n'
+					#tmp1.append(classificationsInAllAmps[rank]); tmp2.append(rank);
+				else: break
+			    #output += '\t\t'+':\n'.join([', '.join(rankValues[:-1])+' or '+rankValues[-1] for rankValues in tmp1])+'\n'
+			    #output += '('+':'.join(tmp2)+')\n'
+			    #output += str(tmp1)+'\t'+str(tmp2)+'\n'
+			else:
+			    output += 'No classification overlap found.\n'
+			    #output += str([])+'\t'+str([])+'\n'
 		    
-		    # find level classification that are the same for all amplicons
-		    classInAllAmps = {}
-		    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-			try: value = classifications[self.blastHits.keys()[0]][rank]
-			except KeyError: value = 'NotSet'
-			classInAllAmps[rank] = value
-		    for amplicon in self.blastHits.keys():
-			for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-				try:
-					if classifications[amplicon][rank] != classInAllAmps[rank]:classInAllAmps[rank] = False
-				except KeyError:classInAllAmps[rank] = False
-		    output +='\tAll amplicons have the following classifications:'     +'\n'
-		    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-			if classInAllAmps[rank]: output += '\t\t'+rank + '\t' + classInAllAmps[rank]+'\n'
-			else: output += '\t\t'+rank + '\tnot same for all\n'	
+		#    # find level classification that are the same for all amplicons
+		#    classInAllAmps = {}
+		#    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+		#	try: value = classifications[self.blastHits.keys()[0]][rank]
+		#	except KeyError: value = 'NotSet'
+		#	classInAllAmps[rank] = value
+		#    for amplicon in self.blastHits.keys():
+		#	for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+		#		try:
+		#			if classifications[amplicon][rank] != classInAllAmps[rank]:classInAllAmps[rank] = False
+		#		except KeyError:classInAllAmps[rank] = False
+		#    output +='\tAll amplicons have the following classifications:'     +'\n'
+		#    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+		#	if classInAllAmps[rank]: output += '\t\t'+rank + '\t' + classInAllAmps[rank]+'\n'
+		#	else: output += '\t\t'+rank + '\tnot same for all\n'	
 		    
 		    
 		    self.hitReduction = { amplicon:len(organisms) for amplicon, organisms in self.blastHits.iteritems() }
@@ -1667,16 +1706,16 @@ class BarcodeCluster(object):
 		    output += str(self.hitReduction)+'\n'
 		    if   len(self.organismsInAllAmplicons) >1:   output += 'cluster is '+', '.join(self.organismsInAllAmplicons[:-1])+' or ' +self.organismsInAllAmplicons[-1] +'\n'
 		    elif len(self.organismsInAllAmplicons) ==1:  output += 'cluster is '+self.organismsInAllAmplicons[-1] +'\n'
-		    if len(classInAllAmps) > 0:
-			output += 'matching clasification: '
-			tmp1 = []
-			tmp2 = []
-			for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-			    if classInAllAmps[rank]: tmp1.append(classInAllAmps[rank]); tmp2.append(rank);
-			    else: break
-			output += ':'.join(tmp1)+' '
-			output += '('+':'.join(tmp2)+')\n'
-			output += str(tmp1)+'\t'+str(tmp2)
+		#    if len(classInAllAmps) > 0:
+		#	output += 'matching clasification: '
+		#	tmp1 = []
+		#	tmp2 = []
+		#	for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+		#	    if classInAllAmps[rank]: tmp1.append(classInAllAmps[rank]); tmp2.append(rank);
+		#	    else: break
+		#	output += ':'.join(tmp1)+' '
+		#	output += '('+':'.join(tmp2)+')\n'
+		#	output += str(tmp1)+'\t'+str(tmp2)
 		
 		return output
 
