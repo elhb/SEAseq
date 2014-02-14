@@ -121,7 +121,7 @@ def getindata(cmd):
 	argparser.add_argument(	'-rl','-readLength',				dest='readLength',			metavar='<int>',	type=int,	required=False,	default=None,	help='Read length limit (longer will be trimmed, default None).')
 
     if cmd == 'sbatch':
-	argparser.add_argument(	'-prj','-project',dest='project',metavar='<b20xxxxx>',	type=str,	required=False,	default='b2011011',	help='uppmaxproject (default b2011011)')
+	argparser.add_argument(	'-prj','-project',dest='project',metavar='<b20xxxxx>',	type=str,	required=False,	default='b2014005',	help='uppmaxproject (default b2011011)')
 	argparser.add_argument('--send',	dest='send', 	action='store_true', 			required=False,	default=False,	help='Send sbatch scripts to job-queue.')
 	argparser.add_argument('--sendonly',	dest='sendonly',action='store_true', 			required=False,	default=False,	help='Do not generate the files only Send sbatch scripts to job-queue.')
 	argparser.add_argument('--small',	dest='small', 	action='store_true', 			required=False,	default=False,	help='make for smaller dataset job-queue.')
