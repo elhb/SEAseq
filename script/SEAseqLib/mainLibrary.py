@@ -53,13 +53,34 @@ def writelogheader(logfile):
     if gethostname().split('.')[1] == 'uppmax':
         logfile.write('Program is run on uppmax, temporary files will be placed in '+commands.getoutput('echo $SNIC_TMP')+' .\n')
 
-def gi2orgname(gi_number):
-	from Bio import Entrez
-	Entrez.email = "erik.borgstrom@scilifelab.se"
-	handle = Entrez.efetch(db="nucleotide", id=gi_number, retmode="xml")
-	records = Entrez.read(handle)
-	assert len(records) == 1
-	return records[0]['GBSeq_organism']
+def gi2orgname(gi_number,database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.db'):
+	gi_number = int(gi_number)
+	print gi_number, 'local'
+	import sqlite3
+	# Connect to local database
+	conn = sqlite3.connect(database)
+	c = conn.cursor()
+	t = (int(gi_number),)
+	try:
+		gi_number, name = c.execute('SELECT * FROM gi2name WHERE gi=?', t).fetchone()
+		return name
+	except TypeError:
+		print gi_number, 'online'
+		values      = []
+		# do online
+		from Bio import Entrez
+		Entrez.email = "erik.borgstrom@scilifelab.se"
+		handle = Entrez.efetch(db="nucleotide", id=str(gi_number), retmode="xml")
+		records = Entrez.read(handle)
+		assert len(records) == 1
+		values.append((gi_number,records[0]['GBSeq_organism']))
+		try:
+			gi_number, name = c.execute('SELECT * FROM gi2name WHERE gi=?', t).fetchone()
+		except TypeError:
+			c.executemany('INSERT INTO gi2name VALUES (?,?)', values)
+			conn.commit();
+		conn.close()
+		return records[0]['GBSeq_organism']
 
 def hamming_distance(s1, s2):
 	assert len(s1) == len(s2), 'Error: '+str(len(s1)) + ' != ' + str(len(s2))
@@ -401,47 +422,82 @@ def getClassification(taxid=None,gi=None,database='/proj/b2011011/SEAseq/referen
     #print 'database:';print database
     conn = sqlite3.connect(database)
     c = conn.cursor()
-    name = None
-    rank = None
-    #
-    # get taxid
-    #
-    if gi and not taxid:
-        gi = int(gi)
-        gi = str(gi)
-        #print 'fetching taxid ...'
-        t = (gi,)
-        try: gi, taxid = c.execute('SELECT * FROM gi2taxid WHERE gi=?', t).fetchone()
-        except TypeError:
-            #print 'gi is funky, trying online fetch of organism name'
-            from Bio import Entrez
-            Entrez.email = "erik.borgstrom@scilifelab.se"
-            handle = Entrez.efetch(db="nucleotide", id=str(gi), retmode="xml")
-            records = Entrez.read(handle)
-            assert len(records) == 1
-            name = records[0]['GBSeq_organism']
-            t = (name,)
-            taxid, name = c.execute('SELECT * FROM taxid2name WHERE name=?', t).fetchone()
-        #print 'done'
-    if not gi and not taxid:
-        sys.stderr.write('Error: you need to supply either a gi number or taxid\n')
-    taxid = int(taxid)
-    classification['taxid'] = taxid
-    classification['gi']    = gi
-    #
-    # While not rank root build on the classstring
-    #
-    itercounter = 0
-    while name != 'root':
-        itercounter += 1
-        t = (taxid,)
-        taxid, name = c.execute('SELECT * FROM taxid2name WHERE taxid=?', t).fetchone()
-        taxid, rank = c.execute('SELECT * FROM taxid2rank WHERE taxid=?', t).fetchone()
-        oldtaxid, taxid = c.execute('SELECT * FROM taxid2parent WHERE taxid=?', t).fetchone()
-        classStr.append(name)
-        rankStr.append(rank)
-        classification[rank] = name
-        if itercounter > 20: break
+    try: # Try ready dist
+	if taxid:
+		t = (int(taxid),)
+		taxid, classdist = c.execute('SELECT * FROM taxid2classdist WHERE taxid=?', t).fetchone()
+		#print "got a prebuilt string"
+		return eval(classdist)
+	elif gi:
+		t = (int(gi),)
+		gi, classdist = c.execute('SELECT * FROM gi2classdist WHERE gi=?', t).fetchone()
+		#print "got a prebuilt string"
+		return eval(classdist)
+	else: sys.stderr.write('Error: you need to supply either a gi number or taxid\n')
+    except TypeError: # else build one
+	#print 'no prebuilt found, bulding string:'
+	name = None
+	rank = None
+	#
+	# get taxid
+	#
+	if gi and not taxid:
+	    #print 'fetching taxid ...'
+	    t = (int(gi),)
+	    try: gi, taxid = c.execute('SELECT * FROM gi2taxid WHERE gi=?', t).fetchone()
+	    except TypeError:
+		name = gi2orgname(gi)
+		t = (name,)
+		taxid, name = c.execute('SELECT * FROM taxid2name WHERE name=?', t).fetchone()
+	    #print 'done'
+	if not gi and not taxid: sys.stderr.write('Error: you need to supply either a gi number or taxid\n')
+	#taxid = int(taxid)
+	if taxid:classification['taxid'] = int(taxid)
+	if gi: classification['gi'] = int(gi)
+	originalTaxid = taxid
+	#
+	# While not rank root build on the classstring
+	#
+	itercounter = 0
+	while name != 'root':
+	    itercounter += 1
+	    t = (int(taxid),)
+	    taxid, name = c.execute('SELECT * FROM taxid2name WHERE taxid=?', t).fetchone()
+	    taxid, rank = c.execute('SELECT * FROM taxid2rank WHERE taxid=?', t).fetchone()
+	    oldtaxid, taxid = c.execute('SELECT * FROM taxid2parent WHERE taxid=?', t).fetchone()
+	    classStr.append(name)
+	    rankStr.append(rank)
+	    classification[rank] = name
+	    if itercounter > 20: break
+	taxid = originalTaxid
+	#
+	#save the classtring to database
+	#
+	if taxid:
+		#print 'saving taxid to classstr db'
+		try:
+			t = (int(taxid),)
+			taxid, classdist = c.execute('SELECT * FROM taxid2classdist WHERE taxid=?', t).fetchone()
+			#print 'already in' , classdist
+		except TypeError: #add
+			values      = []
+			values.append((int(taxid),str(classification)))
+			c.executemany('INSERT INTO taxid2classdist VALUES (?,?)', values)
+			conn.commit();
+			#print 'saved'
+	if gi:
+		print 'saving gi to classstr db'
+		try:
+			t = (int(gi),)
+			gi, classdist = c.execute('SELECT * FROM gi2classdist WHERE gi=?', t).fetchone()
+			#print 'already in'
+		except TypeError: #add
+			values      = []
+			values.append((int(gi),str(classification)))
+			c.executemany('INSERT INTO gi2classdist VALUES (?,?)', values)
+			conn.commit();
+			#print 'saved'
+    conn.close()
     end = round(time.time()-start,2)
     #print 'search took',int(end/60),'min',end%60,'seconds'
     return classification
@@ -1571,13 +1627,14 @@ class BarcodeCluster(object):
 					try: gi_number = alignment.title.split(' ')[1].split('|')[1]
 					except IndexError:
 					    import sys
-					    sys.stderr.write( 'This alignment title is not good: '+alignment.title +'\tsplitting on zero.\n')
 					    gi_number = alignment.title.split(' ')[0].split('|')[1]
+					    sys.stderr.write( 'This alignment title is not good: '+alignment.title +'\tsplitting on zero gi => '+gi_number+'.\n')
 					try:
 					    organism = local_gi2org[gi_number]
 					except KeyError:
-					    try: organism = gi2orgname(gi_number)
-					    except urllib2.URLError: organism = alignment.title.split(' ')[1:]
+					    organism = gi2orgname(gi_number)
+					    #try: organism = gi2orgname(gi_number)
+					    #except urllib2.URLError: organism = alignment.title.split(' ')[1:]
 					    local_gi2org[gi_number] = organism
 					if not config.subSpecies: organism = ' '.join(organism.split(' ')[:2])
 					org2gi[organism] = gi_number

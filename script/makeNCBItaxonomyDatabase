@@ -39,6 +39,28 @@ def removeTemporaryFiles():
     import shutil
     shutil.rmtree('tmpFolder')    
 
+def createGi2stuffTables(dbname='NCBItaxonomy.db'):
+    #
+    # imports
+    #
+    import time
+    import sqlite3
+    #
+    # Connect to DB
+    #    
+    conn = sqlite3.connect(dbname)
+    c = conn.cursor()
+    #
+    # Create table
+    #
+    c.execute('''CREATE TABLE gi2name (gi,name,PRIMARY KEY (gi))''')
+    c.execute('''CREATE TABLE gi2classdist (gi,classdist,PRIMARY KEY (gi))''')
+    c.execute('''CREATE TABLE taxid2classdist (taxid,classdist,PRIMARY KEY (taxid))''')
+    #
+    # close connection
+    #
+    conn.close()
+
 def createDB(dbname='NCBItaxonomy.db'):
     
     #
@@ -171,6 +193,8 @@ import sys
 try:
     databaseName = sys.argv[1]
     createDB(dbname=databaseName)
+    createGi2stuffTables(dbname=databaseName)
 except IndexError:
     createDB()
+    createGi2stuffTables()
 print 'All done.'
