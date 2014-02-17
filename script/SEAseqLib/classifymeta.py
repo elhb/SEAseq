@@ -76,6 +76,10 @@ def classifymeta(indata):
 
     config.loadPrimers()
 
+    from multiprocessing import Manager
+    man = Manager()
+    config.dbLock = man.Lock()
+
     from SEAseqLib.mainLibrary import Progress, clusterGenerator
     config.logfile.write('Starting to align clusters:\n ');
     if indata.debug: #single process // serial

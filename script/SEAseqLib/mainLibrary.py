@@ -53,9 +53,9 @@ def writelogheader(logfile):
     if gethostname().split('.')[1] == 'uppmax':
         logfile.write('Program is run on uppmax, temporary files will be placed in '+commands.getoutput('echo $SNIC_TMP')+' .\n')
 
-def gi2orgname(gi_number,database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.db'):
+def gi2orgname(gi_number,database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.db',lock=None):
 	gi_number = int(gi_number)
-	print gi_number, 'local'
+	#print gi_number, 'local'
 	import sqlite3
 	# Connect to local database
 	conn = sqlite3.connect(database)
@@ -65,7 +65,7 @@ def gi2orgname(gi_number,database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.
 		gi_number, name = c.execute('SELECT * FROM gi2name WHERE gi=?', t).fetchone()
 		return name
 	except TypeError:
-		print gi_number, 'online'
+		print gi_number, 'not in local db will fetch online and update db.'
 		values      = []
 		# do online
 		from Bio import Entrez
@@ -74,12 +74,14 @@ def gi2orgname(gi_number,database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.
 		records = Entrez.read(handle)
 		assert len(records) == 1
 		values.append((gi_number,records[0]['GBSeq_organism']))
+		if lock: lock.acquire()
 		try:
 			gi_number, name = c.execute('SELECT * FROM gi2name WHERE gi=?', t).fetchone()
 		except TypeError:
 			c.executemany('INSERT INTO gi2name VALUES (?,?)', values)
 			conn.commit();
 		conn.close()
+		if lock: lock.release()
 		return records[0]['GBSeq_organism']
 
 def hamming_distance(s1, s2):
@@ -405,7 +407,7 @@ def clusterGenerator(config,indata):
             config.logfile.write('All clusters read from file.\n')
             break
 
-def getClassification(taxid=None,gi=None,database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.db'):
+def getClassification(taxid=None,gi=None,database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.db',lock=None):
     #
     # imports
     #
@@ -446,7 +448,7 @@ def getClassification(taxid=None,gi=None,database='/proj/b2011011/SEAseq/referen
 	    t = (int(gi),)
 	    try: gi, taxid = c.execute('SELECT * FROM gi2taxid WHERE gi=?', t).fetchone()
 	    except TypeError:
-		name = gi2orgname(gi)
+		name = gi2orgname(gi,lock=config.dbLock)
 		t = (name,)
 		taxid, name = c.execute('SELECT * FROM taxid2name WHERE name=?', t).fetchone()
 	    #print 'done'
@@ -473,6 +475,7 @@ def getClassification(taxid=None,gi=None,database='/proj/b2011011/SEAseq/referen
 	#
 	#save the classtring to database
 	#
+	if lock: lock.acquire()
 	if taxid:
 		#print 'saving taxid to classstr db'
 		try:
@@ -486,7 +489,7 @@ def getClassification(taxid=None,gi=None,database='/proj/b2011011/SEAseq/referen
 			conn.commit();
 			#print 'saved'
 	if gi:
-		print 'saving gi to classstr db'
+		#print 'saving gi to classstr db'
 		try:
 			t = (int(gi),)
 			gi, classdist = c.execute('SELECT * FROM gi2classdist WHERE gi=?', t).fetchone()
@@ -497,6 +500,7 @@ def getClassification(taxid=None,gi=None,database='/proj/b2011011/SEAseq/referen
 			c.executemany('INSERT INTO gi2classdist VALUES (?,?)', values)
 			conn.commit();
 			#print 'saved'
+	if lock: lock.release()
     conn.close()
     end = round(time.time()-start,2)
     #print 'search took',int(end/60),'min',end%60,'seconds'
@@ -1576,13 +1580,13 @@ class BarcodeCluster(object):
 		orgToClass = {}
 
 		#load the mapping to organism name dictionary
-		from SEAseqLib.mainLibrary import gi2orgname
-		local_gi2org = {}
-		if config.gidatabase:
-		    tmp_file = open(config.gidatabase)
-		    tmp_string = tmp_file.read()
-		    tmp_file.close()
-		    local_gi2org = eval(tmp_string)
+		#from SEAseqLib.mainLibrary import gi2orgname
+		#local_gi2org = {}
+		#if config.gidatabase:
+		#    tmp_file = open(config.gidatabase)
+		#    tmp_string = tmp_file.read()
+		#    tmp_file.close()
+		#    local_gi2org = eval(tmp_string)
 
 		# parse through the blast result one amplicon at the time
 		for amplicon in self.blastamplicons:
@@ -1629,13 +1633,13 @@ class BarcodeCluster(object):
 					    import sys
 					    gi_number = alignment.title.split(' ')[0].split('|')[1]
 					    sys.stderr.write( 'This alignment title is not good: '+alignment.title +'\tsplitting on zero gi => '+gi_number+'.\n')
-					try:
-					    organism = local_gi2org[gi_number]
-					except KeyError:
-					    organism = gi2orgname(gi_number)
+					#try:
+					#    organism = local_gi2org[gi_number]
+					#except KeyError:
+					organism = gi2orgname(gi_number,lock=config.dbLock)
 					    #try: organism = gi2orgname(gi_number)
 					    #except urllib2.URLError: organism = alignment.title.split(' ')[1:]
-					    local_gi2org[gi_number] = organism
+					#    local_gi2org[gi_number] = organism
 					if not config.subSpecies: organism = ' '.join(organism.split(' ')[:2])
 					org2gi[organism] = gi_number
 					import re
@@ -1661,7 +1665,7 @@ class BarcodeCluster(object):
 			    output += '\t\t\t\tpart1:\tHIT#'+'\n\t\t\t\t\tHIT#'.join([str(i)+': identity='+str(hitInfo[organism]['r1']['pi'][i])+'%, coverage='+str(hitInfo[organism]['r1']['pc'][i])+'%, pos='+str(hitInfo[organism]['r1']['ss'][i]) for i in range(len(hitInfo[organism]['r1']['ss']))]) + '\n'
 			    output += '\t\t\t\tpart2:\tHIT#'+'\n\t\t\t\t\tHIT#'.join([str(i)+': identity='+str(hitInfo[organism]['r2']['pi'][i])+'%, coverage='+str(hitInfo[organism]['r2']['pc'][i])+'%, pos='+str(hitInfo[organism]['r2']['ss'][i]) for i in range(len(hitInfo[organism]['r2']['ss']))]) + '\n'
 			    self.blastHits[amplicon][organism] = hitInfo[organism]
-			    orgToClass[organism] = getClassification(gi=org2gi[organism])
+			    orgToClass[organism] = getClassification(gi=org2gi[organism],lock=config.dbLock)
 			if not in_both_reads:
 			    output +=       '\t\t\tNo alignment supported by both reads with >='+str(config.minBlastIdentity)+'% identity and '+str(config.minBlastCoverage)+'% alignment length coverage'     +'\n'
 	    
