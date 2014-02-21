@@ -33,6 +33,7 @@ def foreachCluster(tmp):
     output += cluster.blastAllAmplicons(config,indata)
 
     output += cluster.parseBlastAmplicons(config,indata)
+    output += cluster.parseRdpAmplicons(config,indata)
 
     import cPickle
     return [output, cluster, cPickle.dumps(cluster,-1)]
@@ -197,8 +198,17 @@ def classifymeta(indata):
 
     config.outfile.write('##### SUMMARY #####'+'\n')
     config.outfile.write(      'out of '+str(moreThanOneAmpAndMono4All)+' analyzed clusters with more than one amplicon defined and monoclonal for all the defined amplicon, were:'     +'\n')
-    config.outfile.write(      '\t'+str(moreThanOneAmpMono4AllAndAllHaveHits) +' ('+str(round(100*float(moreThanOneAmpMono4AllAndAllHaveHits)/float(moreThanOneAmpAndMono4All),2))+'%) clusters that had at least one blast hit for all defined amplicons, out of these were:\n')
-    config.outfile.write(      '\t\t'+str(orgInAllAmpsCounter) +' ('+str(round(100*float(orgInAllAmpsCounter)/float(moreThanOneAmpMono4AllAndAllHaveHits),2))+'%) clusters where atleast one organism were identified within all the hitLists of all defined amplicons.\n')
+    
+    if moreThanOneAmpAndMono4All:
+        config.outfile.write(      '\t'+str(moreThanOneAmpMono4AllAndAllHaveHits) +' ('+str(round(100*float(moreThanOneAmpMono4AllAndAllHaveHits)/float(moreThanOneAmpAndMono4All),2))+'%) clusters that had at least one blast hit for all defined amplicons, out of these were:\n')
+    else:
+        config.outfile.write(      '\t'+str(moreThanOneAmpMono4AllAndAllHaveHits) +' ('+str(round(100*0,2))+'%) clusters that had at least one blast hit for all defined amplicons, out of these were:\n')
+    
+    if moreThanOneAmpMono4AllAndAllHaveHits:
+        config.outfile.write(      '\t\t'+str(orgInAllAmpsCounter) +' ('+str(round(100*float(orgInAllAmpsCounter)/float(moreThanOneAmpMono4AllAndAllHaveHits),2))+'%) clusters where atleast one organism were identified within all the hitLists of all defined amplicons.\n')
+    else:
+        config.outfile.write(      '\t\t'+str(orgInAllAmpsCounter) +' ('+str(round(100*0,2))+'%) clusters where atleast one organism were identified within all the hitLists of all defined amplicons.\n')
+    
     for amplicon in noMatchAmp:  
         config.outfile.write(  '\t'+str(len(noMatchAmp[amplicon])) +' ('+str(round(100*float(len(noMatchAmp[amplicon]))/float(moreThanOneAmpAndMono4All),2))+'%) clusters had no BLAST hits for '+amplicon+' supported by both reads with >='+str(config.minBlastIdentity)+'% identity and '+str(config.minBlastCoverage)+'% alignment length coverage.'     +'\n')
 
@@ -295,11 +305,11 @@ def classifymeta(indata):
     config.logfile.write('Classification done.\n')
 
     clusterdump.close()
-    if indata.tempFileFolder:
-        import shutil
-        import os
-        if os.path.exists(config.path+'/clusters.pickle') and os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
-        shutil.move(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle',config.path+'/clusters.pickle')
+    #if indata.tempFileFolder:
+    #    import shutil
+    #    import os
+    #    if os.path.exists(config.path+'/clusters.pickle') and os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
+    #    shutil.move(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle',config.path+'/clusters.pickle')
 
     return 0
 
