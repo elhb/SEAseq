@@ -327,4 +327,4 @@ def getClustersAndPairs(config,clusterq):
 
     clusterq.put([cluster,config]) # add the last cluster to queue
     clusterq.put('END')
-    config.logfile.write('Reader exiting after adding '+str(tmpcounter)+' clusters to queue.\n')
+    config.logfile.write('Reader exiting after adding '+str(tmpcounter+1)+' clusters to queue.\n')
