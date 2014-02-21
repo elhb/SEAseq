@@ -1498,14 +1498,23 @@ class BarcodeCluster(object):
 		    try: os.mkdir(indata.tempFileFolder+'/SEAseqtemp')
 		    except: pass
 		    self.blastfile = open(indata.tempFileFolder+'/SEAseqtemp/blastinput.'+str(self.id)+'.fa','w')
-		else:self.blastfile= open(         config.path+'/sortedReads/blastinput.'+str(self.id)+'.fa','w')    
+		    self.rdpfile   = open(indata.tempFileFolder+'/SEAseqtemp/rdpinput.'+str(self.id)+'.fa','w')
+		else:
+		    self.blastfile= open(         config.path+'/sortedReads/blastinput.'+str(self.id)+'.fa','w')
+		    self.rdpfile  = open(         config.path+'/sortedReads/rdpinput.'+str(self.id)+'.fa','w')
 		output+= '\tmaking fasta for cluster '+str(self.id)+'\n'
 		fastaentries = 0
 		self.blastamplicons = {}
+		self.rdpAmplicons = {}
+		self.rdpConfidence = {}
 		for amplicon in self.definedamplicons.values():
 		    self.blastamplicons[amplicon.type] = {}
+		    self.rdpAmplicons[amplicon.type] = {}
+		    self.rdpConfidence[amplicon.type] = {}
 		    for consensus in amplicon.goodalleles:
 			self.blastamplicons[amplicon.type][str(consensus.id)] = {'r1':None,'r2':None}
+			self.rdpAmplicons[amplicon.type][str(consensus.id)] = None
+			self.rdpConfidence[amplicon.type][str(consensus.id)] = None
 			try:
 			    r1 = consensus.sequence.seq.split('NNNNNNNNNN')[0]
 			    r2 = consensus.sequence.seq.split('NNNNNNNNNN')[1]
@@ -1518,8 +1527,10 @@ class BarcodeCluster(object):
 			    continue
 			self.blastfile.write('>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|r1\n'+r1+'\n'+
 					'>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|r2\n'+r2+'\n')
+			self.rdpfile.write('>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|\n'+r1+r2+'\n')
 			fastaentries +=1
 		self.blastfile.close()
+		self.rdpfile.close()
 		output+=  '\tfasta file created (cluster '+str(self.id)+')\n'
 		
 		# check that there were reads to align
@@ -1527,6 +1538,7 @@ class BarcodeCluster(object):
 		    self.blastHits = 'No fasta produced.'
 		    import os
 		    os.remove(self.blastfile.name)
+		    os.remove(self.rdpfile.name)
 		    output += '\tNo reads in fasta file, cluster '+str(self.id)+'\n'
 		    #return [output, cluster]
 		    return (output, 2)
@@ -1551,9 +1563,17 @@ class BarcodeCluster(object):
 		blast_handle = cline.__call__()
 		#output+=str(self.id)+' '+ str(blast_handle)[0:100].replace('\n','--NEWLINE--')+'\n'
 		output+='\tBLAST search finished, cluster '+str(self.id)+', run time was '+str(round(time.time()-starttime))+'s.\n\n'
-		# remove temporary file
-		import os
-		os.remove(self.blastfile.name) 
+		
+		import subprocess, sys
+		from cStringIO import StringIO
+		rdpProcess = subprocess.Popen(['java','-Xmx1g','-jar','/proj/b2014005/SEAseq/bin/RDP/RDPTools/classifier.jar','classify',self.rdpfile.name,'--outputFile',''+self.rdpfile.name+'.out','--format','allrank'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		rdpProcessOut, errdata = rdpProcess.communicate()
+		if rdpProcess.returncode != 0: print 'RDP view Error code', rdpProcess.returncode, errdata; sys.exit()
+		rdpProcessOut = StringIO(rdpProcessOut)
+		rdpDataTmp = open(self.rdpfile.name+'.out','r')
+		rdpData = rdpDataTmp.read()
+		rdpDataTmp.close()
+		
 		#convert blast output to parsable handle
 		blast_handle = StringIO(blast_handle[0])
 		blast_handle.seek(0)
@@ -1571,6 +1591,109 @@ class BarcodeCluster(object):
 		    self.blastamplicons[amptype][allele][readnumber] = blast_record
 		    if blast_record == None: output += amptype+' '+allele+' '+readnumber+'ajajajaj\n'; print 'ERROR: '+str(amptype)+' '+str(allele)+' '+str(readnumber)+'ajajajaj\n'
 		
+		#print 'CLUSTER',self.id
+		for line in rdpData.rstrip().split('\n'):
+		    #print line
+		    line    = line.rstrip().split('\t')
+		    header  = line[0]
+		    empty   = line[1]
+		    tmpData = line[2:]
+		    #print header, tmpData
+		    assert empty == ''
+		    amptype   = header.split('|tempSep|')[0]
+		    allele    = header.split('|tempSep|')[1]
+		    rdpClassification = {}
+		    rdpConfidence = {}
+		    for i in range(0,len(tmpData),3):
+			name = tmpData[i]
+			rank = tmpData[i+1]
+			confidence = float(tmpData[i+2])
+			#print str(i)+'\t'+str(rank)+'\t'+str(name)+'\t'+str(confidence)
+			if float(confidence) >= 0.50:
+				rdpClassification[rank] = name
+			else:
+				rdpClassification[rank] = 'LowConfidence'
+			rdpConfidence[rank] = confidence
+		    self.rdpAmplicons[amptype][allele] = rdpClassification
+		    self.rdpConfidence[amptype][allele] = rdpClassification
+
+		# remove temporary files
+		import os
+		os.remove(self.blastfile.name)
+		os.remove(self.rdpfile.name)
+		os.remove(self.rdpfile.name+'.out')
+		
+		return output
+	
+	def parseRdpAmplicons(self,config,indata):
+		output = '\nRDP classification:\n'
+		#store rdp hits for the random match estimation
+		self.rdpHits = {}
+		orgToClass = {}
+
+		# parse through the blast result one amplicon at the time
+		for amplicon in self.rdpAmplicons:
+	    
+		    broken = False
+		    self.rdpHits[amplicon] = {}
+		    consensuses = self.rdpAmplicons[amplicon]
+		    output += '\tAmplicon: '+amplicon     +'\n'
+	    
+		    # for each consensus get the blast records for the two sequences (reads) and check for completeness of file
+		    for consensus, rdpClassification in consensuses.iteritems():
+			output += '\t\tConsensus/Allele/Variant '+str(consensus)     +'\n'
+			for rank, value in rdpClassification.iteritems(): output +='\t\t\t'+rank+' is '+str(value)+'\n'# with '+str(round(100*values[1],2))+'%conf\n'
+	    	    
+		#if cluster is monoclonal for all defined and there are more than one amplicon check overlap and make a classification
+		monoclonalAmpliconsArray = [self.amplicons[amplicon].monoclonal for amplicon in self.definedamplicons]
+		if (self.definedampliconcount == monoclonalAmpliconsArray.count(True)):
+		    
+			classificationsInAllAmps = {}
+			for amplicon, consensuses in self.rdpAmplicons.iteritems():
+			    if len(consensuses) == 0: output += amplicon+' has no RDP-classifications.\n';continue
+			if self.rdpAmplicons:
+			    #print self.rdpAmplicons.keys(),self.rdpAmplicons[self.rdpAmplicons.keys()[0]].keys()
+			    for firstAmpRank in self.rdpAmplicons[self.rdpAmplicons.keys()[0]][ self.rdpAmplicons[self.rdpAmplicons.keys()[0]].keys()[0] ]:
+				firstAmpRankInAll = True
+				for amplicon in self.rdpAmplicons:
+					consensus = self.rdpAmplicons[amplicon].keys()[0]
+					if firstAmpRank not in self.rdpAmplicons[amplicon][ consensus ]:
+					    firstAmpRankInAll = False
+					    print firstAmpRank, 'not in',self.rdpAmplicons[amplicon].keys()
+				if firstAmpRankInAll:
+					classificationsInAllAmps[firstAmpRank] = []
+					rankValue = self.rdpAmplicons[amplicon][consensus][firstAmpRank]
+					rankValueInAll = True
+					lowConfidence = False
+					for amplicon in self.rdpAmplicons:
+						consensus = self.rdpAmplicons[amplicon].keys()[0]
+						if rankValue != self.rdpAmplicons[amplicon][consensus][firstAmpRank]: rankValueInAll = False
+						if rankValue == 'LowConfidence' or self.rdpAmplicons[amplicon][consensus][firstAmpRank] == 'LowConfidence' and 'LowConfidence' not in classificationsInAllAmps[firstAmpRank]: lowConfidence = True
+					if rankValueInAll: classificationsInAllAmps[firstAmpRank].append(rankValue)
+					elif lowConfidence: classificationsInAllAmps[firstAmpRank].append('LowConfidence')
+					else: classificationsInAllAmps[firstAmpRank].append('MissMatch')
+			toNext = {}
+			if classificationsInAllAmps and self.definedampliconcount >= 2:
+			    #print 'classificationsInAllAmps:',classificationsInAllAmps
+			    output += '\tRDP-Classification overlaps:\n'
+			    tmp1 = []
+			    tmp2 = []
+			    for rank in ['domain','phylum','class','order','family','genus']:
+			    #for rank in ['domain','phylum','class','subclass','order','suborder','family','genus']:
+				if rank in classificationsInAllAmps and classificationsInAllAmps[rank]:
+					toNext[rank] = classificationsInAllAmps[rank]
+					if len(classificationsInAllAmps[rank]) > 1:
+						output += '\t\t'+rank +' is '+ ', '.join(classificationsInAllAmps[rank][:-1])+' or '+classificationsInAllAmps[rank][-1]+'.\n'
+					else:  output += '\t\t'+rank +' is '+classificationsInAllAmps[rank][0]+'.\n'
+				else: break
+			    output += 'RDPtaxdata\t'+str(toNext)+'\n'
+			elif self.definedampliconcount == 1:
+			    output += 'Only one defined amplicon.\n'
+			else:
+			    output += 'No classification overlap found.\n'
+			    #output += str([])+'\t'+str([])+'\n'
+			    output += 'RDPtaxdata\t'+str(toNext)+'\n'
+
 		return output
 
 	def parseBlastAmplicons(self,config,indata):
@@ -1697,7 +1820,7 @@ class BarcodeCluster(object):
 				    classifications[amplicon][rank] = []
 				    for organism in organisms:
 					try: value = orgToClass[organism][rank]
-					except KeyError:value = 'NotSet'
+					except KeyError:value = 'NoInformationAvailable'
 					if value not in classifications[amplicon][rank]: classifications[amplicon][rank].append(value)
 			    #for organism in organisms:
 			    #	for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
@@ -1732,7 +1855,7 @@ class BarcodeCluster(object):
 						output += '\t\t'+rank +' is '+ ', '.join(classificationsInAllAmps[rank][:-1])+' or '+classificationsInAllAmps[rank][-1]+'.\n'
 					else:  output += '\t\t'+rank +' is '+classificationsInAllAmps[rank][0]+'.\n'
 					#tmp1.append(classificationsInAllAmps[rank]); tmp2.append(rank);
-				else: break
+				else: classificationsInAllAmps[rank] = ['NoMatchFound']
 			    #output += '\t\t'+':\n'.join([', '.join(rankValues[:-1])+' or '+rankValues[-1] for rankValues in tmp1])+'\n'
 			    #output += '('+':'.join(tmp2)+')\n'
 			    #output += str(tmp1)+'\t'+str(tmp2)+'\n'
@@ -1838,10 +1961,10 @@ class Amplicon(object):
 					if allowedAllelLevelVariation:
 						if (float(consensus.readcount)/float(mostRepresentedConsensus.readcount)) >= (1.0-allowedAllelLevelVariation):
 							self.allelecount += 1
-							self.goodalleles.append(consensus)
+							if consensus not in self.goodalleles: self.goodalleles.append(consensus)
 					else:
 						self.allelecount += 1
-						self.goodalleles.append(consensus)
+						if consensus not in self.goodalleles: self.goodalleles.append(consensus)
 		
 		if self.allelecount == 1:
 			self.monoclonal = True

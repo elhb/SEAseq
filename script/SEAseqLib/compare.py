@@ -27,16 +27,21 @@ def compare(indata):
     temp0 = 0
     temp1 = 0
     temp2 = 0
+    temp3 = 0
     clusterOrganisms = {}
     overlaps = {}
     classifications = {}
     ranks = {}
+    rdpClassifications = {}
+    rdpRanks = {}
+    rdpRanksWithInfo = {}
     summaryHeader = False
     import re
     for line in infile:
         clusterisLine   = re.search('cluster is',line)
         overlapLine     = re.match("{'",line)
         classificationline = re.match("taxdata",line)#[u'Bacteria', 'NotSet'] ['superkingdom', 'kingdom']
+        rdpLine = re.match("RDPtaxdata",line)
         if not summaryHeader: summaryHeader = re.match('##### SUMMARY #####',line)
         else: break
         
@@ -55,15 +60,27 @@ def compare(indata):
             #if not tmp1 and not tmp2: temp2 -= 1
             #for i in range(len(tmp2)):
             for rank, rankValues in classificationsInAllAmps.iteritems():
-                if not rankValues: break
+                if not rankValues: print 'WARNING!!';break
                 try:
                     ranks[rank] += 1
                 except KeyError:
                     ranks[rank]  = 1
-                    classifications[rank] = {}
+                    classifications[rank] = {"['NoInformationAvailable']":0,"['NoMatchFound']":0}
 #                for rankValue in rankValues:
                 try:             classifications[rank][str(rankValues)] += 1
                 except KeyError: classifications[rank][str(rankValues)]  = 1
+        elif rdpLine:
+            temp3 += 1
+            rdpClassificationsInAllAmps = eval(line.split('\t')[1])
+            for rank, rankValues in rdpClassificationsInAllAmps.iteritems():
+                if not rankValues: break
+                try:
+                    rdpRanks[rank] += 1
+                except KeyError:
+                    rdpRanks[rank]  = 1
+                    rdpClassifications[rank] = {"['MissMatch']":0,"['LowConfidence']":0}
+                try:             rdpClassifications[rank][str(rankValues)] += 1
+                except KeyError: rdpClassifications[rank][str(rankValues)]  = 1
 
     if not summaryHeader:
         config.outfile.write('# WARNING: The classification outfile is not complete!\n')
@@ -111,7 +128,7 @@ def compare(indata):
     config.logfile.write('All clusters ...\n')
     config.outfile.write('\nTotal '+str(temp1)+' clusters:')
     #printTable(overlaps,config.outfile,temp1)
-    
+    if not overlaps: tmp = '\n\n# WARNING: No overlaps found! maybe the classification is still running.\n'; config.logfile.write(tmp); config.outfile.write(tmp); sys.exit()
     config.logfile.write('Removing all cluster without hits for all amplicons ...\n')
     remove = []
     amplicons = getAmplicons(overlaps)
@@ -170,21 +187,57 @@ def compare(indata):
 
     config.outfile.write('\nOut of a total of '+str(temp2)+' cluster with BLAST hits for both amplicons there are:')
     for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-        try:count = ranks[rank]
+        config.outfile.write('\n\t---------- '+rank)
+        try:count = ranks[rank]-classifications[rank]["['NoInformationAvailable']"]
         except KeyError: count = 0
-        if count: percentage = round(100*float(count)/float(temp2),2)
+        count2 = classifications[rank]["['NoInformationAvailable']"]
+        try:percentage = round(100*float(count2)/float(count),2)
+        except ZeroDivisionError:percentage=0.00
+        config.outfile.write('\n\t'+str(count2)+' clusters that are excluded as NoInformationAvailable for any BlastHit at this rank ('+str(ranks[rank]-count2)+' clusters have info at this rank).')
+        count2 = classifications[rank]["['NoMatchFound']"]
+        try:percentage = round(100*float(count2)/float(count),2)
+        except ZeroDivisionError:percentage=0.00
+        config.outfile.write('\n\t'+str(count2)+' ('+str(percentage)+'%) clusters where no overlap is found between the amplicon hitlists for this rank.')
+        if count: percentage = round(100*float(count-classifications[rank]["['NoMatchFound']"])/float(temp2-classifications[rank]["['NoInformationAvailable']"]),2)
         else: percentage = 0.00
-        config.outfile.write('\n\t'+str(count)+' clusters ('+str(percentage)+'%) where the amplicons hitlist has >=1 match at the '+rank+' level, out of theese are:')
+        config.outfile.write('\n\t'+str(count-classifications[rank]["['NoMatchFound']"])+' clusters ('+str(percentage)+'%) where the amplicons hitlist has >=1 match at the '+rank+' level, out of theese are:')
         #print '\n\t'+str(count)+' clusters ('+str(percentage)+'%) where the amplicons hitlist has >=1 match at the '+rank+' level, out of theese are:'
         if count:
             #values = classifications[rank]
             for value, count2 in classifications[rank].iteritems():
+                if value == "['NoMatchFound']" or value == "['NoInformationAvailable']": continue
                 value = eval(value)
                 #print value
-                percentage = round(100*float(count2)/float(count),2)
+                percentage = round(100*float(count2)/float(count-classifications[rank]["['NoMatchFound']"]),2)
                 if len(value) > 1: config.outfile.write('\n\t\t'+str(count2)+' ('+str(percentage)+'%) are '+', '.join(value[:-1])+' or '+value[-1]+'.')
                 else: config.outfile.write('\n\t\t'+str(count2)+' ('+str(percentage)+'%) are '+value[0]+'.')
     config.outfile.write('\n\n')
+
+    config.outfile.write('\nOut of a total of '+str(temp3)+' cluster with RDP info for both amplicons there are:')
+    for rank in ['domain','phylum','class','order','family','genus']:
+        config.outfile.write('\n\t---------- '+rank)
+        try:count = rdpRanks[rank]-rdpClassifications[rank]["['LowConfidence']"]
+        except KeyError: count = 0
+        count2 = rdpClassifications[rank]["['LowConfidence']"]
+        try:percentage = round(100*float(count2)/float(count),2)
+        except ZeroDivisionError:percentage=0.00
+        config.outfile.write('\n\t'+str(count2)+' are excluded due to LowConfidence ('+str(rdpRanks[rank]-count2)+' clusters have info at this rank).')
+        count2 = rdpClassifications[rank]["['MissMatch']"]
+        try:percentage = round(100*float(count2)/float(count),2)
+        except ZeroDivisionError:percentage=0.00
+        config.outfile.write('\n\t'+str(count2)+' ('+str(percentage)+'%) are MissMatch.')
+        if count: percentage = round(100*float(count-rdpClassifications[rank]["['MissMatch']"])/float(temp3-rdpClassifications[rank]["['LowConfidence']"]),2)
+        else: percentage = 0.00
+        config.outfile.write('\n\t'+str(count-rdpClassifications[rank]["['MissMatch']"])+' clusters ('+str(percentage)+'%) where the amplicons RDPclassinfo has >=1 match at the '+rank+' level, out of theese are:')
+        if count:
+            for value, count2 in rdpClassifications[rank].iteritems():
+                if value == "['MissMatch']" or value == "['LowConfidence']": continue
+                value = eval(value)
+                percentage = round(100*float(count2)/float(count-rdpClassifications[rank]["['MissMatch']"]),2)
+                if len(value) > 1: config.outfile.write('\n\t\t'+str(count2)+' ('+str(percentage)+'%) are '+', '.join(value[:-1])+' or '+value[-1]+'.')
+                else: config.outfile.write('\n\t\t'+str(count2)+' ('+str(percentage)+'%) are '+value[0]+'.')
+    config.outfile.write('\n\n')
+
     config.logfile.write('Done.\n')
     infile.close()
     
