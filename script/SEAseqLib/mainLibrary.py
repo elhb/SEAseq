@@ -621,6 +621,7 @@ class Configuration():
 	self.skipPrevotella	= False
 	self.readLength		= None
 	self.allowedAllelLevelVariation = None
+	self.rdpConfidence	= None
 
 	# for each run
 	self.cmd		= cmd
@@ -788,6 +789,7 @@ class Configuration():
 		'mostCommonToShow'+			'\t'	+str(self.mostCommonToShow)+	'\t'+	'# the number of most common genomes in hitlists for >1 defined all mono clusters'+	'\n'+
 		'subSpecies'+				'\t'	+str(self.subSpecies)+		'\t'+	'# flag for showing the subspecies information or not'+	'\n'+
 		'skipPrevotella'+			'\t'	+str(self.skipPrevotella)+	'\t'+	'# flag for skipping all Prevotella Hits or not'+	'\n'+
+		'rdpConfidence'+			'\t'	+str(self.rdpConfidence)+	'\t'+	'# confidence treshold for rdp claissification'+	'\n'+
 		#''+			'\t'	+str(self)+		'\t'+	'# '+	'\n'+
 		'# A None value usually means that the variable is not yet set.\n'
 		)
@@ -1609,10 +1611,8 @@ class BarcodeCluster(object):
 			rank = tmpData[i+1]
 			confidence = float(tmpData[i+2])
 			#print str(i)+'\t'+str(rank)+'\t'+str(name)+'\t'+str(confidence)
-			if float(confidence) >= 0.50:
-				rdpClassification[rank] = name
-			else:
-				rdpClassification[rank] = 'LowConfidence'
+			if float(confidence) >= config.rdpConfidence/100.0: rdpClassification[rank] = name
+			else: rdpClassification[rank] = 'LowConfidence'
 			rdpConfidence[rank] = confidence
 		    self.rdpAmplicons[amptype][allele] = rdpClassification
 		    self.rdpConfidence[amptype][allele] = rdpClassification
