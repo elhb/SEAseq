@@ -1,0 +1,68 @@
+#! /bin/env python
+
+# Pipeline for analysing "SEADseq" data:
+#
+# 1. Initiate the analysis.
+# Initiation of the analysis is needed to set the path for storage of data, results and files used during runtime.
+# During initiation the type of analysis also needs to be set either to Whole Fragment Analysis (WFA) or rRNA Amplicon Classification (RAC).
+# Usage: SEAseq2 initiateAnalysis <path> <type>
+#
+# 2. Add data to be analyzed.
+# Usage: SEAseq2 addData
+#
+# 3. Define the settings to use.
+#   Usage: SEAseq2 changeSettings
+#   3.1 General settings.
+#   3.2 Settings specific for the RAC mode.
+#   3.3 Settings specific for the WFA mode.
+#   3.4 Define a none standard design.
+#
+# 4. Start the pipe
+#   Usage: SEAseq2 startAnalysis
+#   In RAC mode the pipe will:
+#       read the fastq files,
+#       identify the barcode sequence,
+#       filter away any illumina adapter containing reads or reads not following the expected layout.
+#       find clusters of similar barcode sequences
+#       find all variants of amplicons present within each cluster
+#  In WFA mode
+
+class ReadPair(object):
+    #code
+    pass
+
+class BarcodedBead(object):
+    #code
+    pass
+
+class Database(object):
+    #code
+    pass
+
+class SEAseqPipeLine(object):
+    
+    def __init__(self):
+        self.analysisPath   = None
+        self.database       = Datebase(self.analysisPath+'/dataSettingsAndResults.db')
+    
+    def doCurrentTask():
+        """ identifies which and starts the part of the analysis pipeline the user wants the software perform """
+        
+        import sys
+        task = sys.argv[1]
+        
+        if task == 'help': pass
+        elif task == 'initiateAnalys':    pass
+        elif task == 'startAnalysis':     pass
+        elif task == 'addData':           pass
+        elif task == 'changeSettings':    pass
+        elif task == 'parseResults':      pass
+        else: pass
+    
+    def initiateAnalysis():
+        """ sets the type of and path for the analysis """
+    
+    def readFastq():
+        """ reads two fastq files (read one and two) and identifies the coordinates for the Barcode sequence """
+    
+    def getAnalysisPath():
