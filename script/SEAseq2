@@ -75,11 +75,15 @@ class Database(object):
         # Import useful stuff
         #
         import sqlite3
+        import sys
 
         #
         # Create database and set
         #
-        self.conn = sqlite3.connect(self.path)
+        try: self.conn = sqlite3.connect(self.path)
+        except sqlite3.OperationalError:
+            print 'ERROR: Trouble with the database, plase check your commandline.'
+            sys.exit()
         self.c = self.conn.cursor()
     
     def commitAndClose(self,):
@@ -156,6 +160,7 @@ class SEAseqPipeLine(object):
         #
         import time
         from socket import gethostname
+        import commands
         
         #
         # Declare variables and set standard default values
@@ -223,6 +228,11 @@ class SEAseqPipeLine(object):
         """ print all commands performed so far """
         
         #
+        # get optional arguments from commandline
+        #
+        self.getComandLineOptions()
+
+        #
         # Add run to runs table and open connection to logfile
         #
         self.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, False, MASTER)
@@ -254,6 +264,11 @@ class SEAseqPipeLine(object):
         import os
         import sys
 
+        #
+        # get optional arguments from commandline
+        #
+        self.getComandLineOptions()
+        
         #
         # for logmessages
         #
@@ -390,22 +405,32 @@ class SEAseqPipeLine(object):
         """ function that gets the indata from the commandline """
 
         import argparse
-        import commands
         import os
         import sys
+        import re
         
         indata = None
         
+        #if re.search('(\ -h\ |$)|(\ --help\ |$)',self.commandLine): print man
+        
         # commandLine arguments parsing
-        argparser = argparse.ArgumentParser(description='', formatter_class=argparse.RawTextHelpFormatter)
+        if self.command == 'initiateAnalysis': prog = 'SEAseq2 initiateAnalysis <path> <type>'
+        if self.command == 'commandLog': prog = 'SEAseq2 commandLog <path>'
+        argparser = argparse.ArgumentParser(prog=prog, description='', epilog='Use: "SEAseq2 help" to get more detailed help.', formatter_class=argparse.RawTextHelpFormatter)
     
         # All programs
         argparser.add_argument('--debug', dest='debug', action='store_true', required=False, default=False, help='Run the program in debug-mode, single process python script (SLOW).')
         argparser.add_argument(	'-p', dest='cpus', metavar='N',	type=int, required=False, default=1,help='The number of processes to run in parallel (default 1).')
 
+        if self.command == 'commandLog':
+            try: indata = argparser.parse_args(self.commandLineList[3:])
+            except IndexError: pass
+            
         if self.command == 'initiateAnalysis':
-            try: self.mode == self.commandLineList[3]
-            except IndexError: print 'ERROR: .'
+            try: self.mode = self.commandLineList[3]
+            except IndexError:
+                print 'ERROR: no analysis mode supplied.'
+                sys.exit(1)
             try: indata = argparser.parse_args(self.commandLineList[4:])
             except IndexError: pass
 
@@ -433,6 +458,7 @@ class SEAseqPipeLine(object):
         import sys
         import getpass
         import commands
+        from socket import gethostname
         
         #
         # get information
