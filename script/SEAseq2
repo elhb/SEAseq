@@ -13,6 +13,10 @@
 # 3. Define the settings to use.
 #   Usage: SEAseq2 changeSettings
 #   3.1 General settings.
+#   3.1.1 Barcode sequence identification
+#   3.1.2 Barcode sequence clustering
+#   3.1.3 Parallelization - UPPMAX/LOCAL
+#   3.1.4 Subsets and debugging
 #   3.2 Settings specific for the RAC mode.
 #   3.3 Settings specific for the WFA mode.
 #   3.4 Define a none standard design.
@@ -36,8 +40,32 @@ class BarcodedBead(object):
     pass
 
 class Database(object):
-    #code
-    pass
+    
+    def __init__(self, dbPath):
+        self.path = dbPath
+    
+    def create():
+        """ creates the database holding all information used in the analysis """
+        
+        #
+        # Import useful stuff
+        #
+        import sqlite3
+
+        #
+        # Create database and set
+        #
+        conn = sqlite3.connect(self.path)
+        c = conn.cursor()
+        
+        #
+        # Create tables
+        #
+        c.execute('''CREATE TABLE gi2taxid (gi,taxid,PRIMARY KEY (gi))''')
+        c.execute('''CREATE TABLE taxid2name (taxid,name,PRIMARY KEY (taxid))''')
+        c.execute('''CREATE TABLE taxid2parent (taxid,parentTaxid,PRIMARY KEY (taxid))''')
+        c.execute('''CREATE TABLE taxid2rank (taxid,rank,PRIMARY KEY (taxid))''')
+    
 
 class SEAseqPipeLine(object):
     
@@ -53,9 +81,9 @@ class SEAseqPipeLine(object):
         
         if task == 'help': pass
         elif task == 'initiateAnalys':    pass
-        elif task == 'startAnalysis':     pass
         elif task == 'addData':           pass
         elif task == 'changeSettings':    pass
+        elif task == 'startAnalysis':     pass
         elif task == 'parseResults':      pass
         else: pass
     
