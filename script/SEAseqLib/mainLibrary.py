@@ -448,7 +448,7 @@ def getClassification(taxid=None,gi=None,database='/proj/b2011011/SEAseq/referen
 	    t = (int(gi),)
 	    try: gi, taxid = c.execute('SELECT * FROM gi2taxid WHERE gi=?', t).fetchone()
 	    except TypeError:
-		name = gi2orgname(gi,lock=config.dbLock)
+		name = gi2orgname(gi,lock=lock)
 		t = (name,)
 		taxid, name = c.execute('SELECT * FROM taxid2name WHERE name=?', t).fetchone()
 	    #print 'done'
