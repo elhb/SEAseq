@@ -1,6 +1,69 @@
 def classify_main():
     pass
 
+def resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists):
+    [output, cluster,picklestring] = tmp
+    config.outfile.write( output+'\n')
+    clusterdump.write(picklestring)
+    counter.addcluster(cluster)
+    
+    if cluster.definedampliconcount == 1:
+        amplicon = cluster.definedamplicons.keys()[0]
+        if cluster.blastHits != 'No fasta produced.' and cluster.blastHits[amplicon]:
+            singleAmpliconHitlists[cluster.id] = {}
+            singleAmpliconHitlists[cluster.id][amplicon] = [organism for organism in cluster.blastHits[amplicon]]
+        
+    elif cluster.definedampliconcount > 1:
+        
+        # get combo
+        ampliconnames = cluster.definedamplicons.keys()
+        ampliconnames.sort()
+        ampliconcombo = '/'.join(ampliconnames)
+        # get monocombo
+        monoAmps = {}
+        for ampname, amplicon in cluster.definedamplicons.iteritems():
+            if amplicon.monoclonal: monoAmps[amplicon.type] = amplicon.monoclonal
+        mononames = monoAmps.keys()
+        mononames.sort()
+        monoCombo = '/'.join(mononames)
+        
+        atLeastOneOrgInAllAmps = False
+        if ampliconcombo == monoCombo: # monoclonal for all defined amplicons
+
+            moreThanOneAmpAndMono4All += 1
+
+            allHaveHits = True
+            noneHaveHits = True
+            for amplicon in ampliconnames:
+                if not cluster.blastHits[amplicon]:
+                    allHaveHits = False
+                    try:            noMatchAmp[amplicon].append(cluster.id)
+                    except KeyError:noMatchAmp[amplicon] = [cluster.id]
+                else: noneHaveHits = False
+            if noneHaveHits:
+                try:            noMatchAmp['any defined amplicon'].append(cluster.id)
+                except KeyError:noMatchAmp['any defined amplicon'] = [cluster.id]
+
+
+            for organism in cluster.blastHits[ampliconnames[0]]:
+                notInAll = None
+                for amplicon in ampliconnames[1:]:
+                    try:
+                        if organism not in cluster.blastHits[amplicon]:
+                            notInAll = True
+                    except KeyError: pass
+                if not notInAll: # ie organism inAll amplicons
+                    atLeastOneOrgInAllAmps = True
+            
+            if allHaveHits:
+                moreThanOneAmpMono4AllAndAllHaveHits += 1
+                matches[cluster.id] = {}
+                for amplicon in ampliconnames:
+                    matches[cluster.id][amplicon] = [organism for organism in cluster.blastHits[amplicon]]
+        
+        if atLeastOneOrgInAllAmps: orgInAllAmpsCounter += 1
+    return [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists]
+
 def foreachCluster(tmp):
     
     # unpack input information
@@ -81,6 +144,22 @@ def classifymeta(indata):
     man = Manager()
     config.dbLock = man.Lock()
 
+    tmcounter = 0
+    counter = RunStatCounter(config)
+    moreThanOneAmpAndMono4All = 0
+    moreThanOneAmpMono4AllAndAllHaveHits = 0
+    orgInAllAmpsCounter = 0
+    noMatchAmp = {}
+    matches = {}
+    singleAmpliconHitlists = {}
+
+    if indata.tempFileFolder:
+        clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle','wb')
+    else:
+        import os
+        if os.path.exists(config.path+'/clusters.pickle') and os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
+        clusterdump = open(config.path+'/clusters.pickle','wb')
+
     from SEAseqLib.mainLibrary import Progress, clusterGenerator
     config.logfile.write('Starting to align clusters:\n ');
     if indata.debug: #single process // serial
@@ -97,7 +176,9 @@ def classifymeta(indata):
                 tmcounter +=1
                 progress.update()
                 if tmcounter <= indata.skip: continue
-                results.append(foreachCluster(cluster))
+                #results.append(foreachCluster(cluster))
+                tmp = foreachCluster(cluster)
+                [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists] = resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists)
                 if indata.stop and tmcounter >= indata.stop: break
         config.logfile.write('finished, making summary ... \n')
     else: # multiple processes in parallel
@@ -106,90 +187,15 @@ def classifymeta(indata):
         results = WorkerPool.imap_unordered(foreachCluster,clusterGenerator(config,indata),chunksize=1)
         #results = WorkerPool.imap(           foreachCluster,clusterGenerator(config,indata),chunksize=1)
 
-    if indata.tempFileFolder:
-        clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle','wb')
-    else:
-        import os
-        if os.path.exists(config.path+'/clusters.pickle') and os.path.islink(config.path+'/clusters.pickle'): os.unlink(config.path+'/clusters.pickle')
-        clusterdump = open(config.path+'/clusters.pickle','wb')
-
     # will paralellise this when stuff works
-    tmcounter = 0
-    counter = RunStatCounter(config)
-    moreThanOneAmpAndMono4All = 0
-    moreThanOneAmpMono4AllAndAllHaveHits = 0
-    orgInAllAmpsCounter = 0
-    noMatchAmp = {}
-    matches = {}
-    singleAmpliconHitlists = {}
     progress = Progress(config.numberOfBarcodeClustersIdentified, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
     if indata.stop: progress = Progress(indata.stop, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
     with progress:
         for tmp in results:
+            if indata.debug: break
             tmcounter +=1
-            if tmcounter <= indata.skip:
-                progress.update(); continue
-            [output, cluster,picklestring] = tmp
-            config.outfile.write( output+'\n')
-            clusterdump.write(picklestring)
-            counter.addcluster(cluster)
-            
-            if cluster.definedampliconcount == 1:
-                amplicon = cluster.definedamplicons.keys()[0]
-                if cluster.blastHits != 'No fasta produced.' and cluster.blastHits[amplicon]:
-                    singleAmpliconHitlists[cluster.id] = {}
-                    singleAmpliconHitlists[cluster.id][amplicon] = [organism for organism in cluster.blastHits[amplicon]]
-                
-            elif cluster.definedampliconcount > 1:
-                
-                # get combo
-                ampliconnames = cluster.definedamplicons.keys()
-                ampliconnames.sort()
-                ampliconcombo = '/'.join(ampliconnames)
-                # get monocombo
-                monoAmps = {}
-                for ampname, amplicon in cluster.definedamplicons.iteritems():
-                    if amplicon.monoclonal: monoAmps[amplicon.type] = amplicon.monoclonal
-                mononames = monoAmps.keys()
-                mononames.sort()
-                monoCombo = '/'.join(mononames)
-                
-                atLeastOneOrgInAllAmps = False
-                if ampliconcombo == monoCombo: # monoclonal for all defined amplicons
-
-                    moreThanOneAmpAndMono4All += 1
-
-                    allHaveHits = True
-                    noneHaveHits = True
-                    for amplicon in ampliconnames:
-                        if not cluster.blastHits[amplicon]:
-                            allHaveHits = False
-                            try:            noMatchAmp[amplicon].append(cluster.id)
-                            except KeyError:noMatchAmp[amplicon] = [cluster.id]
-                        else: noneHaveHits = False
-                    if noneHaveHits:
-                        try:            noMatchAmp['any defined amplicon'].append(cluster.id)
-                        except KeyError:noMatchAmp['any defined amplicon'] = [cluster.id]
-
-
-                    for organism in cluster.blastHits[ampliconnames[0]]:
-                        notInAll = None
-                        for amplicon in ampliconnames[1:]:
-                            try:
-                                if organism not in cluster.blastHits[amplicon]:
-                                    notInAll = True
-                            except KeyError: pass
-                        if not notInAll: # ie organism inAll amplicons
-                            atLeastOneOrgInAllAmps = True
-                    
-                    if allHaveHits:
-                        moreThanOneAmpMono4AllAndAllHaveHits += 1
-                        matches[cluster.id] = {}
-                        for amplicon in ampliconnames:
-                            matches[cluster.id][amplicon] = [organism for organism in cluster.blastHits[amplicon]]
-                
-                if atLeastOneOrgInAllAmps: orgInAllAmpsCounter += 1
-    
+            if tmcounter <= indata.skip: progress.update(); continue
+            [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists] = resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists)
     
             progress.update()
             if indata.stop and tmcounter >= indata.stop: break
