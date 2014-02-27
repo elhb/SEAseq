@@ -1514,9 +1514,6 @@ class BarcodeCluster(object):
 		    self.rdpAmplicons[amplicon.type] = {}
 		    self.rdpConfidence[amplicon.type] = {}
 		    for consensus in amplicon.goodalleles:
-			self.blastamplicons[amplicon.type][str(consensus.id)] = {'r1':None,'r2':None}
-			self.rdpAmplicons[amplicon.type][str(consensus.id)] = None
-			self.rdpConfidence[amplicon.type][str(consensus.id)] = None
 			try:
 			    r1 = consensus.sequence.seq.split('NNNNNNNNNN')[0]
 			    r2 = consensus.sequence.seq.split('NNNNNNNNNN')[1]
@@ -1530,6 +1527,9 @@ class BarcodeCluster(object):
 			self.blastfile.write('>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|r1\n'+r1+'\n'+
 					'>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|r2\n'+r2+'\n')
 			self.rdpfile.write('>'+amplicon.type+'|tempSep|'+str(consensus.id)+'|tempSep|\n'+r1+r2+'\n')
+			self.blastamplicons[amplicon.type][str(consensus.id)] = {'r1':None,'r2':None}
+			self.rdpAmplicons[amplicon.type][str(consensus.id)] = None
+			self.rdpConfidence[amplicon.type][str(consensus.id)] = None
 			fastaentries +=1
 		self.blastfile.close()
 		self.rdpfile.close()
