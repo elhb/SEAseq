@@ -44,7 +44,7 @@ man = """
 #   4.2 In RAC mode the pipe will perform the following parts:
 #       find all variants of amplicons present within each cluster
 #
-#   4.3 In WFA mode
+#   4.3 In WFA mode NOT IMPLEMENTED
 """
 
 ###############
@@ -203,6 +203,26 @@ class Database(object):
         
         return 0
    
+    def getFastqs(self,):
+        #
+        # Imports
+        #
+        import sys
+        
+        #
+        # open connection to database
+        #
+        self.getConnection()
+                
+        #
+        # get att data in fastqs table
+        #
+        filePairs = self.c.execute('SELECT filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength FROM fastqs').fetchall()
+        
+        self.commitAndClose()
+        
+        return [[readCount,fastq1,fastq2] for filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength in filePairs]
+    
     def getRuns(self, runTypes):
         
         self.getConnection()
@@ -216,14 +236,63 @@ class Database(object):
         
         return runsInfo
 
-class settings(object,):
+class Settings(object,):
     
     def __init__(self, ):
         """ object holding the settings used for each part of the analysis """
         
+    def setDefaults(self,):
+        self.debug = False
+        self.parallelProcesses = None
+        self.uppmaxProject = None
+        self.mode = None
+
     def load(self,): pass
     
     def saveToDb(self,): pass
+    
+class FastqToDatabseConverter(object):
+    """ reads fastq files (read one and two) and identifies the coordinates for the Barcode sequence etc and adds the data to the database """
+    
+    def __init__(self, database):
+        pass
+
+    def getFilenames(self,):
+        self.infiles = SEAseqPipeLine.database.getFastqs()
+
+    def readPairGenerator(self,):
+
+        self.getFilenames()
+        totalReadcount = 0
+        currentRead = 0
+
+        #
+        # Loop through infiles
+        #
+        for readcount, fastq1, fastq2 in self.infiles:
+            totalReadcount += readcount
+            
+            #
+            # Open the files
+            #
+            if fastq1.split('.')[-1] in ['gz','gzip']: file1 = gzip.open(fastq1)
+            else: file1 = open(fastq1,'r')
+            if fastq2.split('.')[-1] in ['gz','gzip']: file2 = gzip.open(fasstq2)
+            else: file2 = open(fastq2,'r')
+            
+            while not EOFError:
+                header1 = file1.readline()
+                header2 = file2.readline()
+                sequence1 = file1.readline()
+                sequence2 = file2.readline()
+                trash = file1.readline()
+                trash = file2.readline()
+                qual1 = file1.readline()
+                qual2 = file2.readline()
+                currentRead += 1
+                yield currentRead, header1, header2, sequence1, sequence2, qual1, qual2
+    
+    def run(self,): pass
     
 class SEAseqPipeLine(object):
     
@@ -245,6 +314,7 @@ class SEAseqPipeLine(object):
         self.command = None
         self.commandLine = None
         self.commandLineList = None
+        SEAseqPipeLine.settings = Settings()
         SEAseqPipeLine.logfile = None
         SEAseqPipeLine.startTime = time.time()
         SEAseqPipeLine.startTimeStr = time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())
@@ -415,10 +485,7 @@ class SEAseqPipeLine(object):
     
     def startAnalysis(self,):
         print 'Not Implemented'
-    
-    def readFastqs(self,):
-        """ reads two fastq files (read one and two) and identifies the coordinates for the Barcode sequence """
-    
+        
     def openLogfileConnection(self,):
         """ open a connection to the logfile, creates a logfile if none is present """
         
@@ -536,18 +603,25 @@ class SEAseqPipeLine(object):
         if self.command == 'startAnalysis':
             if self.onUppmax:
                 argparser.add_argument('-prj','-project',dest='project',metavar='<b20xxxxx>',	type=str,	required=False,	default='b2014005',	help='uppmaxproject (default b2011011)')
-                argparser.add_argument('--send',	dest='send', 	action='store_true', 			required=False,	default=False,	help='Send sbatch scripts to job-queue.')
-                argparser.add_argument('--sendonly',	dest='sendonly',action='store_true', 			required=False,	default=False,	help='Do not generate the files only Send sbatch scripts to job-queue.')
-                argparser.add_argument('--small',	dest='small', 	action='store_true', 			required=False,	default=False,	help='make for smaller dataset job-queue.')
-
+                #argparser.add_argument('--send',	dest='send', 	action='store_true', 			required=False,	default=False,	help='Send sbatch scripts to job-queue.')
+                #argparser.add_argument('--sendonly',	dest='sendonly',action='store_true', 			required=False,	default=False,	help='Do not generate the files only Send sbatch scripts to job-queue.')
+                #argparser.add_argument('--small',	dest='small', 	action='store_true', 			required=False,	default=False,	help='make for smaller dataset job-queue.')
+            try:
+                indata = argparser.parse_args(self.commandLineList[3:])
+                SEAseqPipeLine.settings.uppmaxProject = indata.project
+            except IndexError: pass
+            
         if self.command == 'addData':
             argparser.add_argument('-r1',dest='fastq1',	metavar='FILE',type=file,required=True, help='Indata "fastq"-file read1.')
             argparser.add_argument('-r2',dest='fastq2',	metavar='FILE',type=file,required=True,	help='Indata "fastq"-file read2.')
             try:
                 indata = argparser.parse_args(self.commandLineList[3:])
-                self.fastq1 = indata.fastq1.name
-                self.fastq2 = indata.fastq2.name
+                self.fastq1 = os.path.abspath(indata.fastq1.name)
+                self.fastq2 = os.path.abspath(indata.fastq2.name)
             except IndexError: pass
+            
+        SEAseqPipeLine.settings.debug = indata.debug
+        SEAseqPipeLine.settings.parallelProcesses = indata.p
 
     def createLogHeader(self,):
         """ creates the header lines for each new logfile entry """
