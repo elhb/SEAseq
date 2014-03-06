@@ -399,9 +399,14 @@ def clusterGenerator(config,indata):
         clusterundump.close()
         clusterundump = gzip.open(clusterundump.name)
     
+    config_backup = config
+    tmpCounter = 0
     while True:
+	config = config_backup
         try:
             cluster = cPickle.load(clusterundump)
+	    tmpCounter += 1
+	    if indata.skip and tmpCounter <= indata.skip: config = 'skipped'
             yield [cluster,config,indata]
         except EOFError:
             config.logfile.write('All clusters read from file.\n')
@@ -1601,7 +1606,7 @@ class BarcodeCluster(object):
 		    empty   = line[1]
 		    tmpData = line[2:]
 		    #print header, tmpData
-		    assert empty == ''
+		    assert empty == '', 'ERROR, the first column for '+header+' is not empty (empty="'+empty+'"):\n'+rdpData
 		    amptype   = header.split('|tempSep|')[0]
 		    allele    = header.split('|tempSep|')[1]
 		    rdpClassification = {}

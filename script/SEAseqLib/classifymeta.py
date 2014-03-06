@@ -13,7 +13,7 @@ def resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,mor
             singleAmpliconHitlists[cluster.id] = {}
             singleAmpliconHitlists[cluster.id][amplicon] = [organism for organism in cluster.blastHits[amplicon]]
         
-    elif cluster.definedampliconcount > 1:
+    elif cluster.definedampliconcount > 1 and cluster.blastHits != 'No fasta produced.':
         
         # get combo
         ampliconnames = cluster.definedamplicons.keys()
@@ -66,12 +66,18 @@ def resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,mor
 
 def foreachCluster(tmp):
     
+    import cPickle
+    
     # unpack input information
     cluster,config,indata = tmp
 
     # initiate the output string and set some variables
     output = '######## Cluster '+str(cluster.id)+' ###################\n'
     output += 'Cluster contains '+str(cluster.readcount)+' raw reads.\n'
+    if config == 'skipped':
+        output += '# SKIPPING CLUSTER!\n\n'
+        cluster.blastHits = 'No fasta produced.'
+        return [output, cluster, cPickle.dumps(cluster,-1)]
 
     # get the cluster and per amplicon information and append it to output
     perAmpOut = ''
@@ -89,7 +95,6 @@ def foreachCluster(tmp):
     tmpOut, errorCode = cluster.createConsensusFasta(config,indata)
     output += tmpOut
     if errorCode:
-        import cPickle
         return [output, cluster, cPickle.dumps(cluster,-1)]
 
     # Align consensus sequences by blast
@@ -98,10 +103,13 @@ def foreachCluster(tmp):
     output += cluster.parseBlastAmplicons(config,indata)
     output += cluster.parseRdpAmplicons(config,indata)
 
-    import cPickle
     return [output, cluster, cPickle.dumps(cluster,-1)]
 
 def classifymeta(indata):
+
+    #import multiprocessing, logging
+    #logger = multiprocessing.log_to_stderr()
+    #logger.setLevel(multiprocessing.SUBDEBUG)
 
     from SEAseqLib.mainLibrary import Configuration, writelogheader
     config = Configuration(indata.path, indata.cmd)
@@ -184,8 +192,8 @@ def classifymeta(indata):
     else: # multiple processes in parallel
         import multiprocessing
         WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
-        results = WorkerPool.imap_unordered(foreachCluster,clusterGenerator(config,indata),chunksize=1)
-        #results = WorkerPool.imap(           foreachCluster,clusterGenerator(config,indata),chunksize=1)
+        results = WorkerPool.imap_unordered(foreachCluster,clusterGenerator(config,indata),chunksize=10)
+        #results = WorkerPool.imap(           foreachCluster,clusterGenerator(config,indata),chunksize=10)
 
     # will paralellise this when stuff works
     progress = Progress(config.numberOfBarcodeClustersIdentified, logfile=config.logfile, unit='cluster',mem=True, printint = 1)
