@@ -284,14 +284,19 @@ def getClustersAndPairs(config,clusterq):
     
     import os
     import time
+    import sys
     config.logfile.write('Reader initiated pid='+str(os.getpid())+'.\n')
     tmpcounter = 0
 
     from SEAseqLib.mainLibrary import BarcodeCluster
     cluster = BarcodeCluster(1)
     #pairs = []
-    config.infilesDictionary['r1'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq']
-    config.infilesDictionary['r2'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq']
+    if   os.path.exists(config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq'): config.infilesDictionary['r1'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq']
+    elif os.path.exists(config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq.gz'): config.infilesDictionary['r1'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.1.fq.gz']
+    else: print "Error: infiles are not around." ; sys.exit()
+    if   os.path.exists(config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq'): config.infilesDictionary['r2'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq']
+    elif os.path.exists(config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq.gz'): config.infilesDictionary['r1'] = [config.path+'/sortedReads/sorted_by_barcode_cluster.2.fq.gz']
+    else:  print "Error: infiles are not around." ; sys.exit()
     missingClustersFlag = False
     missingClusters = []
     
