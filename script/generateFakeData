@@ -2,18 +2,18 @@
 
 import sys
 try:
-    numberOfPairs = int(sys.argv[1])
-    errorRate = float(sys.argv[2])
-    filenameAndpath = sys.argv[3]
+#    numberOfPairs = int(sys.argv[1])
+    errorRate = float(sys.argv[3])
+    filenameAndpath = sys.argv[4]
 except IndexError:
     print 'USAGE: generateFakeData <numberOfPairs> <errorRate> <outFileBase>';sys.exit()
 import random
-readsPerBead = 500
-numberOfBeads = int(numberOfPairs/readsPerBead)
+readsPerBead = int(sys.argv[2])#500
+numberOfBeads = int(sys.argv[1])#int(numberOfPairs/readsPerBead)
 readlength = 150
 
-f1 = open(sys.argv[3]+'.1.fq','w')
-f2 = open(sys.argv[3]+'.2.fq','w')
+f1 = open(filenameAndpath+'.1.fq','w')
+f2 = open(filenameAndpath+'.2.fq','w')
 
 amplicons = {
     #'v2.16s.1':{'fwd':'ADNCTCCTACGGGAGGCAGCAG',       'rev':'GGACTACCAGGGTATCTAABCCTGT','r1':'GAGGAATATTGGTCAATGGGCGAGAGCCTGAACCAGCCAAGTAGCGTGCAGGATGACGGCCCTATGGGTTGTAAACTGCTTTTATAAGGGAAT','r2':'CGATACCCGCACTTTCGAGCTTCAGCGTCAGTTGCGCTCCAGTGAGCTGCCTTCGCAATCGGAGTTCTTCGTGATATCTAAGCATTTCACCGCTACACCACGAATTCCGCCCACTTTGTGCGTAC'},
@@ -105,3 +105,5 @@ f1.close()
 f2.close()
 print numberOfBeads,'beads with',readsPerBead,'reads per bead generated.'
 print total_bases,'bases', total_errors, 'errors, ie',float(total_errors)/total_bases,'errors per base in average.'
+print f1.name
+print f2.name
