@@ -1104,6 +1104,141 @@ class SEAseqSummary():
 
 		return
 
+	def reducebarcodes2(self,config):
+		""" Find most common barcodes in well ( > 10% ??), then try to place other barcodes to this cluster
+		"""
+		
+		config.logfile.write( '\n' )
+		
+		config.minperc = 0
+		maxdist = config.maxBeadBarcodeMissMatch
+
+		barcodesByCount = {}
+		for bc, count in self.barcodes.iteritems():
+		
+			try: barcodesByCount[count].append(bc)
+			except KeyError:barcodesByCount[count] = [bc]
+		
+		counts = barcodesByCount.keys()
+		counts.sort()
+		
+		if os.path.exists(config.path+'/raw_barcode_sequences.fa') and os.path.islink(config.path+'/raw_barcode_sequences.fa'): os.unlink(config.path+'/raw_barcode_sequences.fa')
+		tempfile = open(config.path+'/raw_barcode_sequences.fa','w')
+		for count in counts:
+			for bc in barcodesByCount[count]:
+				for i in range(count):
+					tempfile.write('>'+bc+' '+str(i)+'of'+str(self.barcodes[bc])+'\n'+bc+'\n')
+		tempfile.close()
+
+		# alternatively we could use chdit, though homopolymers seems to be problematic
+		# cd-hit-454 -i tasks/20130805.1_index10/raw_barcode_sequences.fa -o DELETEME -c 0.85 -g 1 -T 8 -gap -6 -gap-ext -2 -AS 2
+		# cdhit-cluster-consensus DELETEME.clstr tasks/20130805.1_index10/raw_barcode_sequences.fa DELETEME.cons DELETEME.aln
+		
+		# cd-hit-454 -i DELETEME.raw.bc.2.fa -o DELETEME -c 0.85 -M 0 -g 1 -n 5 -T 0 -gap -15 -gap-ext -2 -AS 2
+		# cdhit-cluster-consensus DELETEME.clstr DELETEME.raw.bc.2.fa DELETEME.cons DELETEME.aln
+		
+		import subprocess
+		from cStringIO import StringIO
+		import time
+		import multiprocessing
+		tempo = time.time()
+		command = ['dnaclust','--similarity',str(1-(float(config.maxBeadBarcodeMissMatch)/15)),'--input-file',config.path+'/raw_barcode_sequences.fa','-t',str(multiprocessing.cpu_count()),'--predetermined-cluster-centers',config.path+'/predetermined_cluster_centers.fa']		
+
+		### COPY PASTE
+
+		# Cluster Read pairs
+		import subprocess
+		from cStringIO import StringIO
+		if indata.tempFileFolder:
+			command = [	'cd-hit-454',
+				'-i',indata.tempFileFolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa',
+				'-o',indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa',
+				'-g','1',#possibly change to 0 for more accurate though slower progress?? or other way around
+				'-c',str(config.minConsensusClusteringIdentity/100.0)
+				]
+		else:	command = [	'cd-hit-454',
+				'-i',config.path+'/sortedReads/temporary.'+str(self.id)+'.fa',
+				'-o',config.path+'/sortedReads/cluster.'+str(self.id)+'.fa',
+				'-g','1',#possibly change to 0 for more accurate though slower progress?? or other way around
+				'-c',str(config.minConsensusClusteringIdentity/100.0)
+				]
+
+		cdhit = subprocess.Popen(
+			command,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.PIPE )
+		cdhit_out, errdata = cdhit.communicate()
+		if cdhit.returncode != 0:
+			print 'cmd: '+' '.join( command )
+			print 'cd-hit cluster='+str(cluster.id)+' view Error code', cdhit.returncode, errdata
+			sys.exit()
+	
+		# Build consensus sequences for read pair clusters
+		if indata.tempFileFolder:
+			command = ['cdhit-cluster-consensus',
+				indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa.clstr',
+				indata.tempFileFolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa',
+				indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.consensus',
+				indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.aligned'
+				]
+		else:	command =['cdhit-cluster-consensus',
+				config.path+'/sortedReads/cluster.'+str(self.id)+'.fa.clstr',
+				config.path+'/sortedReads/temporary.'+str(self.id)+'.fa',
+				config.path+'/sortedReads/cluster.'+str(self.id)+'.consensus',
+				config.path+'/sortedReads/cluster.'+str(self.id)+'.aligned'
+				] 
+		ccc = subprocess.Popen(
+			command,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.PIPE )
+		ccc_out, errdata = ccc.communicate()
+		if ccc.returncode != 0:
+			print 'cmd: '+' '.join( command )
+			print 'cluster='+str(self.id)+' cdhit-cluster-consensus view Error code', ccc.returncode, errdata
+			print ccc_out
+			sys.exit()
+
+		### COPY PASTE
+
+		config.logfile.write('dnaclust done after '+str(int(seconds/60/60))+'h '+str(int(seconds/60%60))+'min '+str(int(round(seconds%60)))+'s, parsing result ... ')
+		del dnaclust
+
+		clusters={}
+		cc=0
+		for line in dnaclust_out:
+			cc+=1
+			clusters[cc] ={'total':0,'barcodes':{},'highest':[0,'XXXXXXXXXXXXXX']}
+			line = line.rstrip().split('\t')
+			for bc in line:
+				if bc not in clusters[cc]['barcodes']: clusters[cc]['total']+=self.barcodes[bc]
+				clusters[cc]['barcodes'][bc]=self.barcodes[bc]
+				if self.barcodes[bc] > clusters[cc]['highest'][0]: clusters[cc]['highest']=[self.barcodes[bc],bc]
+		config.logfile.write('almost done ... ')
+		del dnaclust_out
+
+		counter = 0
+		reads_in_clusters={}
+		for cc in clusters:
+			try: reads_in_clusters[clusters[cc]['total']]+=1
+			except KeyError: reads_in_clusters[clusters[cc]['total']]=1
+			if int(clusters[cc]['total']) > 1:
+				counter+=1
+
+		config.outfile.write(str( cc)+' clusters whereof '+str(counter)+' has more than one read\n\n')
+
+		if os.path.exists(config.path+'/cluster.graphStats') and os.path.islink(config.path+'/cluster.graphStats'): os.unlink(config.path+'/cluster.graphStats')
+		f = open(config.path+'/cluster.graphStats','w')
+		f.write(str(reads_in_clusters))
+		f.close()
+
+		config.logfile.write( 'done\n')
+
+		self.clusters = clusters
+		del clusters
+
+		return
+
+
 class PrimerPair(object):
 	
 	def __init__(self, fwd, rev, name):
