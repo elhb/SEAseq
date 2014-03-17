@@ -10,6 +10,14 @@ def lib_main():
 
 ######################### FUNCTIONS #########################
 
+def popRandom(listtopopfrom):
+    if not listtopopfrom: print "empty list";return None, []
+    import random
+    index=random.randint(0,len(listtopopfrom)-1)
+    returnItem = listtopopfrom[index]
+    returnList = listtopopfrom[:index]+listtopopfrom[index+1:]
+    return returnItem, returnList
+
 def initiate_file(filename, logfile, mode='w'):
     import os
     
@@ -1813,20 +1821,20 @@ class BarcodeCluster(object):
 
 		    # find classifications present within all organisms within hitlist for each amplicon (=consensus as they are monoclonal)
 		    if self.hitReduction and self.hitReduction[self.hitReduction.keys()[0]] > 0 and self.hitReduction[self.hitReduction.keys()[0]] < sum([value for value in self.hitReduction.values()]):
-			classifications = {}
+			self.classifications = {}
 			classificationsInAllAmps = {}
 			for amplicon, organisms in self.blastHits.iteritems():
 			    if len(organisms) == 0: output += amplicon+' has no BLAST-hits.\n';continue
-			    classifications[amplicon] = {}
+			    self.classifications[amplicon] = {}
 			    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
 				    #try: 		value = orgToClass[organisms.keys()[0]][rank]
 				    #except KeyError:value = 'NotSet'
 				    #except IndexError:value = 'NotSet'
-				    classifications[amplicon][rank] = []
+				    self.classifications[amplicon][rank] = []
 				    for organism in organisms:
 					try: value = orgToClass[organism][rank]
 					except KeyError:value = 'NoInformationAvailable'
-					if value not in classifications[amplicon][rank]: classifications[amplicon][rank].append(value)
+					if value not in self.classifications[amplicon][rank]: self.classifications[amplicon][rank].append(value)
 			    #for organism in organisms:
 			    #	for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
 			    #		try: value = orgToClass[organism][rank]
@@ -1836,19 +1844,19 @@ class BarcodeCluster(object):
 			    #for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
 			    #	if classifications[amplicon][rank]: output += '\t\t'+rank + '\t' + classifications[amplicon][rank]+'\n'
 			    #	else: output += '\t\t'+rank + '\tnot same for all\n'
-			if classifications:
-			    for firstAmpRank in classifications[ classifications.keys()[0] ]:
+			if self.classifications:
+			    for firstAmpRank in self.classifications[ self.classifications.keys()[0] ]:
 					    firstAmpRankInAll = True
-					    for amplicon in classifications:
-						    if firstAmpRank not in classifications[amplicon]:
+					    for amplicon in self.classifications:
+						    if firstAmpRank not in self.classifications[amplicon]:
 							firstAmpRankInAll = False
-							print firstAmpRank, 'not in',classifications[amplicon].keys()
+							print firstAmpRank, 'not in',self.classifications[amplicon].keys()
 					    if firstAmpRankInAll:
 						    classificationsInAllAmps[firstAmpRank] = []
-						    for rankValue in classifications[classifications.keys()[0]][firstAmpRank]:
+						    for rankValue in self.classifications[self.classifications.keys()[0]][firstAmpRank]:
 							    rankValueInAll = True
-							    for amplicon in classifications:
-								    if rankValue not in classifications[amplicon][firstAmpRank]: rankValueInAll = False
+							    for amplicon in self.classifications:
+								    if rankValue not in self.classifications[amplicon][firstAmpRank]: rankValueInAll = False
 							    if rankValueInAll: classificationsInAllAmps[firstAmpRank].append(rankValue)
 			if classificationsInAllAmps:
 			    output += '\tClassification overlaps:\n'

@@ -1,7 +1,7 @@
 def classify_main():
     pass
 
-def resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists):
+def resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches):
     [output, cluster,picklestring] = tmp
     config.outfile.write( output+'\n')
     clusterdump.write(picklestring)
@@ -60,9 +60,12 @@ def resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,mor
                 matches[cluster.id] = {}
                 for amplicon in ampliconnames:
                     matches[cluster.id][amplicon] = [organism for organism in cluster.blastHits[amplicon]]
+                    blastclassmatches[amplicon] = [classification for classification in cluster.classifications[amplicon]]
+            for amplicon in ampliconnames:
+                rdpclassmatches[amplicon] = [rdpclass for rdpclass in cluster.rdpAmplicons[amplicon]]
         
         if atLeastOneOrgInAllAmps: orgInAllAmpsCounter += 1
-    return [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists]
+    return [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches]
 
 def foreachCluster(tmp):
     
@@ -159,6 +162,8 @@ def classifymeta(indata):
     orgInAllAmpsCounter = 0
     noMatchAmp = {}
     matches = {}
+    blastclassmatches = {}
+    rdpclassmatches = {}
     singleAmpliconHitlists = {}
 
     if indata.tempFileFolder:
@@ -186,7 +191,7 @@ def classifymeta(indata):
                 if tmcounter <= indata.skip: continue
                 #results.append(foreachCluster(cluster))
                 tmp = foreachCluster(cluster)
-                [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists] = resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists)
+                [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches] = resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches)
                 if indata.stop and tmcounter >= indata.stop: break
         config.logfile.write('finished, making summary ... \n')
     else: # multiple processes in parallel
@@ -203,7 +208,7 @@ def classifymeta(indata):
             if indata.debug: break
             tmcounter +=1
             if tmcounter <= indata.skip: progress.update(); continue
-            [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists] = resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists)
+            [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches] = resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches)
     
             progress.update()
             if indata.stop and tmcounter >= indata.stop: break
@@ -316,6 +321,10 @@ def classifymeta(indata):
     else:
         config.outfile.write('No clusters found with single amplicons and hits for that amp were found.\n')
 
+    config.logfile.write('Here goes the new random matching ...\n')
+    
+    
+    
     config.logfile.write('Classification done.\n')
 
     clusterdump.close()
