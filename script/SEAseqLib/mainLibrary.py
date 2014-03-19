@@ -10,6 +10,50 @@ def lib_main():
 
 ######################### FUNCTIONS #########################
 
+def matchRDPclass(rdpAmplicons):
+	classificationsInAllAmps = {}
+	for amplicon, consensuses in rdpAmplicons.iteritems():
+		if len(consensuses) == 0: output += amplicon+' has no RDP-classifications.\n';continue
+	if rdpAmplicons:
+		for firstAmpRank in rdpAmplicons[rdpAmplicons.keys()[0]][ rdpAmplicons[rdpAmplicons.keys()[0]].keys()[0] ]:
+			firstAmpRankInAll = True
+			for amplicon in rdpAmplicons:
+				consensus = rdpAmplicons[amplicon].keys()[0]
+				if firstAmpRank not in rdpAmplicons[amplicon][ consensus ]:
+				    firstAmpRankInAll = False
+				    print 'rdp: '+firstAmpRank, 'not in',rdpAmplicons[amplicon].keys()
+			if firstAmpRankInAll:
+				classificationsInAllAmps[firstAmpRank] = []
+				rankValue = rdpAmplicons[amplicon][consensus][firstAmpRank]
+				rankValueInAll = True
+				lowConfidence = False
+				for amplicon in rdpAmplicons:
+					consensus = rdpAmplicons[amplicon].keys()[0]
+					if rankValue != rdpAmplicons[amplicon][consensus][firstAmpRank]: rankValueInAll = False
+					if rankValue == 'LowConfidence' or rdpAmplicons[amplicon][consensus][firstAmpRank] == 'LowConfidence' and 'LowConfidence' not in classificationsInAllAmps[firstAmpRank]: lowConfidence = True
+				if rankValueInAll: classificationsInAllAmps[firstAmpRank].append(rankValue)
+				elif lowConfidence: classificationsInAllAmps[firstAmpRank].append('LowConfidence')
+				else: classificationsInAllAmps[firstAmpRank].append('MissMatch')
+	return classificationsInAllAmps
+
+def matchBLASTclass(classifications):
+	classificationsInAllAmps = {}
+	if classifications:
+	    for firstAmpRank in classifications[ classifications.keys()[0] ]:
+		firstAmpRankInAll = True
+		for amplicon in classifications:
+			if firstAmpRank not in classifications[amplicon]:
+			    firstAmpRankInAll = False
+			    print 'blast: '+firstAmpRank, 'not in', classifications[amplicon].keys()
+		if firstAmpRankInAll:
+			classificationsInAllAmps[firstAmpRank] = []
+			for rankValue in classifications[classifications.keys()[0]][firstAmpRank]:
+				rankValueInAll = True
+				for amplicon in classifications:
+					if rankValue not in classifications[amplicon][firstAmpRank]: rankValueInAll = False
+				if rankValueInAll: classificationsInAllAmps[firstAmpRank].append(rankValue)
+	return classificationsInAllAmps
+
 def popRandom(listtopopfrom):
     if not listtopopfrom: print "empty list";return None, []
     import random
@@ -1661,30 +1705,8 @@ class BarcodeCluster(object):
 		monoclonalAmpliconsArray = [self.amplicons[amplicon].monoclonal for amplicon in self.definedamplicons]
 		if (self.definedampliconcount == monoclonalAmpliconsArray.count(True)):
 		    
-			classificationsInAllAmps = {}
-			for amplicon, consensuses in self.rdpAmplicons.iteritems():
-			    if len(consensuses) == 0: output += amplicon+' has no RDP-classifications.\n';continue
-			if self.rdpAmplicons:
-			    #print self.rdpAmplicons.keys(),self.rdpAmplicons[self.rdpAmplicons.keys()[0]].keys()
-			    for firstAmpRank in self.rdpAmplicons[self.rdpAmplicons.keys()[0]][ self.rdpAmplicons[self.rdpAmplicons.keys()[0]].keys()[0] ]:
-				firstAmpRankInAll = True
-				for amplicon in self.rdpAmplicons:
-					consensus = self.rdpAmplicons[amplicon].keys()[0]
-					if firstAmpRank not in self.rdpAmplicons[amplicon][ consensus ]:
-					    firstAmpRankInAll = False
-					    print firstAmpRank, 'not in',self.rdpAmplicons[amplicon].keys()
-				if firstAmpRankInAll:
-					classificationsInAllAmps[firstAmpRank] = []
-					rankValue = self.rdpAmplicons[amplicon][consensus][firstAmpRank]
-					rankValueInAll = True
-					lowConfidence = False
-					for amplicon in self.rdpAmplicons:
-						consensus = self.rdpAmplicons[amplicon].keys()[0]
-						if rankValue != self.rdpAmplicons[amplicon][consensus][firstAmpRank]: rankValueInAll = False
-						if rankValue == 'LowConfidence' or self.rdpAmplicons[amplicon][consensus][firstAmpRank] == 'LowConfidence' and 'LowConfidence' not in classificationsInAllAmps[firstAmpRank]: lowConfidence = True
-					if rankValueInAll: classificationsInAllAmps[firstAmpRank].append(rankValue)
-					elif lowConfidence: classificationsInAllAmps[firstAmpRank].append('LowConfidence')
-					else: classificationsInAllAmps[firstAmpRank].append('MissMatch')
+			classificationsInAllAmps = matchRDPclass(self.rdpAmplicons)
+
 			toNext = {}
 			if classificationsInAllAmps and self.definedampliconcount >= 2:
 			    #print 'classificationsInAllAmps:',classificationsInAllAmps
@@ -1714,15 +1736,6 @@ class BarcodeCluster(object):
 		#store blast hits for the random match estimation
 		self.blastHits = {}
 		orgToClass = {}
-
-		#load the mapping to organism name dictionary
-		#from SEAseqLib.mainLibrary import gi2orgname
-		#local_gi2org = {}
-		#if config.gidatabase:
-		#    tmp_file = open(config.gidatabase)
-		#    tmp_string = tmp_file.read()
-		#    tmp_file.close()
-		#    local_gi2org = eval(tmp_string)
 
 		# parse through the blast result one amplicon at the time
 		for amplicon in self.blastamplicons:
@@ -1769,13 +1782,7 @@ class BarcodeCluster(object):
 					    import sys
 					    gi_number = alignment.title.split(' ')[0].split('|')[1]
 					    sys.stderr.write( 'This alignment title is not good: '+alignment.title +'\tsplitting on zero gi => '+gi_number+'.\n')
-					#try:
-					#    organism = local_gi2org[gi_number]
-					#except KeyError:
 					organism = gi2orgname(gi_number,lock=config.dbLock)
-					    #try: organism = gi2orgname(gi_number)
-					    #except urllib2.URLError: organism = alignment.title.split(' ')[1:]
-					#    local_gi2org[gi_number] = organism
 					if not config.subSpecies: organism = ' '.join(organism.split(' ')[:2])
 					org2gi[organism] = gi_number
 					import re
@@ -1821,79 +1828,32 @@ class BarcodeCluster(object):
 
 		    # find classifications present within all organisms within hitlist for each amplicon (=consensus as they are monoclonal)
 		    if self.hitReduction and self.hitReduction[self.hitReduction.keys()[0]] > 0 and self.hitReduction[self.hitReduction.keys()[0]] < sum([value for value in self.hitReduction.values()]):
+
 			self.classifications = {}
-			classificationsInAllAmps = {}
 			for amplicon, organisms in self.blastHits.iteritems():
 			    if len(organisms) == 0: output += amplicon+' has no BLAST-hits.\n';continue
 			    self.classifications[amplicon] = {}
 			    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-				    #try: 		value = orgToClass[organisms.keys()[0]][rank]
-				    #except KeyError:value = 'NotSet'
-				    #except IndexError:value = 'NotSet'
 				    self.classifications[amplicon][rank] = []
 				    for organism in organisms:
 					try: value = orgToClass[organism][rank]
 					except KeyError:value = 'NoInformationAvailable'
 					if value not in self.classifications[amplicon][rank]: self.classifications[amplicon][rank].append(value)
-			    #for organism in organisms:
-			    #	for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-			    #		try: value = orgToClass[organism][rank]
-			    #		except KeyError: value = 'NotSet'
-			    #		if value != classifications[amplicon][rank]: classifications[amplicon][rank] = False
-			    #output +=       '\tAmplicon '+amplicon+' have the following classifications for all hits:'     +'\n'
-			    #for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-			    #	if classifications[amplicon][rank]: output += '\t\t'+rank + '\t' + classifications[amplicon][rank]+'\n'
-			    #	else: output += '\t\t'+rank + '\tnot same for all\n'
-			if self.classifications:
-			    for firstAmpRank in self.classifications[ self.classifications.keys()[0] ]:
-					    firstAmpRankInAll = True
-					    for amplicon in self.classifications:
-						    if firstAmpRank not in self.classifications[amplicon]:
-							firstAmpRankInAll = False
-							print firstAmpRank, 'not in',self.classifications[amplicon].keys()
-					    if firstAmpRankInAll:
-						    classificationsInAllAmps[firstAmpRank] = []
-						    for rankValue in self.classifications[self.classifications.keys()[0]][firstAmpRank]:
-							    rankValueInAll = True
-							    for amplicon in self.classifications:
-								    if rankValue not in self.classifications[amplicon][firstAmpRank]: rankValueInAll = False
-							    if rankValueInAll: classificationsInAllAmps[firstAmpRank].append(rankValue)
+
+			classificationsInAllAmps = matchBLASTclass(self.classifications)
+
 			if classificationsInAllAmps:
 			    output += '\tClassification overlaps:\n'
-			    tmp1 = []
-			    tmp2 = []
 			    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
 				if classificationsInAllAmps[rank]:
 					if len(classificationsInAllAmps[rank]) > 1:
 						output += '\t\t'+rank +' is '+ ', '.join(classificationsInAllAmps[rank][:-1])+' or '+classificationsInAllAmps[rank][-1]+'.\n'
 					else:  output += '\t\t'+rank +' is '+classificationsInAllAmps[rank][0]+'.\n'
-					#tmp1.append(classificationsInAllAmps[rank]); tmp2.append(rank);
 				else: classificationsInAllAmps[rank] = ['NoMatchFound']
-			    #output += '\t\t'+':\n'.join([', '.join(rankValues[:-1])+' or '+rankValues[-1] for rankValues in tmp1])+'\n'
-			    #output += '('+':'.join(tmp2)+')\n'
-			    #output += str(tmp1)+'\t'+str(tmp2)+'\n'
 			    output += 'taxdata\t'+str(classificationsInAllAmps)+'\n'
 			else:
 			    output += 'No classification overlap found.\n'
-			    #output += str([])+'\t'+str([])+'\n'
 			    output += 'taxdata\t'+str(classificationsInAllAmps)+'\n'
-		    
-		#    # find level classification that are the same for all amplicons
-		#    classInAllAmps = {}
-		#    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-		#	try: value = classifications[self.blastHits.keys()[0]][rank]
-		#	except KeyError: value = 'NotSet'
-		#	classInAllAmps[rank] = value
-		#    for amplicon in self.blastHits.keys():
-		#	for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-		#		try:
-		#			if classifications[amplicon][rank] != classInAllAmps[rank]:classInAllAmps[rank] = False
-		#		except KeyError:classInAllAmps[rank] = False
-		#    output +='\tAll amplicons have the following classifications:'     +'\n'
-		#    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-		#	if classInAllAmps[rank]: output += '\t\t'+rank + '\t' + classInAllAmps[rank]+'\n'
-		#	else: output += '\t\t'+rank + '\tnot same for all\n'	
-		    
 		    
 		    self.hitReduction = { amplicon:len(organisms) for amplicon, organisms in self.blastHits.iteritems() }
 		    self.hitReduction['inAll'] = len(self.organismsInAllAmplicons)
@@ -1905,16 +1865,6 @@ class BarcodeCluster(object):
 		    output += str(self.hitReduction)+'\n'
 		    if   len(self.organismsInAllAmplicons) >1:   output += 'cluster is '+', '.join(self.organismsInAllAmplicons[:-1])+' or ' +self.organismsInAllAmplicons[-1] +'\n'
 		    elif len(self.organismsInAllAmplicons) ==1:  output += 'cluster is '+self.organismsInAllAmplicons[-1] +'\n'
-		#    if len(classInAllAmps) > 0:
-		#	output += 'matching clasification: '
-		#	tmp1 = []
-		#	tmp2 = []
-		#	for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-		#	    if classInAllAmps[rank]: tmp1.append(classInAllAmps[rank]); tmp2.append(rank);
-		#	    else: break
-		#	output += ':'.join(tmp1)+' '
-		#	output += '('+':'.join(tmp2)+')\n'
-		#	output += str(tmp1)+'\t'+str(tmp2)
 		
 		return output
 
