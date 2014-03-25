@@ -4,6 +4,7 @@ def classify_main():
 def doBLASTrandMatch(config,blastclassmatches):
     config.logfile.write('not implemented doing nothing.\n')
     randmatchrounds = open(config.path+'/blastRandMatchRounds.txt','w')
+    if not blastclassmatches: randmatchrounds.write('# No matches found exiting.\n');return
     from SEAseqLib.mainLibrary import Progress, popRandom, matchBLASTclass
     output = ''
     blastclassmatchesBackup = blastclassmatches.copy()
@@ -11,6 +12,7 @@ def doBLASTrandMatch(config,blastclassmatches):
     blastRandomCounter = {}
     total_fakeClusters = 0
     repeats = 1000
+    randmatchrounds.write('# HERE WE GO #\n')
     for i in range(repeats):
         blastRandomCounterRound = {}
         randmatchrounds.write('\n##############################\nRandom matching repeat '+str(i+1)+'\n')
@@ -21,7 +23,7 @@ def doBLASTrandMatch(config,blastclassmatches):
             tmcounter2 += 1
             total_fakeClusters += 1 
             blastAmplicons = {}
-            print blastclassmatches.keys()
+#            print blastclassmatches.keys()
             for amplicon in blastclassmatches:
                 poppedItem, blastclassmatches[amplicon] = popRandom(blastclassmatches[amplicon])
                 if blastclassmatches[amplicon] == [] :
@@ -83,13 +85,15 @@ def doBLASTrandMatch(config,blastclassmatches):
             config.outfile.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(total_fakeClusters),2))+'%) were '+name+'\n')
 
 def doRDPrandMatch(config,rdpclassmatches):
-    randmatchrounds = open(config.path+'/rdpRandMatchRounds.txt','w')
+    randmatchrounds = open(config.path+'/rdpRandMatchRounds.txt','w', 1)
+    if not rdpclassmatches: randmatchrounds.write('# No matches found exiting.\n');return
     from SEAseqLib.mainLibrary import Progress, popRandom, matchRDPclass
     output = ''
     rdpclassmatchesBackup = rdpclassmatches.copy()
     rdpRandomCounter = {}
     total_fakeClusters = 0
     repeats = 1000
+    randmatchrounds.write('# HERE WE GO #\n')
     for i in range(repeats):
         rdpRandomCounterRound = {}
         randmatchrounds.write('\n##############################\nRandom matching repeat '+str(i+1)+'\n')
@@ -100,19 +104,24 @@ def doRDPrandMatch(config,rdpclassmatches):
             tmcounter2 += 1
             total_fakeClusters += 1 
             rdpAmplicons = {}
-    #        print rdpclassmatches.keys()
+            #print 'classmaatchkeys->',rdpclassmatches.keys()
             for amplicon in rdpclassmatches:
+                #print amplicon
+                prepoplen = len(rdpclassmatches[amplicon])
                 poppedItem, rdpclassmatches[amplicon] = popRandom(rdpclassmatches[amplicon])
-                if rdpclassmatches[amplicon] == [] :
+                assert prepoplen == len(rdpclassmatches[amplicon])+1, 'poping Error'
+                #print '## HERE '+amplicon+'-> ',len(rdpclassmatches[amplicon])
+                if rdpclassmatches[amplicon] == [] or len(rdpclassmatches[amplicon]) == 0:
                     randmatchrounds.write('Amplicon '+amplicon+' list is empty after '+str(tmcounter2)+' pops.\n')
                     emptyList = True
                 rdpAmplicons[amplicon] = {0:poppedItem}
+            #print emptyList
             classificationsInAllAmps = matchRDPclass(rdpAmplicons)
-    #        print 'fakecluster',tmcounter2,
+            #print 'fakecluster',tmcounter2,
             if classificationsInAllAmps:
                 for rank in ['domain','phylum','class','order','family','genus']:
                     if rank in classificationsInAllAmps and classificationsInAllAmps[rank]:
-    #                    print rank, classificationsInAllAmps[rank]
+                        #print rank, classificationsInAllAmps[rank]
                         try: rdpRandomCounter[rank][classificationsInAllAmps[rank][0]] +=1
                         except KeyError:
                             if rank not in rdpRandomCounter: rdpRandomCounter[rank] = {classificationsInAllAmps[rank][0]:1}
@@ -123,8 +132,8 @@ def doRDPrandMatch(config,rdpclassmatches):
                             else:                            rdpRandomCounterRound[rank][classificationsInAllAmps[rank][0]] = 1
                     else: print rank, 'not in comparison'
             else:
-                print 'No classification overlap found.\n'
-    #        if tmcounter2 > 1000: break
+                pass#print 'No classification overlap found.'
+            if tmcounter2 > 10000000: randmatchrounds.write('\nWARNING: Now at 10M pops and list is still not empty, BREAKING loop.\n');break
         randmatchrounds.write('\nRandom RDP matching repeat '+str(i+1)+' gave '+str(tmcounter2)+' "fakeclusters" where the classifications were matched:\n')
         for rank, names in rdpRandomCounterRound.iteritems():
             randmatchrounds.write('\tfor rank '+rank+':\n')
