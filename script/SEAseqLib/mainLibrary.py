@@ -1658,7 +1658,7 @@ class BarcodeCluster(object):
 		    empty   = line[1]
 		    tmpData = line[2:]
 		    #print header, tmpData
-		    assert empty == '', 'ERROR, the first column for '+header+' is not empty (empty="'+empty+'"):\n'+rdpData
+		    assert (empty == '' or empty == '-'), 'ERROR, the first column for '+header+' is not empty (empty="'+empty+'"):\n'+rdpData
 		    amptype   = header.split('|tempSep|')[0]
 		    allele    = header.split('|tempSep|')[1]
 		    rdpClassification = {}
