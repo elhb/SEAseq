@@ -124,7 +124,7 @@ def gi2orgname(gi_number,database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.
 		Entrez.email = "erik.borgstrom@scilifelab.se"
 		handle = Entrez.efetch(db="nucleotide", id=str(gi_number), retmode="xml")
 		records = Entrez.read(handle)
-		assert len(records) == 1
+		assert len(records) == 1, 'Error: records is not == 1'
 		values.append((gi_number,records[0]['GBSeq_organism']))
 		if lock: lock.acquire()
 		try:
@@ -505,7 +505,7 @@ def getClassification(taxid=None,gi=None,database='/proj/b2011011/SEAseq/referen
 	    t = (int(gi),)
 	    try: gi, taxid = c.execute('SELECT * FROM gi2taxid WHERE gi=?', t).fetchone()
 	    except TypeError:
-		name = gi2orgname(gi,lock=lock)
+		name = gi2orgname(gi,lock=lock,database=database)
 		t = (name,)
 		taxid, name = c.execute('SELECT * FROM taxid2name WHERE name=?', t).fetchone()
 	    #print 'done'
@@ -1782,7 +1782,9 @@ class BarcodeCluster(object):
 					    import sys
 					    gi_number = alignment.title.split(' ')[0].split('|')[1]
 					    sys.stderr.write( 'This alignment title is not good: '+alignment.title +'\tsplitting on zero gi => '+gi_number+'.\n')
-					organism = gi2orgname(gi_number,lock=config.dbLock)
+					if indata.tempFileFolder and not indata.debug and indata.tempFileFolder != config.path and config.blastDb != '/sw/data/uppnex/blast_databases/nt': database=indata.tempFileFolder+'/SEAseqtemp/NCBItaxonomy.db'
+					else: database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.db'
+					organism = gi2orgname(gi_number,lock=config.dbLock,database=database)
 					if not config.subSpecies: organism = ' '.join(organism.split(' ')[:2])
 					org2gi[organism] = gi_number
 					import re
@@ -1808,7 +1810,9 @@ class BarcodeCluster(object):
 			    output += '\t\t\t\tpart1:\tHIT#'+'\n\t\t\t\t\tHIT#'.join([str(i)+': identity='+str(hitInfo[organism]['r1']['pi'][i])+'%, coverage='+str(hitInfo[organism]['r1']['pc'][i])+'%, pos='+str(hitInfo[organism]['r1']['ss'][i]) for i in range(len(hitInfo[organism]['r1']['ss']))]) + '\n'
 			    output += '\t\t\t\tpart2:\tHIT#'+'\n\t\t\t\t\tHIT#'.join([str(i)+': identity='+str(hitInfo[organism]['r2']['pi'][i])+'%, coverage='+str(hitInfo[organism]['r2']['pc'][i])+'%, pos='+str(hitInfo[organism]['r2']['ss'][i]) for i in range(len(hitInfo[organism]['r2']['ss']))]) + '\n'
 			    self.blastHits[amplicon][organism] = hitInfo[organism]
-			    orgToClass[organism] = getClassification(gi=org2gi[organism],lock=config.dbLock)
+			    if indata.tempFileFolder and not indata.debug and indata.tempFileFolder != config.path and config.blastDb != '/sw/data/uppnex/blast_databases/nt': database=indata.tempFileFolder+'/SEAseqtemp/NCBItaxonomy.db'
+			    else: database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.db'
+			    orgToClass[organism] = getClassification(gi=org2gi[organism],lock=config.dbLock,database=database)
 			if not in_both_reads:
 			    output +=       '\t\t\tNo alignment supported by both reads with >='+str(config.minBlastIdentity)+'% identity and '+str(config.minBlastCoverage)+'% alignment length coverage'     +'\n'
 	    
