@@ -13,70 +13,73 @@ def doBLASTrandMatch(config,blastclassmatches):
     total_fakeClusters = 0
     repeats = 1000
     randmatchrounds.write('# HERE WE GO #\n')
-    for i in range(repeats):
-        blastRandomCounterRound = {}
-        randmatchrounds.write('\n##############################\nRandom matching repeat '+str(i+1)+'\n')
-        blastclassmatches = blastclassmatchesBackup.copy()
-        emptyList = False
-        tmcounter2 = 0
-        while not emptyList:
-            tmcounter2 += 1
-            total_fakeClusters += 1 
-            blastAmplicons = {}
-#            print blastclassmatches.keys()
-            for amplicon in blastclassmatches:
-                poppedItem, blastclassmatches[amplicon] = popRandom(blastclassmatches[amplicon])
-                if blastclassmatches[amplicon] == [] :
-                    randmatchrounds.write('Amplicon '+amplicon+' list is empty after '+str(tmcounter2)+' pops.\n')
-                    emptyList = True
-                blastAmplicons[amplicon] = poppedItem
-
-#            print 'blastAmplicons =',blastAmplicons
-            classificationsInAllAmps = matchBLASTclass(blastAmplicons)
-
-            if classificationsInAllAmps:
-                for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-                    if rank in classificationsInAllAmps and classificationsInAllAmps[rank]:
-
-                            if len(classificationsInAllAmps[rank]) > 1:
-                                    overlaps = ', '.join(classificationsInAllAmps[rank][:-1])+' or '+classificationsInAllAmps[rank][-1]
-                            else:   overlaps = classificationsInAllAmps[rank][0]
-
-                    else:
-                        classificationsInAllAmps[rank] = ['NoMatchFound']
-                        overlaps = 'NoMatchFound'
-
-                    try: blastRandomCounter[rank][overlaps] +=1
-                    except KeyError:
-                        if rank not in blastRandomCounter: blastRandomCounter[rank] = {overlaps:1}
-                        else:                            blastRandomCounter[rank][overlaps] = 1
-
-                    try: blastRandomCounterRound[rank][overlaps] +=1
-                    except KeyError:
-                        if rank not in blastRandomCounterRound: blastRandomCounterRound[rank] = {overlaps:1}
-                        else:                            blastRandomCounterRound[rank][overlaps] = 1
-
-#                output += 'taxdata\t'+str(classificationsInAllAmps)+'\n'
-            else:
-                for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
-                    overlaps = 'No classification overlap found for any rank.'
-                    try: blastRandomCounter[rank][overlaps] +=1
-                    except KeyError:
-                        if rank not in blastRandomCounter: blastRandomCounter[rank] = {overlaps:1}
-                        else:                            blastRandomCounter[rank][overlaps] = 1
-
-                    try: blastRandomCounterRound[rank][overlaps] +=1
-                    except KeyError:
-                        if rank not in blastRandomCounterRound: blastRandomCounterRound[rank] = {overlaps:1}
-                        else:                            blastRandomCounterRound[rank][overlaps] = 1                    
-#                output += 'No classification overlap found.\n'
-#                output += 'taxdata\t'+str(classificationsInAllAmps)+'\n'
-
-        randmatchrounds.write('\nRandom BLAST matching repeat '+str(i+1)+' gave '+str(tmcounter2)+' "fakeclusters" where the classifications were matched:\n')
-        for rank, names in blastRandomCounterRound.iteritems():
-            randmatchrounds.write('\tfor rank '+rank+':\n')
-            for name, count in names.iteritems():
-                randmatchrounds.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(tmcounter2),2))+'%) were '+name+'\n')
+    progress = Progress(repeats, logfile=config.logfile, unit='round',mem=True, printint = 5)
+    with progress:
+        for i in range(repeats):
+            progress.update()
+            blastRandomCounterRound = {}
+            randmatchrounds.write('\n##############################\nRandom matching repeat '+str(i+1)+'\n')
+            blastclassmatches = blastclassmatchesBackup.copy()
+            emptyList = False
+            tmcounter2 = 0
+            while not emptyList:
+                tmcounter2 += 1
+                total_fakeClusters += 1 
+                blastAmplicons = {}
+    #            print blastclassmatches.keys()
+                for amplicon in blastclassmatches:
+                    poppedItem, blastclassmatches[amplicon] = popRandom(blastclassmatches[amplicon])
+                    if blastclassmatches[amplicon] == [] :
+                        randmatchrounds.write('Amplicon '+amplicon+' list is empty after '+str(tmcounter2)+' pops.\n')
+                        emptyList = True
+                    blastAmplicons[amplicon] = poppedItem
+    
+    #            print 'blastAmplicons =',blastAmplicons
+                classificationsInAllAmps = matchBLASTclass(blastAmplicons)
+    
+                if classificationsInAllAmps:
+                    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+                        if rank in classificationsInAllAmps and classificationsInAllAmps[rank]:
+    
+                                if len(classificationsInAllAmps[rank]) > 1:
+                                        overlaps = ', '.join(classificationsInAllAmps[rank][:-1])+' or '+classificationsInAllAmps[rank][-1]
+                                else:   overlaps = classificationsInAllAmps[rank][0]
+    
+                        else:
+                            classificationsInAllAmps[rank] = ['NoMatchFound']
+                            overlaps = 'NoMatchFound'
+    
+                        try: blastRandomCounter[rank][overlaps] +=1
+                        except KeyError:
+                            if rank not in blastRandomCounter: blastRandomCounter[rank] = {overlaps:1}
+                            else:                            blastRandomCounter[rank][overlaps] = 1
+    
+                        try: blastRandomCounterRound[rank][overlaps] +=1
+                        except KeyError:
+                            if rank not in blastRandomCounterRound: blastRandomCounterRound[rank] = {overlaps:1}
+                            else:                            blastRandomCounterRound[rank][overlaps] = 1
+    
+    #                output += 'taxdata\t'+str(classificationsInAllAmps)+'\n'
+                else:
+                    for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+                        overlaps = 'No classification overlap found for any rank.'
+                        try: blastRandomCounter[rank][overlaps] +=1
+                        except KeyError:
+                            if rank not in blastRandomCounter: blastRandomCounter[rank] = {overlaps:1}
+                            else:                            blastRandomCounter[rank][overlaps] = 1
+    
+                        try: blastRandomCounterRound[rank][overlaps] +=1
+                        except KeyError:
+                            if rank not in blastRandomCounterRound: blastRandomCounterRound[rank] = {overlaps:1}
+                            else:                            blastRandomCounterRound[rank][overlaps] = 1                    
+    #                output += 'No classification overlap found.\n'
+    #                output += 'taxdata\t'+str(classificationsInAllAmps)+'\n'
+    
+            randmatchrounds.write('\nRandom BLAST matching repeat '+str(i+1)+' gave '+str(tmcounter2)+' "fakeclusters" where the classifications were matched:\n')
+            for rank, names in blastRandomCounterRound.iteritems():
+                randmatchrounds.write('\tfor rank '+rank+':\n')
+                for name, count in names.iteritems():
+                    randmatchrounds.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(tmcounter2),2))+'%) were '+name+'\n')
     randmatchrounds.close()
     config.outfile.write('\nRandom BLAST matching ('+str(repeats)+' repeats) gave '+str(total_fakeClusters)+' "fakeclusters" where the classifications were matched:\n')
     for rank, names in blastRandomCounter.iteritems():
@@ -94,51 +97,54 @@ def doRDPrandMatch(config,rdpclassmatches):
     total_fakeClusters = 0
     repeats = 1000
     randmatchrounds.write('# HERE WE GO #\n')
-    for i in range(repeats):
-        rdpRandomCounterRound = {}
-        randmatchrounds.write('\n##############################\nRandom matching repeat '+str(i+1)+'\n')
-        rdpclassmatches = rdpclassmatchesBackup.copy()
-        emptyList = False
-        tmcounter2 = 0
-        while not emptyList:
-            tmcounter2 += 1
-            total_fakeClusters += 1 
-            rdpAmplicons = {}
-            #print 'classmaatchkeys->',rdpclassmatches.keys()
-            for amplicon in rdpclassmatches:
-                #print amplicon
-                prepoplen = len(rdpclassmatches[amplicon])
-                poppedItem, rdpclassmatches[amplicon] = popRandom(rdpclassmatches[amplicon])
-                assert prepoplen == len(rdpclassmatches[amplicon])+1, 'poping Error'
-                #print '## HERE '+amplicon+'-> ',len(rdpclassmatches[amplicon])
-                if rdpclassmatches[amplicon] == [] or len(rdpclassmatches[amplicon]) == 0:
-                    randmatchrounds.write('Amplicon '+amplicon+' list is empty after '+str(tmcounter2)+' pops.\n')
-                    emptyList = True
-                rdpAmplicons[amplicon] = {0:poppedItem}
-            #print emptyList
-            classificationsInAllAmps = matchRDPclass(rdpAmplicons)
-            #print 'fakecluster',tmcounter2,
-            if classificationsInAllAmps:
-                for rank in ['domain','phylum','class','order','family','genus']:
-                    if rank in classificationsInAllAmps and classificationsInAllAmps[rank]:
-                        #print rank, classificationsInAllAmps[rank]
-                        try: rdpRandomCounter[rank][classificationsInAllAmps[rank][0]] +=1
-                        except KeyError:
-                            if rank not in rdpRandomCounter: rdpRandomCounter[rank] = {classificationsInAllAmps[rank][0]:1}
-                            else:                            rdpRandomCounter[rank][classificationsInAllAmps[rank][0]] = 1
-                        try: rdpRandomCounterRound[rank][classificationsInAllAmps[rank][0]] +=1
-                        except KeyError:
-                            if rank not in rdpRandomCounterRound: rdpRandomCounterRound[rank] = {classificationsInAllAmps[rank][0]:1}
-                            else:                            rdpRandomCounterRound[rank][classificationsInAllAmps[rank][0]] = 1
-                    else: print rank, 'not in comparison'
-            else:
-                pass#print 'No classification overlap found.'
-            if tmcounter2 > 10000000: randmatchrounds.write('\nWARNING: Now at 10M pops and list is still not empty, BREAKING loop.\n');break
-        randmatchrounds.write('\nRandom RDP matching repeat '+str(i+1)+' gave '+str(tmcounter2)+' "fakeclusters" where the classifications were matched:\n')
-        for rank, names in rdpRandomCounterRound.iteritems():
-            randmatchrounds.write('\tfor rank '+rank+':\n')
-            for name, count in names.iteritems():
-                randmatchrounds.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(tmcounter2),2))+'%) were '+name+'\n')
+    progress = Progress(repeats, logfile=config.logfile, unit='round',mem=True, printint = 10)
+    with progress:
+        for i in range(repeats):
+            progress.update()
+            rdpRandomCounterRound = {}
+            randmatchrounds.write('\n##############################\nRandom matching repeat '+str(i+1)+'\n')
+            rdpclassmatches = rdpclassmatchesBackup.copy()
+            emptyList = False
+            tmcounter2 = 0
+            while not emptyList:
+                tmcounter2 += 1
+                total_fakeClusters += 1 
+                rdpAmplicons = {}
+                #print 'classmaatchkeys->',rdpclassmatches.keys()
+                for amplicon in rdpclassmatches:
+                    #print amplicon
+                    prepoplen = len(rdpclassmatches[amplicon])
+                    poppedItem, rdpclassmatches[amplicon] = popRandom(rdpclassmatches[amplicon])
+                    assert prepoplen == len(rdpclassmatches[amplicon])+1, 'poping Error'
+                    #print '## HERE '+amplicon+'-> ',len(rdpclassmatches[amplicon])
+                    if rdpclassmatches[amplicon] == [] or len(rdpclassmatches[amplicon]) == 0:
+                        randmatchrounds.write('Amplicon '+amplicon+' list is empty after '+str(tmcounter2)+' pops.\n')
+                        emptyList = True
+                    rdpAmplicons[amplicon] = {0:poppedItem}
+                #print emptyList
+                classificationsInAllAmps = matchRDPclass(rdpAmplicons)
+                #print 'fakecluster',tmcounter2,
+                if classificationsInAllAmps:
+                    for rank in ['domain','phylum','class','order','family','genus']:
+                        if rank in classificationsInAllAmps and classificationsInAllAmps[rank]:
+                            #print rank, classificationsInAllAmps[rank]
+                            try: rdpRandomCounter[rank][classificationsInAllAmps[rank][0]] +=1
+                            except KeyError:
+                                if rank not in rdpRandomCounter: rdpRandomCounter[rank] = {classificationsInAllAmps[rank][0]:1}
+                                else:                            rdpRandomCounter[rank][classificationsInAllAmps[rank][0]] = 1
+                            try: rdpRandomCounterRound[rank][classificationsInAllAmps[rank][0]] +=1
+                            except KeyError:
+                                if rank not in rdpRandomCounterRound: rdpRandomCounterRound[rank] = {classificationsInAllAmps[rank][0]:1}
+                                else:                            rdpRandomCounterRound[rank][classificationsInAllAmps[rank][0]] = 1
+                        else: print rank, 'not in comparison'
+                else:
+                    pass#print 'No classification overlap found.'
+                if tmcounter2 > 10000000: randmatchrounds.write('\nWARNING: Now at 10M pops and list is still not empty, BREAKING loop.\n');break
+            randmatchrounds.write('\nRandom RDP matching repeat '+str(i+1)+' gave '+str(tmcounter2)+' "fakeclusters" where the classifications were matched:\n')
+            for rank, names in rdpRandomCounterRound.iteritems():
+                randmatchrounds.write('\tfor rank '+rank+':\n')
+                for name, count in names.iteritems():
+                    randmatchrounds.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(tmcounter2),2))+'%) were '+name+'\n')
     randmatchrounds.close()
     config.outfile.write('\nRandom RDP matching ('+str(repeats)+' repeats) gave '+str(total_fakeClusters)+' "fakeclusters" where the classifications were matched:\n')
     for rank, names in rdpRandomCounter.iteritems():
@@ -297,6 +303,17 @@ def classifymeta(indata):
                 shutil.copyfile(src, dst)
                 config.logfile.write('\tDone.\n');
             config.gidatabase = indata.tempFileFolder+'/SEAseqtemp/'+str(pid)+''+noPathFileName
+        if indata.tempFileFolder:
+            database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.db'
+            filename = database
+            noPathFileName = filename.split('/')[-1]
+            src = filename
+            dst = indata.tempFileFolder+'/SEAseqtemp/'+noPathFileName
+            # database=indata.tempFileFolder+'/SEAseqtemp/NCBItaxonomy.db'
+            if not os.path.exists(dst):
+                config.logfile.write('\tcopying: '+src+' to '+dst+ '\n');
+                shutil.copyfile(src, dst)
+                config.logfile.write('\tDone.\n');
 
     config.loadPrimers()
 
