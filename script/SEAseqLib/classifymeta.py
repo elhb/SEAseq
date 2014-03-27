@@ -76,16 +76,60 @@ def doBLASTrandMatch(config,blastclassmatches):
     #                output += 'taxdata\t'+str(classificationsInAllAmps)+'\n'
     
             randmatchrounds.write('\nRandom BLAST matching repeat '+str(i+1)+' gave '+str(tmcounter2)+' "fakeclusters" where the classifications were matched:\n')
-            for rank, names in blastRandomCounterRound.iteritems():
-                randmatchrounds.write('\tfor rank '+rank+':\n')
-                for name, count in names.iteritems():
-                    randmatchrounds.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(tmcounter2),2))+'%) were '+name+'\n')
+            blastrandomprint(randmatchrounds,blastRandomCounterRound)
+            #for rank, names in blastRandomCounterRound.iteritems():
+            #    randmatchrounds.write('\tfor rank '+rank+':\n')
+            #    for name, count in names.iteritems():
+            #        randmatchrounds.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(tmcounter2),2))+'%) were '+name+'\n')
     randmatchrounds.close()
     config.outfile.write('\nRandom BLAST matching ('+str(repeats)+' repeats) gave '+str(total_fakeClusters)+' "fakeclusters" where the classifications were matched:\n')
-    for rank, names in blastRandomCounter.iteritems():
-        config.outfile.write('\tfor rank '+rank+':\n')
-        for name, count in names.iteritems():
-            config.outfile.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(total_fakeClusters),2))+'%) were '+name+'\n')
+    blastrandomprint(config.outfile,blastRandomCounter)
+    #for rank, names in blastRandomCounter.iteritems():
+    #    config.outfile.write('\tfor rank '+rank+':\n')
+    #    for name, count in names.iteritems():
+    #        config.outfile.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(total_fakeClusters),2))+'%) were '+name+'\n')
+
+def blastrandomprint(fileHandle,dictionary,outType='New'):
+    if outType == 'Old':
+        for rank, names in dictionary.iteritems():
+            fileHandle.write('\tfor rank '+rank+':\n')
+            for name, count in names.iteritems():
+                fileHandle.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(total_fakeClusters),2))+'%) were '+name+'\n')
+    elif outType == 'New':
+        for rank in ['superkingdom','kingdom','phylum','class','order','family','genus','species','subspecies']:
+            names = dictionary[rank]
+            fileHandle.write('\n\t---------- '+rank)
+            
+            total = sum(names.values())
+            try:count = total-names['NoInformationAvailable']
+            except KeyError: count = total
+            
+            try: count2 = names['NoInformationAvailable']
+            except KeyError:count2 = 0
+            try:percentage = round(100*float(count2)/float(total),2)
+            except ZeroDivisionError:percentage=0.00
+            #fileHandle.write('\n\t'+str(count2)+' are excluded due to '+'NoInformationAvailable'+' ('+str(total-count2)+' clusters have info at this rank).')
+            fileHandle.write('\n\t'+str(count2)+' clusters that are excluded as NoInformationAvailable for any BlastHit at this rank ('+str(total-count2)+' clusters have info at this rank).')
+            
+            try: count2 = names['NoMatchFound']
+            except KeyError: count2 = 0
+            try:percentage = round(100*float(count2)/float(count),2)
+            except ZeroDivisionError:percentage=0.00
+            #fileHandle.write('\n\t'+str(count2)+' ('+str(percentage)+'%) are MissMatch.')
+            fileHandle.write('\n\t'+str(count2)+' ('+str(percentage)+'%) clusters where no overlap is found between the amplicon hitlists for this rank.')
+            
+            try: matchCount = count-names['NoMatchFound']
+            except KeyError: matchCount = count
+            if count: percentage = round(100*float(matchCount)/float(count),2)
+            else: percentage = 0.00
+            #fileHandle.write('\n\t'+str(matchCount)+' clusters ('+str(percentage)+'%) where the amplicons RDPclassinfo has >=1 match at the '+rank+' level, out of theese are:')
+            fileHandle.write('\n\t'+str(matchCount)+' clusters ('+str(percentage)+'%) where the amplicons hitlist has >=1 match at the '+rank+' level, out of theese are:')
+            
+            if count:
+                for name, count2 in names.iteritems():
+                    if name == 'NoMatchFound' or name == 'NoInformationAvailable': continue
+                    percentage = round(100*float(count2)/float(matchCount),2)                        
+                    fileHandle.write('\n\t\t'+str(count2)+' ('+str(percentage)+'%) were '+name+'')
 
 def doRDPrandMatch(config,rdpclassmatches):
     randmatchrounds = open(config.path+'/rdpRandMatchRounds.txt','w', 1)
@@ -102,7 +146,7 @@ def doRDPrandMatch(config,rdpclassmatches):
         for i in range(repeats):
             progress.update()
             rdpRandomCounterRound = {}
-            randmatchrounds.write('\n##############################\nRandom matching repeat '+str(i+1)+'\n')
+            randmatchrounds.write('\n\n##############################\nRandom matching repeat '+str(i+1)+'\n')
             rdpclassmatches = rdpclassmatchesBackup.copy()
             emptyList = False
             tmcounter2 = 0
@@ -141,16 +185,79 @@ def doRDPrandMatch(config,rdpclassmatches):
                     pass#print 'No classification overlap found.'
                 if tmcounter2 > 10000000: randmatchrounds.write('\nWARNING: Now at 10M pops and list is still not empty, BREAKING loop.\n');break
             randmatchrounds.write('\nRandom RDP matching repeat '+str(i+1)+' gave '+str(tmcounter2)+' "fakeclusters" where the classifications were matched:\n')
-            for rank, names in rdpRandomCounterRound.iteritems():
-                randmatchrounds.write('\tfor rank '+rank+':\n')
-                for name, count in names.iteritems():
-                    randmatchrounds.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(tmcounter2),2))+'%) were '+name+'\n')
+            #for rank, names in rdpRandomCounterRound.iteritems():
+            for rank in ['domain','phylum','class','order','family','genus']:
+                names = rdpRandomCounterRound[rank]
+                #randmatchrounds.write('\tfor rank '+rank+':\n')
+                randmatchrounds.write('\n\t---------- '+rank)
+                #for name, count in names.iteritems():
+                #    randmatchrounds.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(tmcounter2),2))+'%) were '+name+'\n')
+                
+                total = sum(names.values())
+                try:count = total-names['LowConfidence']
+                except KeyError: count = total
+                
+                try: count2 = names['LowConfidence']
+                except KeyError:count2 = 0
+                try:percentage = round(100*float(count2)/float(total),2)
+                except ZeroDivisionError:percentage=0.00
+                randmatchrounds.write('\n\t'+str(count2)+' are excluded due to LowConfidence ('+str(total-count2)+' clusters have info at this rank).')
+                
+                try: count2 = names['MissMatch']
+                except KeyError: count2 = 0
+                try:percentage = round(100*float(count2)/float(count),2)
+                except ZeroDivisionError:percentage=0.00
+                randmatchrounds.write('\n\t'+str(count2)+' ('+str(percentage)+'%) are MissMatch.')
+                
+                try: matchCount = count-names['MissMatch']
+                except KeyError: matchCount = count
+                if count: percentage = round(100*float(matchCount)/float(count),2)
+                else: percentage = 0.00
+                randmatchrounds.write('\n\t'+str(matchCount)+' clusters ('+str(percentage)+'%) where the amplicons RDPclassinfo has >=1 match at the '+rank+' level, out of theese are:')
+                
+                if count:
+                    for name, count2 in names.iteritems():
+                        if name == 'MissMatch' or name == 'LowConfidence': continue
+                        percentage = round(100*float(count2)/float(matchCount),2)                        
+                        randmatchrounds.write('\n\t\t'+str(count2)+' ('+str(percentage)+'%) were '+name+'')
     randmatchrounds.close()
+
     config.outfile.write('\nRandom RDP matching ('+str(repeats)+' repeats) gave '+str(total_fakeClusters)+' "fakeclusters" where the classifications were matched:\n')
-    for rank, names in rdpRandomCounter.iteritems():
-        config.outfile.write('\tfor rank '+rank+':\n')
-        for name, count in names.iteritems():
-            config.outfile.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(total_fakeClusters),2))+'%) were '+name+'\n')
+    #for rank, names in rdpRandomCounter.iteritems():
+    for rank in ['domain','phylum','class','order','family','genus']:
+        names = rdpRandomCounter[rank]
+        #config.outfile.write('\tfor rank '+rank+':\n')
+        config.outfile.write('\n\t---------- '+rank)
+        #for name, count in names.iteritems():
+        #    randmatchrounds.write('\t\t'+str(count)+' ('+str(round(100*float(count)/float(tmcounter2),2))+'%) were '+name+'\n')
+        
+        total = sum(names.values())
+        try:count = total-names['LowConfidence']
+        except KeyError: count = total
+        
+        try: count2 = names['LowConfidence']
+        except KeyError:count2 = 0
+        try:percentage = round(100*float(count2)/float(total),2)
+        except ZeroDivisionError:percentage=0.00
+        config.outfile.write('\n\t'+str(count2)+' are excluded due to LowConfidence ('+str(total-count2)+' clusters have info at this rank).')
+        
+        try: count2 = names['MissMatch']
+        except KeyError: count2 = 0
+        try:percentage = round(100*float(count2)/float(count),2)
+        except ZeroDivisionError:percentage=0.00
+        config.outfile.write('\n\t'+str(count2)+' ('+str(percentage)+'%) are MissMatch.')
+        
+        try: matchCount = count-names['MissMatch']
+        except KeyError: matchCount = count
+        if count: percentage = round(100*float(matchCount)/float(count),2)
+        else: percentage = 0.00
+        config.outfile.write('\n\t'+str(matchCount)+' clusters ('+str(percentage)+'%) where the amplicons RDPclassinfo has >=1 match at the '+rank+' level, out of theese are:')
+        
+        if count:
+            for name, count2 in names.iteritems():
+                if name == 'MissMatch' or name == 'LowConfidence': continue
+                percentage = round(100*float(count2)/float(matchCount),2)                        
+                config.outfile.write('\n\t\t'+str(count2)+' ('+str(percentage)+'%) were '+name+'')
 
 def resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches):
     [output, cluster,picklestring] = tmp
