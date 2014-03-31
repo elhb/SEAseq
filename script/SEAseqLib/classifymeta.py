@@ -2,7 +2,6 @@ def classify_main():
     pass
 
 def doBLASTrandMatch(config,blastclassmatches):
-    config.logfile.write('not implemented doing nothing.\n')
     randmatchrounds = open(config.path+'/blastRandMatchRounds.txt','w')
     if not blastclassmatches: randmatchrounds.write('# No matches found exiting.\n');return
     from SEAseqLib.mainLibrary import Progress, popRandom, matchBLASTclass
