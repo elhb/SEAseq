@@ -106,6 +106,24 @@ def writelogheader(logfile):
         logfile.write('Program is run on uppmax, temporary files will be placed in '+commands.getoutput('echo $SNIC_TMP')+' .\n')
 
 def gi2orgname(gi_number,database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.db',lock=None):
+	import time
+	result = None
+	trynumber = 0
+	while not result and trynumber < 10:
+		try:
+		    trynumber += 1
+		    result = gi2orgname_INNER(gi_number,database=database,lock=lock)
+		except AssertionError:
+		    result = None
+		    sleeptime = 5
+		    for i in range(sleeptime):
+			print gi,'failed retrying in',sleeptime-i,'s';
+			time.sleep(1)
+		    print 'retrying:'
+	assert result, 'Error, could not fetch information for gi '+str(gi_number)
+	return result
+
+def gi2orgname_INNER(gi_number,database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.db',lock=None):
 	gi_number = int(gi_number)
 	#print gi_number, 'local'
 	import sqlite3
@@ -124,7 +142,7 @@ def gi2orgname(gi_number,database='/proj/b2011011/SEAseq/reference/NCBItaxonomy.
 		Entrez.email = "erik.borgstrom@scilifelab.se"
 		handle = Entrez.efetch(db="nucleotide", id=str(gi_number), retmode="xml")
 		records = Entrez.read(handle)
-		assert len(records) == 1, 'Error: records is not == 1'
+		assert len(records) == 1, 'Error: records != 1, records == '+str(len(records))+' gi='+str(gi_number)+' organisms ->'+' '.join([ records[i]['GBSeq_organism'] for i in range(len(records)) ])
 		values.append((gi_number,records[0]['GBSeq_organism']))
 		if lock: lock.acquire()
 		try:
