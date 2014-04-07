@@ -73,6 +73,27 @@ def bufcount(filename):
 		f.close
 	return lines
 
+def hamming_distance(s1, s2):
+	assert len(s1) == len(s2), 'Error: '+str(len(s1)) + ' != ' + str(len(s2))
+	return sum(ch1 != ch2 for ch1, ch2 in zip(s1, s2))
+
+def levenshtein(s1, s2):
+	if len(s1) < len(s2):
+		return levenshtein(s2, s1)
+	if not s1:
+		return len(s2)
+	previous_row = xrange(len(s2) + 1)
+	for i, c1 in enumerate(s1):
+		current_row = [i + 1]
+		for j, c2 in enumerate(s2):
+			insertions = previous_row[j + 1] + 1 # j+1 instead of j since previous_row and current_row are one character longer
+			deletions = current_row[j] + 1       # than s2
+			substitutions = previous_row[j] + (c1 != c2)
+			if c1 == 'N' or c2 == 'N': substitutions -= 1 #if N then no mismatch
+			current_row.append(min(insertions, deletions, substitutions))
+		previous_row = current_row
+	return previous_row[-1]
+
 
 #############
 #  Classes  #
@@ -100,6 +121,40 @@ class ReadPair(object):
 	
 	# Dumping the quality values
 	return  (self.id,     self.r1Header,self.r1Seq,self.r2Seq,None,None,   self.barcodeSeq,None,     self.annotations,self.fileOrigin)
+
+    def matchSequence(self, read, sequence, maxDistance, matchfunk=hamming_distance):
+	    
+	import re
+	#matchfunk = hamming_distance
+
+	startPosition = None
+	endPosition   = None
+
+	perfect_match = re.search(sequence, read)
+	if perfect_match:
+	    startPosition = perfect_match.start()
+	    endPosition = perfect_match.end()
+	    missmatches = 0
+	
+	elif maxDistance:
+		mindist = [10000,-1]
+		for i in range(len(read)):
+		    
+			if i+len(sequence) <= len(read):
+				dist = matchfunk(sequence,read[i:i+len(sequence)])
+			else: dist = 1000
+			
+			if dist < mindist[0]: mindist =[dist,i]
+
+		if mindist[0] < maxDistance:
+			startPosition = i
+			endPosition = i+len(sequence)
+			missmatches = mindist[0]
+		else:
+			startPosition = None
+			endPosition = None
+
+	return [startPosition,endPosition,missmatches]
 
     def isIlluminaAdapter(self, ):
 	pass
@@ -387,30 +442,67 @@ class FastqToDatabseConverter(object):
     
     def run(self,): 
 	
+	#
+	# Imports
+	#
+	import time
+	
+	#
+	# Setting initial values
+	#
 	SEAseqPipeLine.logfile.write('Adding reads to database table.\n')
 	filesAdded = {}
 	readsToAdd = []
 	currentLocation = 1
 	appendChunkSize = 100000
+	
+	#
+	# Parse through files and add to database in chunks of "appendChunkSize" reads
+	#
 	for pair in self.readPairGenerator():
 
+	    #
+	    # foreach read do this before adding to db
+	    #
 	    self.foreachReadPair(pair)
 
+	    #
+	    # append to chunk
+	    #
 	    readsToAdd.append(pair.databaseTuple)
 
-	    if fastq1 not in filesAdded:
-		SEAseqPipeLine.logfile.write('Starting with file '+fastq1+'.\n')
-		filesAdded[fastq1] = True
+	    #
+	    # check read pair file origin
+	    #
+	    if pair.fileOrigin not in filesAdded:
+		SEAseqPipeLine.logfile.write('Starting with file '+pair.fileOrigin+'.\n')
+		filesAdded[pair.fileOrigin] = True
 
+	    #
+	    # add chunk to db
+	    #
 	    if len(readsToAdd) >= appendChunkSize:
+		chunkStartTime = time.time()
 		SEAseqPipeLine.logfile.write('Appending reads '+str(currentLocation)+'-'+str(currentLocation+appendChunkSize-1)+' to db.\n')
 		currentLocation += appendChunkSize
 		SEAseqPipeLine.database.addReads(readsToAdd)
-		SEAseqPipeLine.logfile.write('Reads '+str(currentLocation)+'-'+str(currentLocation+appendChunkSize-1)+' done.\n')
+		chunkTime = time.time()-chunkStartTime
+		SEAseqPipeLine.logfile.write('Reads '+str(currentLocation)+'-'+str(currentLocation+appendChunkSize-1)+' done after '+str(int(round(chunkTime,0)/60))+' minutes and '+str(round(chunkTime,0)%60)+' seconds.\n')
 		readsToAdd = []
 
-	SEAseqPipeLine.logfile.write('Appending reads '+str(currentLocation)+'-'+str(currentLocation+len(readsToAdd))+' to db.\n')
-	SEAseqPipeLine.database.addReads(readsToAdd)
+	#
+	# add final chunk to db
+	#
+	if readsToAdd:
+	    chunkStartTime = time.time()
+	    SEAseqPipeLine.logfile.write('Appending reads '+str(currentLocation)+'-'+str(currentLocation+len(readsToAdd))+' to db.\n')
+	    SEAseqPipeLine.database.addReads(readsToAdd)
+	    chunkTime = time.time()-chunkStartTime
+	    SEAseqPipeLine.logfile.write('Reads '+str(currentLocation)+'-'+str(currentLocation+len(readsToAdd))+' done after '+str(int(round(chunkTime,0)/60))+' minutes and '+str(round(chunkTime,0)%60)+' seconds.\n')
+	
+	#
+	# Done write to log and return
+	#
 	SEAseqPipeLine.logfile.write('Files '+', '.join([key for key in filesAdded.keys()])+' added sucesfully to the database.\n')
 	
 	return 0
