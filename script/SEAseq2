@@ -1,51 +1,53 @@
 #! /bin/env python
 
 import os
-
+import sys
 MASTER = os.getpid()
 
 man = """
-#\033[1m Pipeline for analysing "SEADseq" data: \033[0m
-# Usage: SEAseq2 <command> <path> [options]
-#
-# Available commands:
-#
-# 1. initiateAnalysis -- Initiate the analysis.
-# Initiation of the analysis is needed to set the path for storage of data, results and files used during runtime.
-# During initiation the type of analysis also needs to be set either to Whole Fragment Analysis (WFA) or rRNA Amplicon Classification (RAC).
-# Usage: SEAseq2 initiateAnalysis <path> <type>
-#
-# 2. addData -- Add data to be analyzed.
-# Usage: SEAseq2 addData
-#
-# 3. changeSettings -- Define the settings to use.
-#   Usage: SEAseq2 changeSettings
-#   3.1 General settings.
-#       3.1.1 Barcode sequence identification
-#       3.1.2 Barcode sequence clustering
-#       3.1.3 Parallelization - UPPMAX/LOCAL
-#       3.1.4 Subsets and debugging
-#   3.2 Settings specific for the RAC mode.
-#   3.3 Settings specific for the WFA mode.
-#   3.4 Define a none standard design.
-#        Exprimental! will most probably not work.
-#
-# 4. startAnalysis -- Start the pipe
-#   Usage: SEAseq2 startAnalysis <part>
-#   Specify <part> as "all" or any of the ones included in the analysis mode (see below).
-#
-#   4.1 In any mode the pipe will perform the following parts:
-#       4.1.1 readFastqs
-#            Reads the input files, identifies subsequences within each readpair such as barcode sequences (3.1.1),
-#            primers or adapter sequences, finally adds the information to the database.
-#       4.1.2 clusterBarcodeSequences
-#            Cluster the barcode sequences identified in 4.1.1 based on sequence similarity to identify all reads originating from the same original bead.
-#
-#   4.2 In RAC mode the pipe will perform the following parts:
-#       find all variants of amplicons present within each cluster
-#
-#   4.3 In WFA mode NOT IMPLEMENTED
-"""
+    #\033[1m Pipeline for analysing "SEADseq" data: \033[0m
+    # Usage: SEAseq2 <command> <path> [options]
+    #
+    # Available commands:
+    #
+    # 1. initiateAnalysis -- Initiate the analysis.
+    #   Usage: SEAseq2 initiateAnalysis <path> <type>
+    #   Initiation of the analysis is needed to set the path for storage of data, results and files used during runtime.
+    #   During initiation the type of analysis also needs to be set either to Whole Fragment Analysis (WFA) or rRNA Amplicon Classification (RAC).
+    #   
+    #
+    # 2. addData -- Add data to be analyzed.
+    #   Usage: SEAseq2 addData <path>
+    #
+    # 3. changeSettings -- Define the settings to use.
+    #   Usage: SEAseq2 changeSettings <path>
+    #   3.1 General settings.
+    #       3.1.1 Barcode sequence identification
+    #       3.1.2 Barcode sequence clustering
+    #       3.1.3 Parallelization - UPPMAX/LOCAL
+    #       3.1.4 Subsets and debugging
+    #   3.2 Settings specific for the RAC mode.
+    #   3.3 Settings specific for the WFA mode.
+    #   3.4 Define a none standard design.
+    #        Exprimental! will most probably not work.
+    #
+    # 4. startAnalysis -- Start the pipe
+    #   Usage: SEAseq2 startAnalysis <path> <part>
+    #   Specify <part> as "all" or any of the ones included in the analysis mode (see below).
+    #
+    #   4.1 In any mode the pipe will perform the following parts:
+    #       4.1.1 readFastqs
+    #            Reads the input files, identifies subsequences within each readpair such as barcode sequences (3.1.1),
+    #            primers or adapter sequences, finally adds the information to the database.
+    #       4.1.2 clusterBarcodeSequences
+    #            Cluster the barcode sequences identified in 4.1.1 based on sequence similarity to identify all reads originating from the same original bead.
+    #
+    #   4.2 In RAC mode the pipe will perform the following parts:
+    #       4.2.1 findAmpliconAlleles
+    #            Find all variants of amplicons present within each cluster
+    #
+    #   4.3 In WFA mode NOT IMPLEMENTED
+    """
 
 ###############
 #  Functions  #
@@ -77,8 +79,36 @@ def bufcount(filename):
 #############
 
 class ReadPair(object):
-    #code
-    pass
+    
+    def __init__(self, currentRead, header1, header2, sequence1, sequence2, qual1, qual2,barcodeSequence,clusterId,annotations, fastq1):
+	self.id = currentRead
+	self.r1Header   = header1
+	self.r2Header   = header2
+	self.r1Seq      = sequence1
+	self.r2Seq      = sequence2
+	self.r1Qual     = qual1
+	self.r2Qual     = qual2
+	self.fileOrigin = fastq1
+	self.barcodeSeq = barcodeSequence
+	self.annotations= annotations    
+
+    @property
+    def databaseTuple(self, ):
+	""" returning a tuple that is formated to be added to sql database"""
+	# data base has following info:
+	#       (id,          header,  sequence1, sequence2, quality1,quality2,barcodeSequence,clusterId,annotation,fromFastq)
+	
+	# Dumping the quality values
+	return  (self.id,     self.r1Header,self.r1Seq,self.r2Seq,None,None,   self.barcodeSeq,None,     self.annotations,self.fileOrigin)
+
+    def isIlluminaAdapter(self, ):
+	pass
+
+    def identifyBarcode(self, ):
+	pass
+
+    def identifyPrimerPair(self,):
+	pass
 
 class BarcodedBead(object):
     #code
@@ -123,7 +153,8 @@ class Database(object):
         self.c.execute('''CREATE TABLE reads (id,header,sequence1,sequence2,quality1,quality2,barcodeSequence,clusterId,annotation,fromFastq,PRIMARY KEY (clusterId))''')
         self.c.execute('''CREATE TABLE runs (startTime,command,commandLine,finishedSuccessfully,masterPid)''')
         self.c.execute('''CREATE TABLE fastqs (filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength,PRIMARY KEY (filePairId))''')
-        
+	self.c.execute('''CREATE TABLE settings (variableName,default,value,setTime,PRIMARY KEY (variableName))''')
+
         self.commitAndClose()
 
     def addToRunsTable(self, startTime, command, commandLine, finishedSuccessfully, masterPid):
@@ -191,7 +222,7 @@ class Database(object):
         SEAseqPipeLine.logfile.write('Getting readcount for file'+fastq1+' ... \n')
         readCount = bufcount(fastq1)/4 #one read is four lines
         SEAseqPipeLine.logfile.write('...done. The file has '+str(readCount)+' reads.\n')
-        addedToReadsTable = SEAseqPipeLine.startTimeStr
+        addedToReadsTable = False#SEAseqPipeLine.startTimeStr
         minReadLength = 'NA'
 
         if filePairIds: filePairId = max(filePairIds)+1
@@ -203,6 +234,28 @@ class Database(object):
         
         return 0
    
+    def addReads(self, readsToAdd):
+
+        #
+        # Imports
+        #
+        import sys
+        
+        #
+        # open connection to database
+        #
+        self.getConnection()
+        
+        #
+        # add the data in readsToAdd to the reads table
+        #
+
+	self.c.executemany('INSERT INTO reads VALUES (?,?,?,?,?,?,?,?,?,?)', readsToAdd)
+        
+        self.commitAndClose()
+        
+        return 0
+
     def getFastqs(self,):
         #
         # Imports
@@ -221,7 +274,8 @@ class Database(object):
         
         self.commitAndClose()
         
-        return [[readCount,fastq1,fastq2] for filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength in filePairs]
+        #return [[readCount,fastq1,fastq2] if (not addedToReadsTable) else None for filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength in filePairs]
+	return [[readCount,fastq1,fastq2] for filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength in filePairs]
     
     def getRuns(self, runTypes):
         
@@ -240,21 +294,30 @@ class Settings(object,):
     
     def __init__(self, ):
         """ object holding the settings used for each part of the analysis """
-        
-    def setDefaults(self,):
-        self.debug = False
-        self.parallelProcesses = None
-        self.uppmaxProject = None
-        self.mode = None
+	self.defaultValues = {
+	    'debug':False,
+	    'uppmaxProject':'b2014005',
+	    'parallelProcesses':16,
+	    'mode':'RAC'
+	}
+	self.explenations = {
+	    'debug':'Flag for running the scripts in multiprocessing or as single process run [True/False] (default=False)',
+	    'uppmaxProject':'Project id used at uppmax for sbatch scripts [bXXXXXXX] (deault=b2014005)',
+	    'parallelProcesses':'Number of process to run when doing multiprocess parts of analysis (defaul=16)',
+	    'mode':'Type of analysis either Whole Fragment Analysis (WFA) or rRNA Amplicon Classification (RAC) [WFA/RAC] (default=RAC)'
+	}
 
-    def load(self,): pass
+    def setDefaults(self,):
+	for variableName, value in self.defaultValues.iteritems(): self.__dict__[variableName] = value
+
+    def loadFromDb(self,): pass
     
     def saveToDb(self,): pass
     
 class FastqToDatabseConverter(object):
     """ reads fastq files (read one and two) and identifies the coordinates for the Barcode sequence etc and adds the data to the database """
     
-    def __init__(self, database):
+    def __init__(self,):
         pass
 
     def getFilenames(self,):
@@ -262,38 +325,96 @@ class FastqToDatabseConverter(object):
 
     def readPairGenerator(self,):
 
+	#
+	# imports
+	#
+	import gzip
+
         self.getFilenames()
         totalReadcount = 0
         currentRead = 0
+	grandTotal = 0
+
+	#
+	# get the grand total readcount in all files to be added to the database
+	#
+	for readcount, fastq1, fastq2 in self.infiles:
+	    grandTotal += readcount
+	SEAseqPipeLine.logfile.write('Going to add a grandTotal of '+str(grandTotal)+' reads to the database.\n')
 
         #
         # Loop through infiles
         #
-        for readcount, fastq1, fastq2 in self.infiles:
-            totalReadcount += readcount
-            
-            #
-            # Open the files
-            #
-            if fastq1.split('.')[-1] in ['gz','gzip']: file1 = gzip.open(fastq1)
-            else: file1 = open(fastq1,'r')
-            if fastq2.split('.')[-1] in ['gz','gzip']: file2 = gzip.open(fasstq2)
-            else: file2 = open(fastq2,'r')
-            
-            while not EOFError:
-                header1 = file1.readline()
-                header2 = file2.readline()
-                sequence1 = file1.readline()
-                sequence2 = file2.readline()
-                trash = file1.readline()
-                trash = file2.readline()
-                qual1 = file1.readline()
-                qual2 = file2.readline()
-                currentRead += 1
-                yield currentRead, header1, header2, sequence1, sequence2, qual1, qual2
+	progress = Progress(grandTotal, logfile=SEAseqPipeLine.logfile, mem=True)
+	with progress:
+	    for readcount, fastq1, fastq2 in self.infiles:
+		totalReadcount += readcount
+		
+		#
+		# Open the files
+		#
+		if fastq1.split('.')[-1] in ['gz','gzip']: file1 = gzip.open(fastq1)
+		else: file1 = open(fastq1,'r')
+		if fastq2.split('.')[-1] in ['gz','gzip']: file2 = gzip.open(fastq2)
+		else: file2 = open(fastq2,'r')
+		
+		while 'NOT EOFError':
+		    try:
+			header1 = file1.readline()
+			header2 = file2.readline()
+			sequence1 = file1.readline()
+			sequence2 = file2.readline()
+			trash = file1.readline()
+			trash = file2.readline()
+			qual1 = file1.readline()
+			qual2 = file2.readline()
+			if not header1: break
+			currentRead += 1
+			# data base has following info:
+			#    (id,header,sequence1,sequence2,quality1,quality2,barcodeSequence,clusterId,annotation,fromFastq)
+			progress.update()
+			barcodeSequence = None
+			clusterId = None
+			annotations = None
+			pair = ReadPair(currentRead, header1, header2, sequence1, sequence2, qual1, qual2,barcodeSequence,clusterId,annotations, fastq1)
+			yield pair#currentRead, header1, header2, sequence1, sequence2, qual1, qual2, fastq1
+		    except EOFError: break
+		assert totalReadcount == currentRead, 'Error while reading infiles: Read count after file '+fastq1+' is '+str(currentRead)+' should theoretically be '+str(totalReadcount)+'.\n'
+	SEAseqPipeLine.logfile.write(str(grandTotal)+' read pairs read from infiles.\n')
     
-    def run(self,): pass
+    def foreachReadPair(self, pair):
+	return pair
     
+    def run(self,): 
+	
+	SEAseqPipeLine.logfile.write('Adding reads to database table.\n')
+	filesAdded = {}
+	readsToAdd = []
+	currentLocation = 1
+	appendChunkSize = 100000
+	for pair in self.readPairGenerator():
+
+	    self.foreachReadPair(pair)
+
+	    readsToAdd.append(pair.databaseTuple)
+
+	    if fastq1 not in filesAdded:
+		SEAseqPipeLine.logfile.write('Starting with file '+fastq1+'.\n')
+		filesAdded[fastq1] = True
+
+	    if len(readsToAdd) >= appendChunkSize:
+		SEAseqPipeLine.logfile.write('Appending reads '+str(currentLocation)+'-'+str(currentLocation+appendChunkSize-1)+' to db.\n')
+		currentLocation += appendChunkSize
+		SEAseqPipeLine.database.addReads(readsToAdd)
+		SEAseqPipeLine.logfile.write('Reads '+str(currentLocation)+'-'+str(currentLocation+appendChunkSize-1)+' done.\n')
+		readsToAdd = []
+
+	SEAseqPipeLine.logfile.write('Appending reads '+str(currentLocation)+'-'+str(currentLocation+len(readsToAdd))+' to db.\n')
+	SEAseqPipeLine.database.addReads(readsToAdd)
+	SEAseqPipeLine.logfile.write('Files '+', '.join([key for key in filesAdded.keys()])+' added sucesfully to the database.\n')
+	
+	return 0
+
 class SEAseqPipeLine(object):
     
     def __init__(self):
@@ -309,7 +430,7 @@ class SEAseqPipeLine(object):
         #
         # Declare variables and set standard default values
         #
-        self.database = None
+        SEAseqPipeLine.database = None
         self.analysisPath = None
         self.command = None
         self.commandLine = None
@@ -350,7 +471,7 @@ class SEAseqPipeLine(object):
         #
         # Set the database path
         #
-        self.database = Database(self.analysisPath+'/dataSettingsAndResults.db')
+        SEAseqPipeLine.database = Database(self.analysisPath+'/dataSettingsAndResults.db')
 
         #
         # call current command
@@ -380,7 +501,7 @@ class SEAseqPipeLine(object):
         #
         # Add run to runs table and open connection to logfile
         #
-        self.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, False, MASTER)
+        SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, False, MASTER)
         self.openLogfileConnection()
         SEAseqPipeLine.logfile.write(self.createLogHeader())
         
@@ -390,13 +511,13 @@ class SEAseqPipeLine(object):
         SEAseqPipeLine.logfile.write('Writing commandLog to standard out.\n')
         print 'Getting runs performed with the following commands '+', '.join(runTypes[:-1])+' or '+runTypes[-1]+'.'
         print '# StartTime:                    \tFinished:\tCommand:'
-        for startTime, command, commandLine, finishedSuccessfully, masterPid in self.database.getRuns(runTypes):
+        for startTime, command, commandLine, finishedSuccessfully, masterPid in SEAseqPipeLine.database.getRuns(runTypes):
             print str(startTime)+' \t'+str(bool(finishedSuccessfully))+'      \t'+str(commandLine)
         
         #
         # update runs table
         #
-        self.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, True, MASTER)
+        SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, True, MASTER)
         
         SEAseqPipeLine.logfile.write('Finished exiting.\n')
     
@@ -448,12 +569,12 @@ class SEAseqPipeLine(object):
         #
         # create the database
         #
-        self.database.create()
+        SEAseqPipeLine.database.create()
         
         #
         # add run to runs table
         #
-        self.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, True, MASTER)
+        SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, True, MASTER)
         
         return 0
     
@@ -467,25 +588,79 @@ class SEAseqPipeLine(object):
         #
         # Add run to runs table and open connection to logfile
         #
-        self.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, False, MASTER)
+        SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, False, MASTER)
         self.openLogfileConnection()
         SEAseqPipeLine.logfile.write(self.createLogHeader())
 
-        self.database.addFastqs(self.fastq1,self.fastq2)
+	#
+	# Add the fastq files to the database list of infiles
+	#
+        SEAseqPipeLine.database.addFastqs(self.fastq1,self.fastq2)
 
         #
         # update runs table
         #
-        self.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, True, MASTER)
+        SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, True, MASTER)
         
         SEAseqPipeLine.logfile.write('Finished exiting.\n')
     
     def changeSettings(self,):
         print 'Not Implemented'
-    
+
+    def clusterBarcodeSequences(self):
+	print 'The clusterBarcodeSequences is not yet implemented!'
+
+    def readFastqs(self,):
+	#
+	# Add the reads from fastq files to the database reads table
+	#
+	converter = FastqToDatabseConverter()
+	converter.run()
+
     def startAnalysis(self,):
-        print 'Not Implemented'
+
+	#
+	# Imports
+	#
+	import time
+
+	#
+        # get optional arguments from commandline
+        #
+        self.getComandLineOptions()
+
+        #
+        # Add run to runs table and open connection to logfile
+        #
+        SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, False, MASTER)
+        self.openLogfileConnection()
+        SEAseqPipeLine.logfile.write(self.createLogHeader())
+
+	#
+	# check parts to run and start them
+	#
+	for part in SEAseqPipeLine.settings.analysisParts: assert part in ['all','readFastqs','clusterBarcodeSequences'], 'Error: part '+part+' is not a valid option.\n'
+	
+	if 'all' in SEAseqPipeLine.settings.analysisParts or 'readFastqs' in SEAseqPipeLine.settings.analysisParts:
+	    readFastqsStartTime = time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())
+	    #SEAseqPipeLine.database.addToRunsTable(readFastqsStartTime, self.command+' part:readFastqs', self.commandLine, False, MASTER)
+	    self.readFastqs()
+	    #SEAseqPipeLine.database.addToRunsTable(readFastqsStartTime, self.command+' part:readFastqs', self.commandLine, True, MASTER)
+	    
+	if 'all' in SEAseqPipeLine.settings.analysisParts or 'clusterBarcodeSequences' in SEAseqPipeLine.settings.analysisParts:
+	    #SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command+' part:clusterBarcodeSequences', self.commandLine, True, MASTER)
+	    clusterBarcodeSequencesStartTime = time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())
+	    #SEAseqPipeLine.database.addToRunsTable(clusterBarcodeSequencesStartTime, self.command+' part:clusterBarcodeSequences', self.commandLine, False, MASTER)
+	    self.clusterBarcodeSequences()
+	    #SEAseqPipeLine.database.addToRunsTable(clusterBarcodeSequencesStartTime, self.command+' part:clusterBarcodeSequences', self.commandLine, True, MASTER)
+
+        #
+        # update runs table
+        #
+        SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, True, MASTER)
         
+        SEAseqPipeLine.logfile.write('Finished exiting.\n')        
+
     def openLogfileConnection(self,):
         """ open a connection to the logfile, creates a logfile if none is present """
         
@@ -580,6 +755,7 @@ class SEAseqPipeLine(object):
         if self.command == 'initiateAnalysis': prog = 'SEAseq2 initiateAnalysis <path> <type>'
         if self.command == 'commandLog': prog = 'SEAseq2 commandLog <path>'
         if self.command == 'addData': prog = 'SEAseq2 addData <path>'
+	if self.command == 'startAnalysis': prog = 'SEAseq2 startAnalysis <path> <part>'
         argparser = argparse.ArgumentParser(prog=prog, description='', epilog='Use: "SEAseq2 help" to get more detailed help.', formatter_class=argparse.RawTextHelpFormatter)
     
         # All programs
@@ -598,9 +774,11 @@ class SEAseqPipeLine(object):
             try: indata = argparser.parse_args(self.commandLineList[4:])
             except IndexError: pass
 
-        if self.command == 'changeSettings': pass
+        if self.command == 'changeSettings':
+	    argparser.add_argument('-bm', dest='barcodeMissmatch', metavar='N',	type=int, required=False, default=1,help='The number of processes to run in parallel (default 1).')
     
         if self.command == 'startAnalysis':
+	    argparser.add_argument('parts', metavar='<part>', type=str, nargs='+', help='parts of the analysis to perform')
             if self.onUppmax:
                 argparser.add_argument('-prj','-project',dest='project',metavar='<b20xxxxx>',	type=str,	required=False,	default='b2014005',	help='uppmaxproject (default b2011011)')
                 #argparser.add_argument('--send',	dest='send', 	action='store_true', 			required=False,	default=False,	help='Send sbatch scripts to job-queue.')
@@ -609,6 +787,7 @@ class SEAseqPipeLine(object):
             try:
                 indata = argparser.parse_args(self.commandLineList[3:])
                 SEAseqPipeLine.settings.uppmaxProject = indata.project
+		SEAseqPipeLine.settings.analysisParts = indata.parts
             except IndexError: pass
             
         if self.command == 'addData':
@@ -621,7 +800,7 @@ class SEAseqPipeLine(object):
             except IndexError: pass
             
         SEAseqPipeLine.settings.debug = indata.debug
-        SEAseqPipeLine.settings.parallelProcesses = indata.p
+        SEAseqPipeLine.settings.parallelProcesses = indata.cpus
 
     def createLogHeader(self,):
         """ creates the header lines for each new logfile entry """
@@ -651,6 +830,50 @@ class SEAseqPipeLine(object):
         if self.onUppmax: output += 'Program is run on uppmax, any temporary files will be placed in '+commands.getoutput('echo $SNIC_TMP')+' .\n'
         
         return output
+
+class Progress():
+
+	def __init__(self,total, verb='full', logfile=sys.stderr, unit='read' ,mem=False, printint=0):
+		import time
+		self.total = total
+		self.current = 0
+		self.type = verb
+		self.logfile = logfile
+		self.ltime = time.time()
+		self.lcurrent = self.current
+		self.lpercentage = 0
+		if verb == 'full': self.printint = 5
+		elif verb == 'minimal':self.printint = 5
+		self.unit = unit
+		self.mem = mem
+		if printint: self.printint = printint
+
+	def __enter__(self):
+		if self.type == 'minimal': self.logfile.write('0%                 50%                 100%\n')
+		#                                              ....................................................................................
+
+	def update(self):
+		import time
+		self.current += 1
+		self.percentage = int(round(100*float(self.current)/self.total))
+		if self.percentage % self.printint == 0 and self.percentage != self.lpercentage:
+			self.stf=int(round((self.total-self.current)/((self.current-self.lcurrent)/(time.time()-self.ltime))))
+			if self.type == 'full': self.logfile.write(
+				'#Progress => '+str(self.percentage)+'%, '+
+				str( round((self.current-self.lcurrent)/(time.time()-self.ltime),2) )+' '+self.unit+'s/second, '+
+				time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+
+				', left: '+str(self.stf/60/60)+'h '+str(self.stf/60%60)+'min '+str(self.stf%60)+'s')
+			if self.mem:
+				import resource
+				self.logfile.write(', using '+str((resource.getrusage(resource.RUSAGE_SELF).ru_maxrss+resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)/1024)+' ('+str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024)+') MB.\n')
+			else:	self.logfile.write('\n')
+			if self.type == 'minimal': self.logfile.write('..')
+			self.ltime = time.time()
+			self.lcurrent = self.current
+			self.lpercentage = self.percentage
+
+	def __exit__(self, *args):
+		self.logfile.write('\n')
 
 
 
