@@ -682,6 +682,7 @@ class Configuration():
 	self.trimmingRead2	= None
 	self.minReadCountPerBead= None
 	self.minReadCountPerConsensus= None
+	self.minPercentagePerConsensus=None
 	self.minReadPopSupportConsensus=None
 	self.minConsensusClusteringIdentity=None
 	self.primerset		= None
@@ -843,6 +844,7 @@ class Configuration():
 		'trimmingRead2'+			'\t'	+str(self.trimmingRead2)+	'\t'+	'# Number of bases to trim from read 2 during sorting (and in all downstream steps)'+	'\n'+
 
 		'#\n# SETTINGS FOR CLUSTERING OF READS TO CONSENSUS SEQUENCES AND AMPLICONS:\n#\n'+
+		'minPercentagePerConsensus'+		'\t'	+str(self.minPercentagePerConsensus)+	'\t'+	'# minimum percentage of cluster total reads needed for a consensus sequence to be considered as a variant of an amplicon'+	'\n'+
 		'minReadCountPerConsensus'+		'\t'	+str(self.minReadCountPerConsensus)+	'\t'+	'# minimum number of reads needed for a consensus sequence to be considered as a variant of an amplicon'+	'\n'+
 		'minReadPopSupportConsensus'+		'\t'	+str(self.minReadPopSupportConsensus)+	'\t'+	'# minimum %support of read pop needed for a consensus sequence to be considered as a variant of an amplicon'+	'\n'+
 		'minConsensusClusteringIdentity'+	'\t'	+str(self.minConsensusClusteringIdentity)+'\t'+	'# minimum identity for two reads to cluster as one consensus sequence'+	'\n')
@@ -1926,7 +1928,7 @@ class Amplicon(object):
 		
 		self.allels = sortedAlleles
 			
-	def checkmono(self, config):
+	def checkmono(self, config,clusterTotalReads):
 		output = ''
 		output += '\t'+self.type+' '+str(self.readcount)+' reads in total.\n'
 		self.allelecount = 0
@@ -1936,12 +1938,16 @@ class Amplicon(object):
 		
 		mostRepresentedConsensus = self.allels[0]
 		allowedAllelLevelVariation = config.allowedAllelLevelVariation #0.6 = 60% variation ie second allele most have readcount >= 40% of "mostRepresentedConsensus" allele readcount
+		percentOfTotalIs = 0
+		if config.minPercentagePerConsensus: percentOfTotalIs = round( (float(config.minPercentagePerConsensus) /100 ) * clusterTotalReads,2)
+		#output+= '\npercentOfTotalIs='+str(percentOfTotalIs)+'\nconfig.minPercentagePerConsensus='+str(config.minPercentagePerConsensus)+'\n'
 		
 		for consensus in self.allels:
 			consensus.percentagesupport = 100*float(consensus.readcount)/float(self.readcount)
+			consensus.percentagesupport2 = 100*float(consensus.readcount)/float(clusterTotalReads)
 			if consensus.readcount > 1 and consensus.percentagesupport > 1:
-				output += '\t\tConsensus '+consensus.id+' supported by '+str(round(consensus.percentagesupport,2))+'% of readpop ('+str(consensus.readcount)+' reads)\t'+str(round(100*float(consensus.readcount)/float(mostRepresentedConsensus.readcount),0))+'%\t'+consensus.sequence.seq+'\n'
-			if consensus.readcount >= config.minReadCountPerConsensus:
+				output += '\t\tConsensus '+consensus.id+' supported by '+str(round(consensus.percentagesupport,2))+'% of readpop ('+str(consensus.readcount)+' reads)\t'+str(round(100*float(consensus.readcount)/float(mostRepresentedConsensus.readcount),1))+'%\t'+str(round(consensus.percentagesupport2,1))+'%\t'+consensus.sequence.seq+'\n'
+			if consensus.readcount >= config.minReadCountPerConsensus and float(consensus.readcount) >= percentOfTotalIs:
 				if  consensus.percentagesupport >= config.minReadPopSupportConsensus:
 					if allowedAllelLevelVariation:
 						if (float(consensus.readcount)/float(mostRepresentedConsensus.readcount)) >= (1.0-allowedAllelLevelVariation):

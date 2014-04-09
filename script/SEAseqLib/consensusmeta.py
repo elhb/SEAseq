@@ -251,7 +251,7 @@ def foreachcluster_meta(cluster_pairs):
             for amplicon in cluster.amplicons.values():
                 for consensus in amplicon.allels: aligmnmentsOut += consensus.alignmentoutput(config)
     
-            for amplicon in cluster.amplicons.values(): perAmpOut += amplicon.checkmono(config)
+            for amplicon in cluster.amplicons.values(): perAmpOut += amplicon.checkmono(config,cluster.readcount)
             cluster.getDefinedAmplicons()
             
             cluster.removetempfiles(config, indata)
@@ -259,9 +259,9 @@ def foreachcluster_meta(cluster_pairs):
         output += 'There are '+str(cluster.adaptercount)+' illumina adapter reads.\n'
 	output += 'There are '+str(cluster.primererrors)+' primer missmatch reads.\n'
         if cluster.ampliconpairs == 0:
-            output += '0 amplicon(s) have enough data (>=1 cons with >= '+str(config.minReadPopSupportConsensus)+'% support and >= '+str(config.minReadCountPerConsensus)+' reads)\n'
+            output += '0 amplicon(s) have enough data (>=1 cons with >= '+str(config.minReadPopSupportConsensus)+'% of readpop support, '+str(config.minPercentagePerConsensus)+'% of cluster total readcount and >= '+str(config.minReadCountPerConsensus)+' reads)\n'
         if cluster.ampliconpairs > 0:
-            output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(config.minReadPopSupportConsensus)+'% support and >= '+str(config.minReadCountPerConsensus)+' reads):\n'
+            output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(config.minReadPopSupportConsensus)+'% of readpop support, '+str(config.minPercentagePerConsensus)+'% of cluster total readcount and >= '+str(config.minReadCountPerConsensus)+' reads)\n'
         output += perAmpOut + '\n'
         output += '# Details:\n'
         output += '# Alignemnts:\n'

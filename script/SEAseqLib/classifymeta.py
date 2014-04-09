@@ -377,7 +377,7 @@ def foreachCluster(tmp):
 
     # get the cluster and per amplicon information and append it to output
     perAmpOut = ''
-    for amplicon in cluster.amplicons.values(): perAmpOut += amplicon.checkmono(config)
+    for amplicon in cluster.amplicons.values(): perAmpOut += amplicon.checkmono(config,cluster.readcount)
     output += 'There are '+str(cluster.adaptercount)+' illumina adapter reads.\n'
     output += 'There are '+str(cluster.primererrors)+' primer missmatch reads.\n'
     output += 'There are '+str(cluster.readcount-cluster.primererrors-cluster.adaptercount)+' "good reads".\n'
