@@ -145,6 +145,7 @@ class ReadPair(object):
 		
 		if dist < mindist[0]: mindist =[dist,i]
 
+	    # this is a comment
 	    if mindist[0] < int(maxDistance)+1:
 		startPosition = mindist[1]
 		endPosition = mindist[1]+len(matchsequence)
