@@ -94,7 +94,6 @@ def levenshtein(s1, s2):
 		previous_row = current_row
 	return previous_row[-1]
 
-
 #############
 #  Classes  #
 #############
@@ -122,7 +121,7 @@ class ReadPair(object):
 	# Dumping the quality values
 	return  (self.id,     self.r1Header,self.r1Seq,self.r2Seq,None,None,   self.barcodeSeq,None,     self.annotations,self.fileOrigin)
 
-    def matchSequence(self, read, sequence, maxDistance, matchfunk=hamming_distance):
+    def matchSequence(self, readsequence, matchsequence, maxDistance, matchfunk=hamming_distance):
 	    
 	import re
 	#matchfunk = hamming_distance
@@ -130,7 +129,7 @@ class ReadPair(object):
 	startPosition = None
 	endPosition   = None
 
-	perfect_match = re.search(sequence, read)
+	perfect_match = re.search(matchsequence, readsequence)
 	if perfect_match:
 	    startPosition = perfect_match.start()
 	    endPosition = perfect_match.end()
@@ -138,17 +137,17 @@ class ReadPair(object):
 	
 	elif maxDistance:
 		mindist = [10000,-1]
-		for i in range(len(read)):
+		for i in range(len(readsequence)):
 		    
-			if i+len(sequence) <= len(read):
-				dist = matchfunk(sequence,read[i:i+len(sequence)])
+			if i+len(matchsequence) <= len(readsequence):
+				dist = matchfunk(matchsequence,readsequence[i:i+len(matchsequence)])
 			else: dist = 1000
 			
 			if dist < mindist[0]: mindist =[dist,i]
 
 		if mindist[0] < maxDistance:
 			startPosition = i
-			endPosition = i+len(sequence)
+			endPosition = i+len(matchsequence)
 			missmatches = mindist[0]
 		else:
 			startPosition = None
@@ -160,7 +159,13 @@ class ReadPair(object):
 	pass
 
     def identifyBarcode(self, ):
-	pass
+
+	handleStartPosition,handleEndPosition,handleMissMatches = matchSequence(self.r1Seq, SEAseqPipeLine.settings.handleSequence, SEAseqPipeLine.settings.maxHandleMissMatches)
+	if handleStartPosition == SEAseqPipeLine.settings.barcodeLength:
+	    self.barcodeSeq = self.r1Seq[:SEAseqPipeLine.settings.barcodeLength]
+	    self.annotations['handleMissMatches'] = handleMissMatches
+	elif handleStartPosition == None: self.annotations['handleNotFound'] = True
+	else: self.annotations['ErronousHandlePosition'] = True
 
     def identifyPrimerPair(self,):
 	pass
@@ -349,26 +354,116 @@ class Settings(object,):
     
     def __init__(self, ):
         """ object holding the settings used for each part of the analysis """
+	
 	self.defaultValues = {
 	    'debug':False,
 	    'uppmaxProject':'b2014005',
 	    'parallelProcesses':16,
-	    'mode':'RAC'
+	    'mode':'RAC',
+	    'handleSequence':'CTAAGTCCATCCGCACTCCT',
+	    'maxHandleMissMatches':1,
+	    'barcodeLength':15
 	}
 	self.explenations = {
 	    'debug':'Flag for running the scripts in multiprocessing or as single process run [True/False] (default=False)',
 	    'uppmaxProject':'Project id used at uppmax for sbatch scripts [bXXXXXXX] (deault=b2014005)',
 	    'parallelProcesses':'Number of process to run when doing multiprocess parts of analysis (defaul=16)',
-	    'mode':'Type of analysis either Whole Fragment Analysis (WFA) or rRNA Amplicon Classification (RAC) [WFA/RAC] (default=RAC)'
+	    'mode':'Type of analysis either Whole Fragment Analysis (WFA) or rRNA Amplicon Classification (RAC) [WFA/RAC] (default=RAC)',
+	    'handleSequence':'The sequence that sepperate the barcode from the "specific" read sequence',
+	    'barcodeLength':'The length of the bead barcode'
 	}
+	self.isDefault = {}
+	self.setTime = {}
+
+	self.debug = None
+	self.uppmaxProject = None
+	self.parallelProcesses = None
+	self.mode = None
+	self.handleSequence = None
+	self.maxHandleMissMatches = None
+	self.barcodeLength = None
+	
+	self.setDefaults()
 
     def setDefaults(self,):
-	for variableName, value in self.defaultValues.iteritems(): self.__dict__[variableName] = value
+	for variableName, value in self.defaultValues.iteritems():
+	    self.__dict__[variableName] = value
+	    self.isDefault[variableName] = True
+	    self.setTime = None
+	return 0
 
-    def loadFromDb(self,): pass
-    
-    def saveToDb(self,): pass
-    
+    def loadFromDb(self,):
+	
+	#
+	# Get the connection
+	#
+	SEAseqPipeLine.database.getConnection()
+	
+	#
+	# Select data
+	#
+	data = SEAseqPipeLine.database.c.execute('SELECT variableName,default,value,setTime FROM settings').fetchall()
+	
+	#
+	# Parse data and add to object __dict__
+	#
+	if data:
+	    for variableName,default,value,setTime in data:
+		self.__dict__[variableName]  = value
+		self.isDefault[variableName] = default
+		self.setTime[variableName]   = setTime
+	
+	#
+	# close connection
+	#
+	SEAseqPipeLine.database.commitAndClose()
+
+    def setVariable(variableName,Value):
+	import time
+	assert variableName in self.explenations,'Error: you are trying to set an undefined variable.\n'
+	self.__dict__[variableName]  = value
+	self.isDefault[variableName] = False
+	self.setTime[variableName]   = time.time()
+	return 0
+
+    def saveToDb(self,):
+	
+	#
+	# imports
+	#
+	import time
+	
+	#
+	# get connection
+	#
+	SEAseqPipeLine.database.getConnection()
+	
+        #
+        # Look whats already in database, update it if older or default and set what is not
+        #
+        alreadyInDb = {}
+	data = SEAseqPipeLine.database.c.execute('SELECT variableName,default,value,setTime FROM settings').fetchall()
+        if data:
+            for variableName,default,value,setTime in data:
+		
+		alreadyInDb[variableName] = True
+		
+		if variableName in self.__dict__:
+		    if default and not self.isDefault[variableName] or setTime < self.setTime[variableName]:
+			SEAseqPipeLine.database.c.execute('UPDATE settings SET default=?, value=?, setTime=? WHERE variableName=?', (self.isDefault[variableName],self.__dict__[variableName],self.setTime[variableName],variableName))
+        
+        #
+        # 
+        #
+        for variableName in self.__dict__:
+	    if variableName not in alreadyInDb:
+		values = (variableName,self.isDefault[variableName],self.__dict__[variableName],self.setTime[variableName])
+		SEAseqPipeLine.database.c.execute('INSERT INTO settings VALUES (?,?,?,?)', values)
+        
+        SEAseqPipeLine.database.commitAndClose()
+        
+        return 0
+
 class FastqToDatabseConverter(object):
     """ reads fastq files (read one and two) and identifies the coordinates for the Barcode sequence etc and adds the data to the database """
     
@@ -438,6 +533,9 @@ class FastqToDatabseConverter(object):
 	SEAseqPipeLine.logfile.write(str(grandTotal)+' read pairs read from infiles.\n')
     
     def foreachReadPair(self, pair):
+	
+	pair.identifyBarcode()
+	
 	return pair
     
     def run(self,): 
@@ -527,7 +625,7 @@ class SEAseqPipeLine(object):
         self.command = None
         self.commandLine = None
         self.commandLineList = None
-        SEAseqPipeLine.settings = Settings()
+        SEAseqPipeLine.settings = None
         SEAseqPipeLine.logfile = None
         SEAseqPipeLine.startTime = time.time()
         SEAseqPipeLine.startTimeStr = time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())
@@ -561,9 +659,10 @@ class SEAseqPipeLine(object):
         import sys
         
         #
-        # Set the database path
+        # Set the database path and create the settings object
         #
         SEAseqPipeLine.database = Database(self.analysisPath+'/dataSettingsAndResults.db')
+	SEAseqPipeLine.settings = Settings()
 
         #
         # call current command
@@ -697,7 +796,25 @@ class SEAseqPipeLine(object):
         SEAseqPipeLine.logfile.write('Finished exiting.\n')
     
     def changeSettings(self,):
-        print 'Not Implemented'
+        print 'Under development ...'
+	#
+        # get optional arguments from commandline
+        #
+        self.getComandLineOptions()
+
+        #
+        # Add run to runs table and open connection to logfile
+        #
+        SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, False, MASTER)
+        self.openLogfileConnection()
+        SEAseqPipeLine.logfile.write(self.createLogHeader())
+
+        #
+        # update runs table
+        #
+        SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, True, MASTER)
+        
+        SEAseqPipeLine.logfile.write('Finished exiting.\n')        
 
     def clusterBarcodeSequences(self):
 	print 'The clusterBarcodeSequences is not yet implemented!'
@@ -867,7 +984,11 @@ class SEAseqPipeLine(object):
             except IndexError: pass
 
         if self.command == 'changeSettings':
-	    argparser.add_argument('-bm', dest='barcodeMissmatch', metavar='N',	type=int, required=False, default=1,help='The number of processes to run in parallel (default 1).')
+	    argparser.add_argument('-bm', dest='barcodeMissmatch', metavar='N',	type=int, required=False, default=0,help='The number of missmatches allowed in the bead barcode sequence (default 0).')
+	    try:
+                indata = argparser.parse_args(self.commandLineList[3:])
+		SEAseqPipeLine.settings.setVariable('barcodeMissmatch',indata.barcodeMissmatch)
+	    except IndexError: pass
     
         if self.command == 'startAnalysis':
 	    argparser.add_argument('parts', metavar='<part>', type=str, nargs='+', help='parts of the analysis to perform')
@@ -878,8 +999,8 @@ class SEAseqPipeLine(object):
                 #argparser.add_argument('--small',	dest='small', 	action='store_true', 			required=False,	default=False,	help='make for smaller dataset job-queue.')
             try:
                 indata = argparser.parse_args(self.commandLineList[3:])
-                SEAseqPipeLine.settings.uppmaxProject = indata.project
-		SEAseqPipeLine.settings.analysisParts = indata.parts
+                SEAseqPipeLine.settings.setVariable('uppmaxProject',indata.project)
+		SEAseqPipeLine.settings.setVariable('analysisParts',indata.parts)
             except IndexError: pass
             
         if self.command == 'addData':
@@ -891,8 +1012,8 @@ class SEAseqPipeLine(object):
                 self.fastq2 = os.path.abspath(indata.fastq2.name)
             except IndexError: pass
             
-        SEAseqPipeLine.settings.debug = indata.debug
-        SEAseqPipeLine.settings.parallelProcesses = indata.cpus
+        SEAseqPipeLine.settings.setVariable('debug',indata.debug)
+        SEAseqPipeLine.settings.setVariable('parallelProcesses',indata.cpus)
 
     def createLogHeader(self,):
         """ creates the header lines for each new logfile entry """
@@ -966,8 +1087,6 @@ class Progress():
 
 	def __exit__(self, *args):
 		self.logfile.write('\n')
-
-
 
 ##############################
 #  Check if run or imported  #
