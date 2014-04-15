@@ -119,15 +119,16 @@ class ReadPair(object):
 	#       (id,          header,  sequence1, sequence2, quality1,quality2,barcodeSequence,clusterId,annotation,fromFastq)
 	
 	# Dumping the quality values
-	return  (self.id,     self.r1Header,self.r1Seq,self.r2Seq,None,None,   self.barcodeSeq,None,     self.annotations,self.fileOrigin)
+	return  (self.id,     self.r1Header,self.r1Seq,self.r2Seq,None,None,   self.barcodeSeq,None,     str(self.annotations),self.fileOrigin)
 
     def matchSequence(self, readsequence, matchsequence, maxDistance, matchfunk=hamming_distance):
-	    
+	
 	import re
 	#matchfunk = hamming_distance
 
 	startPosition = None
 	endPosition   = None
+	missmatches   = None
 
 	perfect_match = re.search(matchsequence, readsequence)
 	if perfect_match:
@@ -135,23 +136,23 @@ class ReadPair(object):
 	    endPosition = perfect_match.end()
 	    missmatches = 0
 	
-	elif maxDistance:
-		mindist = [10000,-1]
-		for i in range(len(readsequence)):
-		    
-			if i+len(matchsequence) <= len(readsequence):
-				dist = matchfunk(matchsequence,readsequence[i:i+len(matchsequence)])
-			else: dist = 1000
-			
-			if dist < mindist[0]: mindist =[dist,i]
+	elif int(maxDistance):
+	    mindist = [10000,-1]
+	    for i in range(len(readsequence)):
+		
+		if i+len(matchsequence) <= len(readsequence): dist = matchfunk(matchsequence,readsequence[i:i+len(matchsequence)])
+		else: dist = 10001
+		
+		if dist < mindist[0]: mindist =[dist,i]
 
-		if mindist[0] < maxDistance:
-			startPosition = i
-			endPosition = i+len(matchsequence)
-			missmatches = mindist[0]
-		else:
-			startPosition = None
-			endPosition = None
+	    if mindist[0] < int(maxDistance)+1:
+		startPosition = mindist[1]
+		endPosition = mindist[1]+len(matchsequence)
+		missmatches = mindist[0]
+	    else:
+		startPosition = None
+		endPosition = None
+		missmatches = None
 
 	return [startPosition,endPosition,missmatches]
 
@@ -160,12 +161,12 @@ class ReadPair(object):
 
     def identifyBarcode(self, ):
 
-	handleStartPosition,handleEndPosition,handleMissMatches = matchSequence(self.r1Seq, SEAseqPipeLine.settings.handleSequence, SEAseqPipeLine.settings.maxHandleMissMatches)
+	handleStartPosition,handleEndPosition,handleMissMatches = self.matchSequence(self.r1Seq, SEAseqPipeLine.settings.handleSequence, SEAseqPipeLine.settings.maxHandleMissMatches)
 	if handleStartPosition == SEAseqPipeLine.settings.barcodeLength:
 	    self.barcodeSeq = self.r1Seq[:SEAseqPipeLine.settings.barcodeLength]
 	    self.annotations['handleMissMatches'] = handleMissMatches
 	elif handleStartPosition == None: self.annotations['handleNotFound'] = True
-	else: self.annotations['ErronousHandlePosition'] = True
+	else: self.annotations['ErronousHandlePosition'] = handleStartPosition
 
     def identifyPrimerPair(self,):
 	pass
@@ -203,19 +204,19 @@ class Database(object):
         self.conn.close()
     
     def create(self,):
-        """ creates the database holding all information used in the analysis """
-
-        self.getConnection()
-
-        #
-        # Create tables
-        #
-        self.c.execute('''CREATE TABLE reads (id,header,sequence1,sequence2,quality1,quality2,barcodeSequence,clusterId,annotation,fromFastq,PRIMARY KEY (clusterId))''')
-        self.c.execute('''CREATE TABLE runs (startTime,command,commandLine,finishedSuccessfully,masterPid)''')
-        self.c.execute('''CREATE TABLE fastqs (filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength,PRIMARY KEY (filePairId))''')
-	self.c.execute('''CREATE TABLE settings (variableName,default,value,setTime,PRIMARY KEY (variableName))''')
-
-        self.commitAndClose()
+	""" creates the database holding all information used in the analysis """
+	
+	self.getConnection()
+	
+	#
+	# Create tables
+	#
+	self.c.execute('''CREATE TABLE reads (id,header,sequence1,sequence2,quality1,quality2,barcodeSequence,clusterId,annotation,fromFastq,PRIMARY KEY (clusterId))''')
+	self.c.execute('''CREATE TABLE runs (startTime,command,commandLine,finishedSuccessfully,masterPid)''')
+	self.c.execute('''CREATE TABLE fastqs (filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength,PRIMARY KEY (filePairId))''');
+	self.c.execute('''CREATE TABLE settings (variableName,defaultValue,value,setTime,PRIMARY KEY (variableName))''')
+	
+	self.commitAndClose()
 
     def addToRunsTable(self, startTime, command, commandLine, finishedSuccessfully, masterPid):
         
@@ -362,7 +363,8 @@ class Settings(object,):
 	    'mode':'RAC',
 	    'handleSequence':'CTAAGTCCATCCGCACTCCT',
 	    'maxHandleMissMatches':1,
-	    'barcodeLength':15
+	    'barcodeLength':15,
+	    'analysisParts':None
 	}
 	self.explenations = {
 	    'debug':'Flag for running the scripts in multiprocessing or as single process run [True/False] (default=False)',
@@ -370,7 +372,8 @@ class Settings(object,):
 	    'parallelProcesses':'Number of process to run when doing multiprocess parts of analysis (defaul=16)',
 	    'mode':'Type of analysis either Whole Fragment Analysis (WFA) or rRNA Amplicon Classification (RAC) [WFA/RAC] (default=RAC)',
 	    'handleSequence':'The sequence that sepperate the barcode from the "specific" read sequence',
-	    'barcodeLength':'The length of the bead barcode'
+	    'barcodeLength':'The length of the bead barcode',
+	    'analysisParts':'Parts of the analysis to run specific for each run.'
 	}
 	self.isDefault = {}
 	self.setTime = {}
@@ -382,6 +385,7 @@ class Settings(object,):
 	self.handleSequence = None
 	self.maxHandleMissMatches = None
 	self.barcodeLength = None
+	self.analysisParts = None
 	
 	self.setDefaults()
 
@@ -402,7 +406,7 @@ class Settings(object,):
 	#
 	# Select data
 	#
-	data = SEAseqPipeLine.database.c.execute('SELECT variableName,default,value,setTime FROM settings').fetchall()
+	data = SEAseqPipeLine.database.c.execute('SELECT variableName,defaultValue,value,setTime FROM settings').fetchall()
 	
 	#
 	# Parse data and add to object __dict__
@@ -441,8 +445,9 @@ class Settings(object,):
         #
         # Look whats already in database, update it if older or default and set what is not
         #
+	SEAseqPipeLine.logfile.write('checking whats in db.\n')
         alreadyInDb = {}
-	data = SEAseqPipeLine.database.c.execute('SELECT variableName,default,value,setTime FROM settings').fetchall()
+	data = SEAseqPipeLine.database.c.execute('SELECT variableName,defaultValue,value,setTime FROM settings').fetchall()
         if data:
             for variableName,default,value,setTime in data:
 		
@@ -450,16 +455,23 @@ class Settings(object,):
 		
 		if variableName in self.__dict__:
 		    if default and not self.isDefault[variableName] or setTime < self.setTime[variableName]:
-			SEAseqPipeLine.database.c.execute('UPDATE settings SET default=?, value=?, setTime=? WHERE variableName=?', (self.isDefault[variableName],self.__dict__[variableName],self.setTime[variableName],variableName))
+			SEAseqPipeLine.database.c.execute('UPDATE settings SET defaultValue=?, value=?, setTime=? WHERE variableName=?', (self.isDefault[variableName],self.__dict__[variableName],self.setTime[variableName],variableName))
         
         #
-        # 
+        # Add new vars to database
         #
+	SEAseqPipeLine.logfile.write('adding new vars to db.\n')
         for variableName in self.__dict__:
+	    if variableName in ['explenations','defaultValues','isDefault','setTime']:continue
+	    SEAseqPipeLine.logfile.write('processing variable '+variableName+'.\n')
 	    if variableName not in alreadyInDb:
+		if type(self.__dict__[variableName]) in [dict,list]: self.__dict__[variableName] = str(self.__dict__[variableName])
 		values = (variableName,self.isDefault[variableName],self.__dict__[variableName],self.setTime[variableName])
 		SEAseqPipeLine.database.c.execute('INSERT INTO settings VALUES (?,?,?,?)', values)
+		SEAseqPipeLine.logfile.write('variable '+variableName+' added to db.\n')
+	    else: SEAseqPipeLine.logfile.write('variable '+variableName+' already in db.\n')
         
+	SEAseqPipeLine.logfile.write('commiting changes to database.\n')
         SEAseqPipeLine.database.commitAndClose()
         
         return 0
@@ -525,7 +537,7 @@ class FastqToDatabseConverter(object):
 			progress.update()
 			barcodeSequence = None
 			clusterId = None
-			annotations = None
+			annotations = {}
 			pair = ReadPair(currentRead, header1, header2, sequence1, sequence2, qual1, qual2,barcodeSequence,clusterId,annotations, fastq1)
 			yield pair#currentRead, header1, header2, sequence1, sequence2, qual1, qual2, fastq1
 		    except EOFError: break
@@ -673,7 +685,7 @@ class SEAseqPipeLine(object):
             #    print 'ERROR: the command "'+self.command+'" is not implemented yet try again in the future.'
             #    sys.exit(1)
         except KeyError:
-            print 'ERROR: command is not valid.\nAvialable commands are: '+', '.join(self.availableCommands.keys()[:-1])+' and '+self.availableCommands.keys()[-1]+'.\nUse: "SEAseq2 help" to get help\n'
+            print 'ERROR: command "'+self.command+'" is not valid.\nAvialable commands are: '+', '.join(self.availableCommands.keys()[:-1])+' and '+self.availableCommands.keys()[-1]+'.\nUse: "SEAseq2 help" to get help\n'
             return 1
     
     def printHelp(self,):
@@ -825,6 +837,9 @@ class SEAseqPipeLine(object):
 	#
 	converter = FastqToDatabseConverter()
 	converter.run()
+	SEAseqPipeLine.logfile.write('Saving settings to database.\n')
+	SEAseqPipeLine.settings.saveToDb()
+	SEAseqPipeLine.logfile.write('readFastqs finished.\n')
 
     def startAnalysis(self,):
 
