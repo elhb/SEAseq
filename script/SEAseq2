@@ -389,7 +389,7 @@ class Settings(object,):
 	for variableName, value in self.defaultValues.iteritems():
 	    self.__dict__[variableName] = value
 	    self.isDefault[variableName] = True
-	    self.setTime = None
+	    self.setTime[variableName] = None
 	return 0
 
     def loadFromDb(self,):
@@ -418,7 +418,7 @@ class Settings(object,):
 	#
 	SEAseqPipeLine.database.commitAndClose()
 
-    def setVariable(variableName,Value):
+    def setVariable(self,variableName,value):
 	import time
 	assert variableName in self.explenations,'Error: you are trying to set an undefined variable.\n'
 	self.__dict__[variableName]  = value
