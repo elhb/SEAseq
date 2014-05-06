@@ -449,7 +449,7 @@ def clusterGenerator(config,indata):
     import sys
     if   os.path.exists(config.path+'/clusters.pickle'):    filename = config.path+'/clusters.pickle'
     elif os.path.exists(config.path+'/clusters.pickle.gz'): filename = config.path+'/clusters.pickle.gz'
-    else: config.logfile.write('Please run the "SEAseq meta" step first.\nNow exiting program.\n');sys.exit()
+    else: config.logfile.write('Please run the "SEAseq meta" step first.\nNow exiting program.\n');os.kill(MASTER);sys.exit()
     
     if indata.tempFileFolder and not indata.debug and indata.tempFileFolder != config.path:
         config.logfile.write('Copying pickle file to temporary location for fast access:\n ');
@@ -985,9 +985,9 @@ class readpair():
 				
 				if dist < mindist[0]: mindist =[dist,i]
 
-			if mindist[0] < config.maxHandleMissMatch:
-				handle_start = i
-				handle_end = i+len(handle.seq)
+			if mindist[0] < config.maxHandleMissMatch+1:
+				handle_start = mindist[1]
+				handle_end = mindist[1]+len(handle.seq)
 				self.missMatchesInTheHandle = mindist[0]
 			else:
 				handle_start = None
@@ -1561,6 +1561,7 @@ class BarcodeCluster(object):
 				self.consensuses[consensusid].readpairs[self.consensuses[consensusid].seedpairid].alignmentStr = tmpseq
 
 	def getDefinedAmplicons(self, ):
+		self.definedamplicons = {}
 		for amplicon in self.amplicons.values():
 			if amplicon.allelecount >= 1: self.definedamplicons[amplicon.type] = amplicon	
 

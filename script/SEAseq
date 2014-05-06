@@ -94,8 +94,10 @@ def getindata(cmd):
 	pass
     if cmd == 'clone':
 	argparser.add_argument('-clonePath',					dest='clonePath',			metavar='<path>',	type=str,	required=True,	default=False,	help='path to clone from.')
-	argparser.add_argument('--clusterAndSort',				dest='cloneClusterAndSort', 		action='store_true', 			required=False,	default=False,	help='clone cluster and sort steps (default False).')
-	argparser.add_argument('--meta',					dest='cloneMeta', 			action='store_true', 			required=False,	default=False,	help='clone cluster sort and meta steps (default False).')
+	argparser.add_argument('--clusterAndSort',				dest='cloneClusterAndSort', 		action='store_true', 			required=False,	default=True,	help='clone cluster and sort steps (default True).')
+	argparser.add_argument('--meta',					dest='cloneMeta', 			action='store_true', 			required=False,	default=True,	help='clone cluster sort and meta steps (default True).')
+    if cmd == 'classifymeta':
+	argparser.add_argument('--reFilter',					dest='reFilter', 			action='store_true', 			required=False,	default=False,	help='Dont do the clustering only redo filtering of cluster monoclonality with cutoffs from config file (default False).')
     if cmd == 'setVariables':
 	argparser.add_argument('--subSpecies',					dest='subSpecies', 			action='store_true', 			required=False,	default=False,	help='Show subspecies information or not (default False).')
 	argparser.add_argument('-j','-jobName',					dest='jobName',				metavar='<name>',	type=str,	required=False,	default='',	help='Name be able to identify sample, only 11first char will be visible for jobinfo (default "")')

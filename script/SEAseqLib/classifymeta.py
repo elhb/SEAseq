@@ -386,6 +386,11 @@ def foreachCluster(tmp):
     if cluster.ampliconpairs > 0:
         output += str(cluster.definedampliconcount)+' amplicon(s) have enough data (>=1 cons with >= '+str(config.minReadPopSupportConsensus)+'% support and >= '+str(config.minReadCountPerConsensus)+' reads):\n'
     output += perAmpOut + '\n'
+    
+    if indata.reFilter:
+        output += 'Skipping all classsification as reFilter=True.\n'
+        cluster.blastHits = 'No fasta produced.'
+        return [output, cluster, cPickle.dumps(cluster,-1)]
 
 ######### DO NOT BLAST AMPLICONS THAT ARE NOT MONOCLONAL FOR ALL DEFINED OR HAVE <= 1 DEFINED AMPLICON
     if cluster.definedampliconcount > 1:
