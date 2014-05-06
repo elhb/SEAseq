@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+
+#
+# imports
+#
 import os
 import sys
 import re
@@ -6,6 +10,9 @@ from time import time
 import argparse
 import multiprocessing
 
+#
+# Some constants
+#
 WELLS = {	'A1':	'TCTCTGTG',
 		'A2':	'TGTACGTG',
 		'A3':	'ATCGTCTG',
@@ -119,16 +126,18 @@ def main():
     argparser.add_argument('-mr',	dest='minread',metavar='N',	type=int,	required=False,default=0, help='Minimum number of reads to output barcode (default 0).')
     argparser.add_argument('-mp',	dest='minperc',metavar='N',	type=int,	required=False,default=0, help='Minimum percentage of reads in well to output barcode (default 0).')
     argparser.add_argument('-pdf',	dest='pdf',metavar='N',		type=str,	required=True,default='multipage.pdf', help='Name of output pdffile.')
+    argparser.add_argument('-wells',	dest='wells',metavar='N',		type=str,	required=False,default=False, help='list of wells to output eg A1:B3:C7.')
     indata = argparser.parse_args(sys.argv[1:])
 
-    #	AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT NNNNNNNNNNNNNNNNNNNN CTTGATCCTCTCTGAGCGCAGCGGGCG ---GV--- CAAGATAACGCGTGCTGGTT AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC --IH-- ATCTCGTATGCCGTCTTCTGCTTG
-    #	TTACTATGCCGCTGGTGGCTCTAGATGTGAGAAAGGGATGTGCTGCGAGAAGGCTAGA NNNNNNNNNNNNNNNNNNNN GAACTAGGAGAGACTCGCGTCGCCCGC ---CB--- GTTCTATTGCGCACGACCAA TCTAGCCTTCTCGTGTGCAGACTTGAGGTCAGTG --ID-- TAGAGCATACGGCAGAAGACGAAC
-
-    #define sequences
-    C = sequence('The C sequence','CTAAGTCCATCCGCACTCCT','####################')
-    TjH = sequence('The TjH sequence','CCATGTCATACACCGCCTTCAGAGC','####################')
-    DLA = sequence('The DLA primer sequence with spacer','CTTGATCCTCTCTGAGCGCAGCGGGCG','CTTGATCCTCTCTGAGCGCAGCGGGCG')
-    POSTRH = sequence('The postr primer handle','CAAGATAACGCGTGCTGGTT','CAAGATAACGCGTGCTGGTT')
+    # Define sequences:
+    #   FRAGMENT LAYOUT:                                           ----------------------------------------------------------------------------->
+    #	AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT NNNNNNNNNNNNNNNNNNNN CTTGATCCTCTCTGAGCGCAGCGGGCG ---BC--- CAAGATAACGCGTGCTGGTT AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC --ID-- ATCTCGTATGCCGTCTTCTGCTTG
+    #	TTACTATGCCGCTGGTGGCTCTAGATGTGAGAAAGGGATGTGCTGCGAGAAGGCTAGA NNNNNNNNNNNNNNNNNNNN GAACTAGGAGAGACTCGCGTCGCCCGC ---BC--- GTTCTATTGCGCACGACCAA TCTAGCCTTCTCGTGTGCAGACTTGAGGTCAGTG --ID-- TAGAGCATACGGCAGAAGACGAAC
+    #                                                              <-----------------------------------------------------------------------------
+    C = Sequence('The C sequence','CTAAGTCCATCCGCACTCCT','####################')
+    TjH = Sequence('The TjH sequence','CCATGTCATACACCGCCTTCAGAGC','####################')
+    DLA = Sequence('The DLA primer sequence with spacer','CTTGATCCTCTCTGAGCGCAGCGGGCG','CTTGATCCTCTCTGAGCGCAGCGGGCG')
+    POSTRH = Sequence('The postr primer handle','CAAGATAACGCGTGCTGGTT','CAAGATAACGCGTGCTGGTT')
     MOLBCLEN = 20
     WELLBCLEN = 8
     handle = DLA
@@ -136,63 +145,95 @@ def main():
     indata.POSTRH = POSTRH
     indata.MOLBCLEN = MOLBCLEN
     
+    # initiate counters etc
     uniqN20s = {}
     bothreadsmatch = {}
     handle_matches = 0
-
-    #WorkerPool = multiprocessing.Pool(multiprocessing.cpu_count(),maxtasksperchild=100)
-    #results = WorkerPool.imap_unordered(magicFunction,clusterGen(indata.reads1, indata.reads2,indata),chunksize=100)
-    #results = WorkerPool.imap(magicFunction,clusterGen(indata.reads1, indata.reads2,indata),chunksize=100)
-    
-    #for each read pair start
+    rc = 0
     wells = {}
     for well in WELLS: wells[well] = Well(well)
     wells['OTHER'] = Well('OTHER')
+    progress = Progress(bufcount(indata.reads1.name)/4)
 
+    # write to log:
     sys.stderr.write('cmd:'+' '.join(sys.argv)+'\n')
     sys.stderr.write('PART1: identification of barcodes and cluster to well classification\n')
-    rc = 0
-    progress = Progress(bufcount(indata.reads1.name)/4)
+
+    #for each read pair start
     with progress:
-	for [cluster,X] in clusterGen(indata.reads1, indata.reads2,indata):   
-	    cluster.findDLA(DLA,indata)
-	    cluster.findpostr(POSTRH,indata)
-	    cluster.getSeqs(MOLBCLEN,indata)
+	for [readPair,X] in ReadPairGen(indata.reads1, indata.reads2,indata):   
+
+	    # identify barcode sequences
+	    readPair.findDLA(DLA,indata)
+	    readPair.findpostr(POSTRH,indata)
+	    readPair.getSeqs(MOLBCLEN,indata)
 	   
-        #for cluster in results:
+	    #update the progress meter
 	    progress.update()
 	    
-	    try: wells[str(cluster.well)].add(cluster)
-	    except KeyError:wells['OTHER'].add(cluster)
-    
-	    if cluster.fwd.dla:
+	    # sort readpair to corresponding plate well
+	    try: wells[str(readPair.well)].add(readPair)
+	    except KeyError:wells['OTHER'].add(readPair)
+	    
+	    if readPair.fwd.dla: # check that the DLA handle is found
+		
 		# add to total counter of matches
 		handle_matches += 1
+		
 		# add to counter of uniq N20
-		try:	     uniqN20s[cluster.fwd.subseq(max(cluster.fwd.dla_start-MOLBCLEN,0),cluster.fwd.dla_start).seq] += 1
-		except KeyError: uniqN20s[cluster.fwd.subseq(max(cluster.fwd.dla_start-MOLBCLEN,0),cluster.fwd.dla_start).seq] = 1
-    
-		if cluster.fwd.subseq(max(cluster.fwd.dla_start-MOLBCLEN,0),cluster.fwd.dla_start).seq == cluster.rev.subseq(cluster.rev.dla_end,cluster.rev.dla_end+MOLBCLEN).revcomp().seq:
+		try:	         uniqN20s[readPair.fwd.subseq(max(readPair.fwd.dla_start-MOLBCLEN,0),readPair.fwd.dla_start).seq] += 1
+		except KeyError: uniqN20s[readPair.fwd.subseq(max(readPair.fwd.dla_start-MOLBCLEN,0),readPair.fwd.dla_start).seq] = 1
+		
+		# check that the barcodes match betweem fwd and reverse read
+		if readPair.fwd.subseq(max(readPair.fwd.dla_start-MOLBCLEN,0),readPair.fwd.dla_start).seq == readPair.rev.subseq(readPair.rev.dla_end,readPair.rev.dla_end+MOLBCLEN).revcomp().seq:
+		
 		    # if paired end match add to the "bothreadsmatch"-counter
-		    try: bothreadsmatch[cluster.fwd.subseq(0,20).seq] += 1
-		    except KeyError: bothreadsmatch[cluster.fwd.subseq(0,20).seq] = 1
+		    try: bothreadsmatch[readPair.fwd.subseq(0,20).seq] += 1
+		    except KeyError: bothreadsmatch[readPair.fwd.subseq(0,20).seq] = 1
+		    
+		    # uncomment to maintatin undefined wells ie sequence errors and similar in the well barcode sequence
+		    #try: wells[str(readPair.well)].add(readPair)
+		    #except KeyError:wells['OTHER'].add(readPair)
 
-		    #try: wells[str(cluster.well)].add(cluster)
-		    #except KeyError:wells['OTHER'].add(cluster)
-
+    # Do the second part where similar barcodes are grouped together
     sys.stderr.write('PART2: within each well;\n 1.try to classify PE missmatching barcodes to other known barcodes in well\n2.reduce the number of barcodes in well by grouping those with low editdistance\n')
+    
+    #create the pdf file object and a sorted list of all possible well ids
     from matplotlib.backends.backend_pdf import PdfPages
     pp = PdfPages(indata.pdf)
     wellids = []
     for i in range(1,13):
 	for i2 in ['A','B','C','D','E','F','G','H']: wellids.append(i2+str(i))
-    for wellid in wellids:
-	well = wells[wellid]
-	if well.id == 'OTHER': continue
-	well.double2single(indata)
-	well.reducebarcodes(indata,pp)
+    
+    # go through all wells and group similar barcodes
+    if indata.wells:
+	indata.wells = indata.wells.split(':')
+	for wellid in indata.wells:
+	    well = wells[wellid]
+	    if well.id == 'OTHER': continue # skip the well with undefined well-barcode sequences
+	    
+	    # Try to place reads with non matching fwd reverse barcodes to one of the excisting barcodes
+	    well.double2single(indata)
+    
+	    # Group similar
+	    well.reducebarcodes(indata,pp)
+    else:
+	for wellid in wellids:
+	    well = wells[wellid]
+	    if well.id == 'OTHER': continue # skip the well with undefined well-barcode sequences
+	    
+	    # Try to place reads with non matching fwd reverse barcodes to one of the excisting barcodes
+	    well.double2single(indata)
+    
+	    # Group similar
+	    well.reducebarcodes(indata,pp)
+	    
     pp.close()
-
+    
+    #              #
+    # Make summary #
+    #              #
+    
     occurance1 = 0
     N = 0
     N20max = ['',0]
@@ -210,24 +251,19 @@ def main():
 	if bothreadsmatch[N20] > N20maxboth[1]: N20maxboth = [N20,bothreadsmatch[N20]]
     
 
-    print str(len(uniqN20s))+ ' unique N20 sequences in '+str(handle_matches) +' reads where DLA is found (out of '+str(cluster.number)+' reads in total, ie DLA is found in '+str(round(handle_matches/float(cluster.number)*100,2))+'%).'
+    print str(len(uniqN20s))+ ' unique N20 sequences in '+str(handle_matches) +' reads where DLA is found (out of '+str(readPair.number)+' reads in total, ie DLA is found in '+str(round(handle_matches/float(readPair.number)*100,2))+'%).'
     print 'Out of theese '+str(occurance1)+' N20s are observed only once and '+str(N)+' include a N base.'
     print 'The most frequently observed N20, '+N20max[0]+', has been observed '+str(N20max[1])+' times.'
     print 'In average number of observations per uniqe N20 are '+str(round(sum(uniqN20s.values())/float(len(uniqN20s.values())),2))+' times and the median number of observations is '+str(sorted(uniqN20s.values())[len(uniqN20s.values())/2])+'.'
-    print 'In '+str(round(sum(bothreadsmatch.values())/float(handle_matches)*100,2))+'% of the clusters ('+str(sum(bothreadsmatch.values()))+'st) does read2 have the same N20, if only considering theese clusters there are:'
+    print 'In '+str(round(sum(bothreadsmatch.values())/float(handle_matches)*100,2))+'% of the readPairs ('+str(sum(bothreadsmatch.values()))+'st) does read2 have the same N20, if only considering theese readPairs there are:'
     print '\t' +str(len(bothreadsmatch))+ ' unique N20 sequences in '+str(sum(bothreadsmatch.values())) +' reads'
     print '\tOut of theese '+str(occuranceboth)+' N20s are observed only once and '+str(Nboth)+' include a N base'
     print '\tThe most frequently observed N20, '+N20maxboth[0]+', has been observed '+str(N20maxboth[1])+' times'
     print '\tIn average every N20 has been observed '+str(round(sum(bothreadsmatch.values())/float(len(bothreadsmatch.values())),2))+' times and the median number of observations is '+str(sorted(bothreadsmatch.values())[len(bothreadsmatch.values())/2])
-    print str(len(uniqN20s))+ '\t'+str(handle_matches) +'\t'+str(cluster.number)+'\t'+str(occurance1)+'\t'+str(N)+'\t'+str(sum(bothreadsmatch.values()))+'\t'+str(len(bothreadsmatch))+'\t'+str(occuranceboth)+'\t'+str(Nboth)+'\n'
+    print str(len(uniqN20s))+ '\t'+str(handle_matches) +'\t'+str(readPair.number)+'\t'+str(occurance1)+'\t'+str(N)+'\t'+str(sum(bothreadsmatch.values()))+'\t'+str(len(bothreadsmatch))+'\t'+str(occuranceboth)+'\t'+str(Nboth)+'\n'
 
-def magicFunction(X):
-    [cluster, indata] = X
-    cluster.findDLA(indata.DLA,indata)
-    cluster.findpostr(indata.POSTRH,indata)
-    cluster.getSeqs(indata.MOLBCLEN,indata)
-    return cluster
-	
+    return 0
+
 class Progress():
     def __init__(self,total, verb='full'):
 	import time
@@ -268,62 +304,62 @@ class Well():
     def __init__(self, wellid):
 	self.id = wellid
 	self.barcodes = {}
-	self.singlen20clusters = []
-	self.doublen20clusters = []
+	self.singlen20readPairs = []
+	self.doublen20readPairs = []
     
-    def add(self,cluster):
-	if type(cluster.n20) == type('this is a string'):
-	    self.singlen20clusters.append(cluster)
-	    try: self.barcodes[cluster.n20] += 1
-	    except KeyError: self.barcodes[cluster.n20] = 1
-	elif type(cluster.n20) == type(['this','is','a','list']): self.doublen20clusters.append(cluster)
+    def add(self,readPair):
+	if type(readPair.n20) == type('this is a string'):
+	    self.singlen20readPairs.append(readPair)
+	    try: self.barcodes[readPair.n20] += 1
+	    except KeyError: self.barcodes[readPair.n20] = 1
+	elif type(readPair.n20) == type(['this','is','a','list']): self.doublen20readPairs.append(readPair)
 	else: raise ValueError
 	
     def double2single(self,indata):
 	#sys.stderr.write(self.id+' double2single ...')
 	temp =[]
-	for cluster in self.doublen20clusters:
-		mindist=[25,'barcode_in_cluster','barcode_in_well']
+	for readPair in self.doublen20readPairs:
+		mindist=[25,'barcode_in_readPair','barcode_in_well']
 		for bc in self.barcodes:
-			try: dist1 = hamming_distance(cluster.n20[0],bc)
+			try: dist1 = hamming_distance(readPair.n20[0],bc)
 			except AssertionError: dist1= 25
-			try: dist2 = hamming_distance(cluster.n20[1],bc)
+			try: dist2 = hamming_distance(readPair.n20[1],bc)
 			except AssertionError: dist2 = 25
 			if dist1 <= indata.bbcmm or dist2 <= indata.bbcmm:
 				if dist1 == dist2 and dist1 != 0: pass#print 'barcodes equally bad'
 				elif dist1 > dist2:
-					if dist2 < mindist[0]: mindist = [dist2, cluster.n20[1], bc]
+					if dist2 < mindist[0]: mindist = [dist2, readPair.n20[1], bc]
 				elif dist1 < dist2:
-					if dist1 < mindist[0]: mindist = [dist1, cluster.n20[0], bc]
+					if dist1 < mindist[0]: mindist = [dist1, readPair.n20[0], bc]
 		if mindist[0] <= indata.bbcmm:
-			cluster.n20 = mindist[2]
-			if mindist[0] != 0: cluster.n20mm = mindist[1]
-			self.singlen20clusters.append(cluster)
+			readPair.n20 = mindist[2]
+			if mindist[0] != 0: readPair.n20mm = mindist[1]
+			self.singlen20readPairs.append(readPair)
 			self.barcodes[mindist[2]] += 1
-		else: temp.append(cluster)
-	self.doublen20clusters = temp
+		else: temp.append(readPair)
+	self.doublen20readPairs = temp
 	#sys.stderr.write(' done.\n')
 
     @property
-    def clustercount(self):
-	return len(self.singlen20clusters)#+len(self.doublen20clusters)
+    def readPaircount(self):
+	return len(self.singlen20readPairs)#+len(self.doublen20readPairs)
 
     def reducebarcodes(self,indata, pp):
-	""" Find most common barcodes in well ( > 10% ??), then try to place other barcodes to this cluster
+	""" Find most common barcodes in well ( > 10% ??), then try to place other barcodes to this group
 	"""
 	print ''
-	print 'Well',self.id, self.clustercount,'read pairs (with 1 n20/cluster)'
+	print 'Well',self.id, self.readPaircount,'read pairs (with 1 n20/readPair)'
 	maxdist = indata.bbcmm
 	matchfunc = hamming_distance
 	if indata.bbced: maxdist = indata.bbced; matchfunc = levenshtein
 	
-	print self.id, 'precluster'
+	print self.id, 'pregrouping'
 	for bc, count in self.barcodes.iteritems():
-	    percentage = round(100*float(count)/self.clustercount,2)
+	    percentage = round(100*float(count)/self.readPaircount,2)
 	    if percentage >= indata.minperc and count >= indata.minread:print '\t',count,'\t',bc,'\t',percentage,'%'
 	maxrounds = 100; temp = 0
 	go = True
-	print 'Doing "clustering":'
+	print 'Doing "grouping of barcodes":'
 	print 'round 0', len(self.barcodes),'barcodes'
 	while go:
 	    
@@ -332,13 +368,15 @@ class Well():
 	    # calculate the percentage of the read population that "support" the current barcode and get the top supported barcodes
 	    percentages = {}
 	    for bc, count in self.barcodes.iteritems():
-		percentage = round(100*float(count)/self.clustercount,2)
+		percentage = round(100*float(count)/self.readPaircount,2)
 		try: percentages[percentage].append(bc)
 		except KeyError:percentages[percentage]=[bc]
 	    highten = percentages.keys()
 	    highten.sort()
-	    try: highten = highten[:10]
+	    #print highten;
+	    try: highten = highten[::-1][:10]
 	    except IndexError: pass
+	    #print highten;
 	    
 	    # For each barcode in the top ten supported barcodes try to merge all other barcodes to that one
 	    merged = []
@@ -358,9 +396,9 @@ class Well():
 	    
 	    print 'round', temp, len(self.barcodes), 'barcodes','(', len(self.barcodes)-lenbcs,'st)'
 	
-	print self.id, 'postcluster'
+	print self.id, 'postgrouping'
 	for bc, count in self.barcodes.iteritems():
-	    percentage = round(100*float(count)/self.clustercount,2)
+	    percentage = round(100*float(count)/self.readPaircount,2)
 	    if percentage >= indata.minperc and count >= indata.minread:print '\t',count,'\t',bc,'\t',percentage,'%'
 	    
 	print 'plotting'
@@ -371,22 +409,22 @@ class Well():
 	width = 1.0     # gives histogram aspect to the bar diagram
 	ax = plt.axes()
 	ax.set_xticks(pos + (width / 2))
-	ax.set_xticklabels(self.barcodes.keys(),rotation='horizontal')
+	ax.set_xticklabels(self.barcodes.keys(),rotation='vertical',fontsize=8,fontname='monospace')
 	plt.bar(pos, self.barcodes.values(), width, color='r')
 	#plt.show()
 	#plt.savefig(pp,format='pdf',bbox_inches=0)
 	plt.suptitle(self.id, fontsize=12)
+	plt.tight_layout()
 	pp.savefig()
 	plt.close()
 	print 'done'
 
-
-class beadbarcode():
+class BeadBarcode():
     def __init__(self,seq=None):
-	self.clusters = []
+	self.readPairs = []
 	self.seq = seq
 
-class sequence():
+class Sequence():
     def __init__(self,header,seq,qual):
 	self.header = header.rstrip()
 	self.qual = qual.rstrip()
@@ -394,21 +432,21 @@ class sequence():
 	self.len = len(seq.rstrip())
 
     def subseq(self,start,end):
-	return sequence(self.header,self.seq[start:end],self.qual[start:end])
+	return Sequence(self.header,self.seq[start:end],self.qual[start:end])
 
     def revcomp(self):
 	''' Takes a sequence and reversecomplements it'''
 	complement = {'A':'T','C':'G','G':'C','T':'A','N':'N'}
 	revcompseq = "".join([complement.get(nt.upper(), '') for nt in self.seq[::-1]])
-	return sequence(self.header,revcompseq,self.qual[::-1])
+	return Sequence(self.header,revcompseq,self.qual[::-1])
 
     def comp(self):
 	''' Takes a sequence and complements it'''
 	complement = {'A':'T','C':'G','G':'C','T':'A','N':'N'}
 	revcompseq = "".join([complement.get(nt.upper(), '') for nt in self.seq])
-	return sequence(self.header,revcompseq,self.qual)
+	return Sequence(self.header,revcompseq,self.qual)
     
-class cluster():
+class ReadPair():
     def __init__(self,fwd,rev,number):
 	self.fwd	= fwd
 	self.rev	= rev
@@ -493,7 +531,7 @@ class cluster():
 	if n20fwd == n20rev: self.n20 = n20fwd
 	else:self.n20 = [n20fwd,n20rev] # do a fuzzy check with others on the same barcode ie later stage
 
-def clusterGen(reads1,reads2,indata):
+def ReadPairGen(reads1,reads2,indata):
     import gzip
     if reads1.name.split('.')[-1] in ['gz','gzip']: reads1 = gzip.open(reads1.name)
     if reads2.name.split('.')[-1] in ['gz','gzip']: reads2 = gzip.open(reads2.name)
@@ -513,9 +551,9 @@ def clusterGen(reads1,reads2,indata):
 	    r2_4=reads2.next().rstrip()
 	except StopIteration:
 	    break_true=True
-	fwd	= sequence(r1_1,r1_2,r1_4)
-	rev	= sequence(r2_1,r2_2,r2_4)
-	yield [cluster(fwd,rev,countreads),indata]
+	fwd	= Sequence(r1_1,r1_2,r1_4)
+	rev	= Sequence(r2_1,r2_2,r2_4)
+	yield [ReadPair(fwd,rev,countreads),indata]
     reads1.close()
     reads2.close()
 
