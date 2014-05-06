@@ -1,0 +1,666 @@
+#! /bin/env python
+
+import os
+
+MASTER = os.getpid()
+
+man = """
+#\033[1m Pipeline for analysing "SEADseq" data: \033[0m
+# Usage: SEAseq2 <command> <path> [options]
+#
+# Available commands:
+#
+# 1. initiateAnalysis -- Initiate the analysis.
+# Initiation of the analysis is needed to set the path for storage of data, results and files used during runtime.
+# During initiation the type of analysis also needs to be set either to Whole Fragment Analysis (WFA) or rRNA Amplicon Classification (RAC).
+# Usage: SEAseq2 initiateAnalysis <path> <type>
+#
+# 2. addData -- Add data to be analyzed.
+# Usage: SEAseq2 addData
+#
+# 3. changeSettings -- Define the settings to use.
+#   Usage: SEAseq2 changeSettings
+#   3.1 General settings.
+#       3.1.1 Barcode sequence identification
+#       3.1.2 Barcode sequence clustering
+#       3.1.3 Parallelization - UPPMAX/LOCAL
+#       3.1.4 Subsets and debugging
+#   3.2 Settings specific for the RAC mode.
+#   3.3 Settings specific for the WFA mode.
+#   3.4 Define a none standard design.
+#        Exprimental! will most probably not work.
+#
+# 4. startAnalysis -- Start the pipe
+#   Usage: SEAseq2 startAnalysis <part>
+#   Specify <part> as "all" or any of the ones included in the analysis mode (see below).
+#
+#   4.1 In any mode the pipe will perform the following parts:
+#       4.1.1 readFastqs
+#            Reads the input files, identifies subsequences within each readpair such as barcode sequences (3.1.1),
+#            primers or adapter sequences, finally adds the information to the database.
+#       4.1.2 clusterBarcodeSequences
+#            Cluster the barcode sequences identified in 4.1.1 based on sequence similarity to identify all reads originating from the same original bead.
+#
+#   4.2 In RAC mode the pipe will perform the following parts:
+#       find all variants of amplicons present within each cluster
+#
+#   4.3 In WFA mode NOT IMPLEMENTED
+"""
+
+###############
+#  Functions  #
+###############
+
+def main():
+    currentRun = SEAseqPipeLine()
+
+def bufcount(filename):
+	""" returns the number of lines in a file
+	"""
+	import gzip
+	if filename.split('.')[-1] in ['gz','gzip']: f = gzip.open(filename)
+	else: f = open(filename)
+	lines = 0
+	buf_size = 1024 * 1024
+	read_f = f.read # loop optimization
+	
+	buf = read_f(buf_size)
+	while buf:
+		lines += buf.count('\n')
+		buf = read_f(buf_size)
+		f.close
+	return lines
+
+
+#############
+#  Classes  #
+#############
+
+class ReadPair(object):
+    #code
+    pass
+
+class BarcodedBead(object):
+    #code
+    pass
+
+class Database(object):
+    
+    def __init__(self, dbPath):
+        self.path = dbPath
+    
+    def getConnection(self,):
+        #
+        # Import useful stuff
+        #
+        import sqlite3
+        import sys
+
+        #
+        # Create database and set
+        #
+        try: self.conn = sqlite3.connect(self.path)
+        except sqlite3.OperationalError:
+            print 'ERROR: Trouble with the database, plase check your commandline.'
+            sys.exit()
+        self.c = self.conn.cursor()
+    
+    def commitAndClose(self,):
+        #
+        # commit changes and close connection
+        #
+        self.conn.commit()
+        self.conn.close()
+    
+    def create(self,):
+        """ creates the database holding all information used in the analysis """
+
+        self.getConnection()
+
+        #
+        # Create tables
+        #
+        self.c.execute('''CREATE TABLE reads (id,header,sequence1,sequence2,quality1,quality2,barcodeSequence,clusterId,annotation,fromFastq,PRIMARY KEY (clusterId))''')
+        self.c.execute('''CREATE TABLE runs (startTime,command,commandLine,finishedSuccessfully,masterPid)''')
+        self.c.execute('''CREATE TABLE fastqs (filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength,PRIMARY KEY (filePairId))''')
+        
+        self.commitAndClose()
+
+    def addToRunsTable(self, startTime, command, commandLine, finishedSuccessfully, masterPid):
+        
+        self.getConnection()
+        
+        #
+        # check if pid already in database
+        #
+        t = (masterPid,)
+        data = self.c.execute('SELECT masterPid, startTime FROM runs WHERE masterPid=?',t).fetchall()        
+        if data:
+            for tmp1,tmp2 in data:
+
+        #
+        # if pid and startTime matches update the "finishedSuccessfully" entry
+        #
+                if tmp1 == masterPid and tmp2 == startTime:
+                    values = (startTime, command, commandLine, finishedSuccessfully, masterPid)
+                    self.c.execute('UPDATE runs SET finishedSuccessfully=? WHERE masterPid=? AND startTime=?', (finishedSuccessfully,masterPid,startTime))
+        
+        #
+        # if not in the database add a new row
+        #
+        else:
+            values = (startTime, command, commandLine, finishedSuccessfully, masterPid)
+            self.c.execute('INSERT INTO runs VALUES (?,?,?,?,?)', values)
+        
+        self.commitAndClose()
+        
+        return 0
+    
+    def addFastqs(self, fastq1, fastq2):
+        
+        #
+        # Imports
+        #
+        import sys
+        
+        #
+        # open connection to database
+        #
+        self.getConnection()
+        
+        filePairId = None
+        filePairIds = []
+        
+        #
+        # check if any of the fastqs already in database
+        #
+        data = self.c.execute('SELECT filePairId,fastq1,fastq2 FROM fastqs').fetchall()
+        if data:
+            for filePair in data:
+                filePairId = int(filePair[0])
+                filePairIds.append(filePairId)
+                for fastq in [fastq1, fastq2]:
+                    if fastq in filePair:
+                        message = 'ERROR: '+fastq+' already in the database.\nExiting after error.'
+                        print message
+                        SEAseqPipeLine.logfile.write(message+'\n')
+                        sys.exit(1)
+        #
+        # if not in the database add a new row
+        #
+        SEAseqPipeLine.logfile.write('Getting readcount for file'+fastq1+' ... \n')
+        readCount = bufcount(fastq1)/4 #one read is four lines
+        SEAseqPipeLine.logfile.write('...done. The file has '+str(readCount)+' reads.\n')
+        addedToReadsTable = SEAseqPipeLine.startTimeStr
+        minReadLength = 'NA'
+
+        if filePairIds: filePairId = max(filePairIds)+1
+        else: filePairId = 0
+        values = (filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength)
+        self.c.execute('INSERT INTO fastqs VALUES (?,?,?,?,?,?)', values)
+        
+        self.commitAndClose()
+        
+        return 0
+   
+    def getFastqs(self,):
+        #
+        # Imports
+        #
+        import sys
+        
+        #
+        # open connection to database
+        #
+        self.getConnection()
+                
+        #
+        # get att data in fastqs table
+        #
+        filePairs = self.c.execute('SELECT filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength FROM fastqs').fetchall()
+        
+        self.commitAndClose()
+        
+        return [[readCount,fastq1,fastq2] for filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength in filePairs]
+    
+    def getRuns(self, runTypes):
+        
+        self.getConnection()
+        
+        runsInfo = []
+        data = self.c.execute('SELECT * FROM runs').fetchall()
+        for startTime, command, commandLine, finishedSuccessfully, masterPid in data:
+            if command in runTypes: runsInfo.append([startTime, command, commandLine, finishedSuccessfully, masterPid])
+        
+        self.commitAndClose()
+        
+        return runsInfo
+
+class Settings(object,):
+    
+    def __init__(self, ):
+        """ object holding the settings used for each part of the analysis """
+        
+    def setDefaults(self,):
+        self.debug = False
+        self.parallelProcesses = None
+        self.uppmaxProject = None
+        self.mode = None
+
+    def load(self,): pass
+    
+    def saveToDb(self,): pass
+    
+class FastqToDatabseConverter(object):
+    """ reads fastq files (read one and two) and identifies the coordinates for the Barcode sequence etc and adds the data to the database """
+    
+    def __init__(self, database):
+        pass
+
+    def getFilenames(self,):
+        self.infiles = SEAseqPipeLine.database.getFastqs()
+
+    def readPairGenerator(self,):
+
+        self.getFilenames()
+        totalReadcount = 0
+        currentRead = 0
+
+        #
+        # Loop through infiles
+        #
+        for readcount, fastq1, fastq2 in self.infiles:
+            totalReadcount += readcount
+            
+            #
+            # Open the files
+            #
+            if fastq1.split('.')[-1] in ['gz','gzip']: file1 = gzip.open(fastq1)
+            else: file1 = open(fastq1,'r')
+            if fastq2.split('.')[-1] in ['gz','gzip']: file2 = gzip.open(fasstq2)
+            else: file2 = open(fastq2,'r')
+            
+            while not EOFError:
+                header1 = file1.readline()
+                header2 = file2.readline()
+                sequence1 = file1.readline()
+                sequence2 = file2.readline()
+                trash = file1.readline()
+                trash = file2.readline()
+                qual1 = file1.readline()
+                qual2 = file2.readline()
+                currentRead += 1
+                yield currentRead, header1, header2, sequence1, sequence2, qual1, qual2
+    
+    def run(self,): pass
+    
+class SEAseqPipeLine(object):
+    
+    def __init__(self):
+        """ Intitates the SEAseqPipeLine program run instance """
+        
+        #
+        # imports
+        #
+        import time
+        from socket import gethostname
+        import commands
+        
+        #
+        # Declare variables and set standard default values
+        #
+        self.database = None
+        self.analysisPath = None
+        self.command = None
+        self.commandLine = None
+        self.commandLineList = None
+        SEAseqPipeLine.settings = Settings()
+        SEAseqPipeLine.logfile = None
+        SEAseqPipeLine.startTime = time.time()
+        SEAseqPipeLine.startTimeStr = time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())
+        self.availableCommands = {
+            'initiateAnalysis':self.initiateAnalysis,
+            'addData':self.addData,
+            'changeSettings':self.changeSettings,
+            'startAnalysis':self.startAnalysis,
+            'commandLog':self.commandLog,
+            'help':self.printHelp,
+        }
+        if gethostname().split('.')[1] == 'uppmax': self.onUppmax = True
+        else: self.onUppmax = False
+        tempFolderName = 'SEAseq2temporaryFiles'
+        if self.onUppmax: self.tempFileFolder = os.path.abspath(commands.getoutput('echo $SNIC_TMP'))+'/'+tempFolderName
+        else: self.tempFileFolder = self.analysisPath+'/'+tempFolderName
+        if not os.path.isdir(self.tempFileFolder): os.makedirs(self.tempFileFolder)
+        
+        #
+        # Get information from commandline
+        #
+        self.getComandAndPath()
+        self.doCurrentTask()
+    
+    def doCurrentTask(self,):
+        """ identifies which and starts the part of the analysis pipeline the user wants the software perform """
+        
+        #
+        # Imports
+        #
+        import sys
+        
+        #
+        # Set the database path
+        #
+        self.database = Database(self.analysisPath+'/dataSettingsAndResults.db')
+
+        #
+        # call current command
+        #
+        try:
+            self.availableCommands[self.command].__call__()
+            #except AttributeError:
+            #    print 'ERROR: the command "'+self.command+'" is not implemented yet try again in the future.'
+            #    sys.exit(1)
+        except KeyError:
+            print 'ERROR: command is not valid.\nAvialable commands are: '+', '.join(self.availableCommands.keys()[:-1])+' and '+self.availableCommands.keys()[-1]+'.\nUse: "SEAseq2 help" to get help\n'
+            return 1
+    
+    def printHelp(self,):
+        """ prints the help message """
+        print man
+        return 0
+    
+    def commandLog(self,):
+        """ print all commands performed so far """
+        
+        #
+        # get optional arguments from commandline
+        #
+        self.getComandLineOptions()
+
+        #
+        # Add run to runs table and open connection to logfile
+        #
+        self.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, False, MASTER)
+        self.openLogfileConnection()
+        SEAseqPipeLine.logfile.write(self.createLogHeader())
+        
+        # default all types of commands run
+        runTypes = self.availableCommands.keys()
+        
+        SEAseqPipeLine.logfile.write('Writing commandLog to standard out.\n')
+        print 'Getting runs performed with the following commands '+', '.join(runTypes[:-1])+' or '+runTypes[-1]+'.'
+        print '# StartTime:                    \tFinished:\tCommand:'
+        for startTime, command, commandLine, finishedSuccessfully, masterPid in self.database.getRuns(runTypes):
+            print str(startTime)+' \t'+str(bool(finishedSuccessfully))+'      \t'+str(commandLine)
+        
+        #
+        # update runs table
+        #
+        self.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, True, MASTER)
+        
+        SEAseqPipeLine.logfile.write('Finished exiting.\n')
+    
+    def initiateAnalysis(self,):
+        """ sets the type of and path for the analysis """
+
+        #
+        # Imports
+        #
+        import os
+        import sys
+
+        #
+        # get optional arguments from commandline
+        #
+        self.getComandLineOptions()
+        
+        #
+        # for logmessages
+        #
+        tmpLogMessages = ['----------------\n']
+        tmpLogMessage = self.createLogHeader()
+        tmpLogMessages.append(tmpLogMessage)
+        #print tmpLogMessage
+        
+        #
+        # check analysis path
+        #
+        if os.path.isdir(self.analysisPath):
+            tmpLogMessage = 'WARNING: the analysis path already exists.\n'
+            print tmpLogMessage
+            tmpLogMessages.append(tmpLogMessage)
+        else:
+            tmpLogMessage = 'Creating directory "'+self.analysisPath+'".\n'
+            #print tmpLogMessage
+            tmpLogMessages.append(tmpLogMessage)
+            os.makedirs(self.analysisPath)
+        
+        #
+        # create the logfile
+        #
+        tmpLogMessages += self.openLogfileConnection()
+        
+        #
+        # write tmpLogMessages to logfile
+        #
+        SEAseqPipeLine.logfile.write(''.join(tmpLogMessages))
+        
+        #
+        # create the database
+        #
+        self.database.create()
+        
+        #
+        # add run to runs table
+        #
+        self.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, True, MASTER)
+        
+        return 0
+    
+    def addData(self,):
+        
+        #
+        # get optional arguments from commandline
+        #
+        self.getComandLineOptions()
+
+        #
+        # Add run to runs table and open connection to logfile
+        #
+        self.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, False, MASTER)
+        self.openLogfileConnection()
+        SEAseqPipeLine.logfile.write(self.createLogHeader())
+
+        self.database.addFastqs(self.fastq1,self.fastq2)
+
+        #
+        # update runs table
+        #
+        self.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, True, MASTER)
+        
+        SEAseqPipeLine.logfile.write('Finished exiting.\n')
+    
+    def changeSettings(self,):
+        print 'Not Implemented'
+    
+    def startAnalysis(self,):
+        print 'Not Implemented'
+        
+    def openLogfileConnection(self,):
+        """ open a connection to the logfile, creates a logfile if none is present """
+        
+        #
+        # Imports
+        #
+        import sys
+        import time
+        import os
+        
+        #
+        # for logmessages
+        #        
+        tmpLogMessages = []
+        
+        #
+        # check if logfile present open connection or create
+        #
+        SEAseqPipeLine.logfile = self.analysisPath + '/logfile.txt'
+        if os.path.isfile(SEAseqPipeLine.logfile):
+            if self.command == 'initiateAnalysis':
+                print 'ERROR: the logfile already exists please use another path to initiate the analysis.\n'
+                sys.exit(1)
+            else:
+                SEAseqPipeLine.logfile = open(SEAseqPipeLine.logfile,'a',1)
+                SEAseqPipeLine.logfile.write('----------------\nConnection to logfile '+SEAseqPipeLine.logfile.name+' opened.\n')
+                return 0
+        else:
+            tmpLogMessage = 'Creating the logfile "'+SEAseqPipeLine.logfile+'".\n'
+            tmpLogMessages.append(tmpLogMessage)
+            print tmpLogMessage
+            SEAseqPipeLine.logfile = open(SEAseqPipeLine.logfile,'w',1)
+        
+        return tmpLogMessages
+
+    def getComandAndPath(self,):
+        """ get the current command """
+
+        #
+        # Import packages
+        #
+        import re
+        import sys
+        import os
+
+        #
+        # get the actual info from input
+        #
+        self.commandLineList = sys.argv
+        self.commandLine = ' '.join(sys.argv)
+        try: self.command = self.commandLineList[1]
+        except IndexError:
+            print 'ERROR: Please supply a command.\nUse: "SEAseq2 help" to get help\n'
+            sys.exit(1)
+
+        #
+        # check program name
+        #
+        assert self.commandLineList[0].split('/')[-1] == 'SEAseq2', 'ERROR: program name is SEAseq2 please do not rename the file.\n'
+
+        #
+        # look for help request
+        #
+        if re.search('-{0,2}[hH][eE]?[lL]?[pP]?',self.command):
+            print man
+            sys.exit(0)
+
+        #
+        # get the analysis path
+        #
+        try:
+            self.analysisPath = os.path.abspath(sys.argv[2])
+        except IndexError:
+            print '\nERROR: please supply a path for the analysis.\nUse: "SEAseq2 help" to get help\n'
+            sys.exit(1)
+
+        return 0
+    
+    def getComandLineOptions(self,):
+        """ function that gets the indata from the commandline """
+
+        import argparse
+        import os
+        import sys
+        import re
+        
+        indata = None
+        
+        #if re.search('(\ -h\ |$)|(\ --help\ |$)',self.commandLine): print man
+        
+        # commandLine arguments parsing
+        if self.command == 'initiateAnalysis': prog = 'SEAseq2 initiateAnalysis <path> <type>'
+        if self.command == 'commandLog': prog = 'SEAseq2 commandLog <path>'
+        if self.command == 'addData': prog = 'SEAseq2 addData <path>'
+        argparser = argparse.ArgumentParser(prog=prog, description='', epilog='Use: "SEAseq2 help" to get more detailed help.', formatter_class=argparse.RawTextHelpFormatter)
+    
+        # All programs
+        argparser.add_argument('--debug', dest='debug', action='store_true', required=False, default=False, help='Run the program in debug-mode, single process python script (SLOW).')
+        argparser.add_argument(	'-p', dest='cpus', metavar='N',	type=int, required=False, default=1,help='The number of processes to run in parallel (default 1).')
+
+        if self.command == 'commandLog':
+            try: indata = argparser.parse_args(self.commandLineList[3:])
+            except IndexError: pass
+            
+        if self.command == 'initiateAnalysis':
+            try: self.mode = self.commandLineList[3]
+            except IndexError:
+                print 'ERROR: no analysis mode supplied.'
+                sys.exit(1)
+            try: indata = argparser.parse_args(self.commandLineList[4:])
+            except IndexError: pass
+
+        if self.command == 'changeSettings': pass
+    
+        if self.command == 'startAnalysis':
+            if self.onUppmax:
+                argparser.add_argument('-prj','-project',dest='project',metavar='<b20xxxxx>',	type=str,	required=False,	default='b2014005',	help='uppmaxproject (default b2011011)')
+                #argparser.add_argument('--send',	dest='send', 	action='store_true', 			required=False,	default=False,	help='Send sbatch scripts to job-queue.')
+                #argparser.add_argument('--sendonly',	dest='sendonly',action='store_true', 			required=False,	default=False,	help='Do not generate the files only Send sbatch scripts to job-queue.')
+                #argparser.add_argument('--small',	dest='small', 	action='store_true', 			required=False,	default=False,	help='make for smaller dataset job-queue.')
+            try:
+                indata = argparser.parse_args(self.commandLineList[3:])
+                SEAseqPipeLine.settings.uppmaxProject = indata.project
+            except IndexError: pass
+            
+        if self.command == 'addData':
+            argparser.add_argument('-r1',dest='fastq1',	metavar='FILE',type=file,required=True, help='Indata "fastq"-file read1.')
+            argparser.add_argument('-r2',dest='fastq2',	metavar='FILE',type=file,required=True,	help='Indata "fastq"-file read2.')
+            try:
+                indata = argparser.parse_args(self.commandLineList[3:])
+                self.fastq1 = os.path.abspath(indata.fastq1.name)
+                self.fastq2 = os.path.abspath(indata.fastq2.name)
+            except IndexError: pass
+            
+        SEAseqPipeLine.settings.debug = indata.debug
+        SEAseqPipeLine.settings.parallelProcesses = indata.p
+
+    def createLogHeader(self,):
+        """ creates the header lines for each new logfile entry """
+        
+        #
+        # Imports
+        #
+        import sys
+        import getpass
+        import commands
+        from socket import gethostname
+        
+        #
+        # get information
+        #
+        username = getpass.getuser()
+        computer = gethostname()
+        
+        #
+        # create the header
+        #
+        output = ''
+        output += 'Running program: '+self.commandLine+'.\n'
+        output += 'time: '+self.startTimeStr+'\n'
+        output += 'Master process id='+str(MASTER)+'\n'
+        output += 'Started by user = '+username+' on host = '+computer+'\n'
+        if self.onUppmax: output += 'Program is run on uppmax, any temporary files will be placed in '+commands.getoutput('echo $SNIC_TMP')+' .\n'
+        
+        return output
+
+
+
+##############################
+#  Check if run or imported  #
+##############################
+
+if __name__ == "__main__":
+    main()
+
+###################
+#  END of script  #
+###################
