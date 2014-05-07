@@ -94,6 +94,13 @@ def levenshtein(s1, s2):
 		previous_row = current_row
 	return previous_row[-1]
 
+def foreachReadPairFromFastq(pair):
+    
+    pair.identifyBarcode()
+    pair.isIlluminaAdapter()
+    
+    return pair
+
 #############
 #  Classes  #
 #############
@@ -145,7 +152,6 @@ class ReadPair(object):
 		
 		if dist < mindist[0]: mindist =[dist,i]
 
-	    # this is a comment
 	    if mindist[0] < int(maxDistance)+1:
 		startPosition = mindist[1]
 		endPosition = mindist[1]+len(matchsequence)
@@ -158,14 +164,29 @@ class ReadPair(object):
 	return [startPosition,endPosition,missmatches]
 
     def isIlluminaAdapter(self, ):
-	pass
+	
+	import math
+	
+	for i in [15]:#range(15):
+	    handleStartPosition,handleEndPosition,handleMissMatches = self.matchSequence(self.r1Seq, 'AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC'[:35-i], int(math.ceil(float(35-i)*0.1)))
+	    if handleStartPosition:
+		self.annotations['Read1IsIlluminaAdapter'] = handleMissMatches
+		break
+	
+	for i in [15]:#range(15):
+	    handleStartPosition,handleEndPosition,handleMissMatches = self.matchSequence(self.r2Seq, 'AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT'[:34-i], int(math.ceil(float(34-i)*0.1)))
+	    if handleStartPosition:
+		self.annotations['Read2IsIlluminaAdapter'] = handleMissMatches
+		break
 
     def identifyBarcode(self, ):
 
 	handleStartPosition,handleEndPosition,handleMissMatches = self.matchSequence(self.r1Seq, SEAseqPipeLine.settings.handleSequence, SEAseqPipeLine.settings.maxHandleMissMatches)
 	if handleStartPosition == SEAseqPipeLine.settings.barcodeLength:
 	    self.barcodeSeq = self.r1Seq[:SEAseqPipeLine.settings.barcodeLength]
-	    self.annotations['handleMissMatches'] = handleMissMatches
+	    if handleMissMatches > 0: self.annotations['handleMissMatches'] = handleMissMatches
+	    elif handleMissMatches == 0:self.annotations['handlePerfectMatch'] = True
+	    else: raise ValueError, 'handleMissMatches must be integer >= 0'
 	elif handleStartPosition == None: self.annotations['handleNotFound'] = True
 	else: self.annotations['ErronousHandlePosition'] = handleStartPosition
 
@@ -216,6 +237,7 @@ class Database(object):
 	self.c.execute('''CREATE TABLE runs (startTime,command,commandLine,finishedSuccessfully,masterPid)''')
 	self.c.execute('''CREATE TABLE fastqs (filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength,PRIMARY KEY (filePairId))''');
 	self.c.execute('''CREATE TABLE settings (variableName,defaultValue,value,setTime,PRIMARY KEY (variableName))''')
+	self.c.execute('''CREATE TABLE results (resultName,value,setTime,PRIMARY KEY (resultName))''')
 	
 	self.commitAndClose()
 
@@ -338,6 +360,34 @@ class Database(object):
         
         #return [[readCount,fastq1,fastq2] if (not addedToReadsTable) else None for filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength in filePairs]
 	return [[readCount,fastq1,fastq2] for filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength in filePairs]
+
+    def getReadPairs(self,):
+        #
+        # Imports
+        #
+        import sys
+        
+        #
+        # open connection to database
+        #
+        self.getConnection()
+                
+        #
+        # get att data in fastqs table
+        #
+        readPairs = self.c.execute('SELECT id,header,sequence1,sequence2,quality1,quality2,barcodeSequence,clusterId,annotation,fromFastq FROM reads')
+        
+	while True:
+	    
+	    rows = readPairs.fetchmany()#size=readPairs.arraysize)
+	    
+	    if not rows: break
+	    
+	    for row in rows:
+		pairId,header,sequence1,sequence2,qual1,qual2,barcodeSequence,clusterId,annotations,fromFastq = row
+		yield ReadPair(pairId, header, header, sequence1, sequence2, qual1, qual2,barcodeSequence,clusterId,eval(annotations), fromFastq)
+	
+        self.commitAndClose()
     
     def getRuns(self, runTypes):
         
@@ -363,18 +413,21 @@ class Settings(object,):
 	    'parallelProcesses':16,
 	    'mode':'RAC',
 	    'handleSequence':'CTAAGTCCATCCGCACTCCT',
-	    'maxHandleMissMatches':1,
+	    'maxHandleMissMatches':0,
 	    'barcodeLength':15,
-	    'analysisParts':None
+	    'analysisParts':None,
+	    'barcodeMissmatch':0
 	}
 	self.explenations = {
 	    'debug':'Flag for running the scripts in multiprocessing or as single process run [True/False] (default=False)',
-	    'uppmaxProject':'Project id used at uppmax for sbatch scripts [bXXXXXXX] (deault=b2014005)',
+	    'uppmaxProject':'Project id used at uppmax for sbatch scripts [bXXXXXXX] (default=b2014005)',
 	    'parallelProcesses':'Number of process to run when doing multiprocess parts of analysis (defaul=16)',
 	    'mode':'Type of analysis either Whole Fragment Analysis (WFA) or rRNA Amplicon Classification (RAC) [WFA/RAC] (default=RAC)',
-	    'handleSequence':'The sequence that sepperate the barcode from the "specific" read sequence',
-	    'barcodeLength':'The length of the bead barcode',
-	    'analysisParts':'Parts of the analysis to run specific for each run.'
+	    'handleSequence':'The sequence that sepperate the barcode from the "specific" read sequence (default=CTAAGTCCATCCGCACTCCT)',
+	    'barcodeLength':'The length of the bead barcode (default=15)',
+	    'analysisParts':'Parts of the analysis to run specific for each run.',
+	    'barcodeMissmatch':'Number of missmatches allowed in the barcode sequence',
+	    'maxHandleMissMatches':'Number of missmatches allowed in the handle sequence'
 	}
 	self.isDefault = {}
 	self.setTime = {}
@@ -451,26 +504,30 @@ class Settings(object,):
 	data = SEAseqPipeLine.database.c.execute('SELECT variableName,defaultValue,value,setTime FROM settings').fetchall()
         if data:
             for variableName,default,value,setTime in data:
-		
+		SEAseqPipeLine.logfile.write('processing variable '+variableName+'')
 		alreadyInDb[variableName] = True
 		
 		if variableName in self.__dict__:
 		    if default and not self.isDefault[variableName] or setTime < self.setTime[variableName]:
+			if type(self.__dict__[variableName]) in [dict,list]: self.__dict__[variableName] = str(self.__dict__[variableName])
+			SEAseqPipeLine.logfile.write(', updating from '+str(value)+' to '+str(self.__dict__[variableName])+', old_setTime '+str(setTime)+' new_setTime '+str(self.setTime[variableName])+'.\n')
 			SEAseqPipeLine.database.c.execute('UPDATE settings SET defaultValue=?, value=?, setTime=? WHERE variableName=?', (self.isDefault[variableName],self.__dict__[variableName],self.setTime[variableName],variableName))
+		    else: SEAseqPipeLine.logfile.write(' no update needed.\n')
         
         #
         # Add new vars to database
         #
-	SEAseqPipeLine.logfile.write('adding new vars to db.\n')
+	SEAseqPipeLine.logfile.write('adding new vars to db:\n')
         for variableName in self.__dict__:
 	    if variableName in ['explenations','defaultValues','isDefault','setTime']:continue
-	    SEAseqPipeLine.logfile.write('processing variable '+variableName+'.\n')
 	    if variableName not in alreadyInDb:
 		if type(self.__dict__[variableName]) in [dict,list]: self.__dict__[variableName] = str(self.__dict__[variableName])
 		values = (variableName,self.isDefault[variableName],self.__dict__[variableName],self.setTime[variableName])
 		SEAseqPipeLine.database.c.execute('INSERT INTO settings VALUES (?,?,?,?)', values)
-		SEAseqPipeLine.logfile.write('variable '+variableName+' added to db.\n')
-	    else: SEAseqPipeLine.logfile.write('variable '+variableName+' already in db.\n')
+		SEAseqPipeLine.logfile.write('variable '+variableName+' added to db with value '+str(self.__dict__[variableName])+',')
+		if self.isDefault[variableName]:SEAseqPipeLine.logfile.write(' this is the default value.\n')
+		else:SEAseqPipeLine.logfile.write(' non-default value.\n')
+	    else: pass#SEAseqPipeLine.logfile.write('variable\t'+variableName+'\talready in db.\n')
         
 	SEAseqPipeLine.logfile.write('commiting changes to database.\n')
         SEAseqPipeLine.database.commitAndClose()
@@ -481,7 +538,26 @@ class FastqToDatabseConverter(object):
     """ reads fastq files (read one and two) and identifies the coordinates for the Barcode sequence etc and adds the data to the database """
     
     def __init__(self,):
-        pass
+	#
+	# Setting initial values
+	#
+	self.filesAdded = {}
+	self.readsToAdd = []
+	self.currentLocation = 1
+	self.appendChunkSize = 500000
+        self.getFilenames()
+        self.totalReadcount = 0
+        self.currentRead = 0
+	self.grandTotal = 0
+
+	#
+	# get the grand total readcount in all files to be added to the database
+	#
+	for readcount, fastq1, fastq2 in self.infiles:
+	    self.grandTotal += readcount
+	SEAseqPipeLine.logfile.write('Going to add a self.grandTotal of '+str(self.grandTotal)+' reads to the database.\n')
+
+	self.progress = Progress(self.grandTotal, logfile=SEAseqPipeLine.logfile, unit='reads-post-processed', mem=True)
 
     def getFilenames(self,):
         self.infiles = SEAseqPipeLine.database.getFastqs()
@@ -493,25 +569,14 @@ class FastqToDatabseConverter(object):
 	#
 	import gzip
 
-        self.getFilenames()
-        totalReadcount = 0
-        currentRead = 0
-	grandTotal = 0
-
-	#
-	# get the grand total readcount in all files to be added to the database
-	#
-	for readcount, fastq1, fastq2 in self.infiles:
-	    grandTotal += readcount
-	SEAseqPipeLine.logfile.write('Going to add a grandTotal of '+str(grandTotal)+' reads to the database.\n')
-
         #
         # Loop through infiles
         #
-	progress = Progress(grandTotal, logfile=SEAseqPipeLine.logfile, mem=True)
-	with progress:
+	readfromdiskProgress = Progress(self.grandTotal, logfile=SEAseqPipeLine.logfile, unit='reads-read-from-disk', mem=True)
+	with readfromdiskProgress:
 	    for readcount, fastq1, fastq2 in self.infiles:
-		totalReadcount += readcount
+		SEAseqPipeLine.logfile.write(str(self.currentRead)+' read pairs read from infiles, starting to reading from '+fastq1+'.\n')
+		self.totalReadcount += readcount
 		
 		#
 		# Open the files
@@ -532,89 +597,139 @@ class FastqToDatabseConverter(object):
 			qual1 = file1.readline()
 			qual2 = file2.readline()
 			if not header1: break
-			currentRead += 1
+			self.currentRead += 1
 			# data base has following info:
 			#    (id,header,sequence1,sequence2,quality1,quality2,barcodeSequence,clusterId,annotation,fromFastq)
-			progress.update()
 			barcodeSequence = None
 			clusterId = None
 			annotations = {}
-			pair = ReadPair(currentRead, header1, header2, sequence1, sequence2, qual1, qual2,barcodeSequence,clusterId,annotations, fastq1)
-			yield pair#currentRead, header1, header2, sequence1, sequence2, qual1, qual2, fastq1
+			pair = ReadPair(self.currentRead, header1, header2, sequence1, sequence2, qual1, qual2,barcodeSequence,clusterId,annotations, fastq1)
+			readfromdiskProgress.update()
+			yield pair#self.currentRead, header1, header2, sequence1, sequence2, qual1, qual2, fastq1
 		    except EOFError: break
-		assert totalReadcount == currentRead, 'Error while reading infiles: Read count after file '+fastq1+' is '+str(currentRead)+' should theoretically be '+str(totalReadcount)+'.\n'
-	SEAseqPipeLine.logfile.write(str(grandTotal)+' read pairs read from infiles.\n')
-    
-    def foreachReadPair(self, pair):
+		assert self.totalReadcount == self.currentRead, 'Error while reading infiles: Read count after file '+fastq1+' is '+str(self.currentRead)+' should theoretically be '+str(self.totalReadcount)+'.\n'
+		SEAseqPipeLine.logfile.write('Reached the end of '+fastq1+'.\n')
+	SEAseqPipeLine.logfile.write(str(self.grandTotal)+' read pairs read from infiles.\n')
+
+    def foreachProcessedPair(self, pair):
+	#
+	# append to chunk
+	#
+	self.readsToAdd.append(pair.databaseTuple)
+
+	#
+	# check read pair file origin
+	#
+	if pair.fileOrigin not in self.filesAdded:
+	    SEAseqPipeLine.logfile.write('Starting post process of read pair #'+str(pair.id)+' (from file '+pair.fileOrigin+').\n')
+	    self.filesAdded[pair.fileOrigin] = True
+
+	#
+	# add chunk to db
+	#
+	if len(self.readsToAdd) >= self.appendChunkSize: self.chunkToDb()
 	
-	pair.identifyBarcode()
+	self.progress.update()
 	
-	return pair
-    
-    def run(self,): 
-	
+	return 0
+
+    def chunkToDb(self, ):
 	#
 	# Imports
 	#
 	import time
+
+	#chunkStartTime = time.time()
+	chunkStartTime = time.time()
+	#SEAseqPipeLine.logfile.write('Appending reads '+str(self.currentLocation)+'-'+str(self.currentLocation+self.appendChunkSize-1)+' to db.\n')
+	SEAseqPipeLine.logfile.write('Staring to append reads '+str(self.currentLocation)+'-'+str(self.currentLocation+len(self.readsToAdd))+' to db.\n')
+
+	#SEAseqPipeLine.database.addReads(self.readsToAdd)
+	SEAseqPipeLine.database.addReads(self.readsToAdd)
+
+	#chunkTime = time.time()-chunkStartTime
+	chunkTime = time.time()-chunkStartTime
+
+	#SEAseqPipeLine.logfile.write('Reads '+str(self.currentLocation)+'-'+str(self.currentLocation+self.appendChunkSize-1)+' done after '+str(int(round(chunkTime,0)/60))+' minutes and '+str(round(chunkTime,0)%60)+' seconds.\n')
+	SEAseqPipeLine.logfile.write('Reads '+str(self.currentLocation)+'-'+str(self.currentLocation+len(self.readsToAdd))+' appended to db after '+str(int(round(chunkTime,0)/60))+' minutes and '+str(round(chunkTime,0)%60)+' seconds.\n')
+
+	self.currentLocation += len(self.readsToAdd) #self.appendChunkSize
+
+	self.readsToAdd = []
+	
+	return 0
+
+    def run(self,):
 	
 	#
-	# Setting initial values
+	# Write log message
 	#
 	SEAseqPipeLine.logfile.write('Adding reads to database table.\n')
-	filesAdded = {}
-	readsToAdd = []
-	currentLocation = 1
-	appendChunkSize = 100000
 	
 	#
-	# Parse through files and add to database in chunks of "appendChunkSize" reads
+	# Parse through files and add to database in chunks of "self.appendChunkSize" reads
 	#
-	for pair in self.readPairGenerator():
+	with self.progress:
+	    for pair in self.readPairGenerator():
+		#
+		# foreach read do this before adding to db, this part could be done in parallel
+		#
+		pair = foreachReadPairFromFastq(pair)
+		
+		#
+		# post procesing for each read, preparing and adding to db
+		#
+		self.foreachProcessedPair(pair)
 
-	    #
-	    # foreach read do this before adding to db
-	    #
-	    self.foreachReadPair(pair)
-
-	    #
-	    # append to chunk
-	    #
-	    readsToAdd.append(pair.databaseTuple)
-
-	    #
-	    # check read pair file origin
-	    #
-	    if pair.fileOrigin not in filesAdded:
-		SEAseqPipeLine.logfile.write('Starting with file '+pair.fileOrigin+'.\n')
-		filesAdded[pair.fileOrigin] = True
-
-	    #
-	    # add chunk to db
-	    #
-	    if len(readsToAdd) >= appendChunkSize:
-		chunkStartTime = time.time()
-		SEAseqPipeLine.logfile.write('Appending reads '+str(currentLocation)+'-'+str(currentLocation+appendChunkSize-1)+' to db.\n')
-		currentLocation += appendChunkSize
-		SEAseqPipeLine.database.addReads(readsToAdd)
-		chunkTime = time.time()-chunkStartTime
-		SEAseqPipeLine.logfile.write('Reads '+str(currentLocation)+'-'+str(currentLocation+appendChunkSize-1)+' done after '+str(int(round(chunkTime,0)/60))+' minutes and '+str(round(chunkTime,0)%60)+' seconds.\n')
-		readsToAdd = []
 
 	#
 	# add final chunk to db
 	#
-	if readsToAdd:
-	    chunkStartTime = time.time()
-	    SEAseqPipeLine.logfile.write('Appending reads '+str(currentLocation)+'-'+str(currentLocation+len(readsToAdd))+' to db.\n')
-	    SEAseqPipeLine.database.addReads(readsToAdd)
-	    chunkTime = time.time()-chunkStartTime
-	    SEAseqPipeLine.logfile.write('Reads '+str(currentLocation)+'-'+str(currentLocation+len(readsToAdd))+' done after '+str(int(round(chunkTime,0)/60))+' minutes and '+str(round(chunkTime,0)%60)+' seconds.\n')
+	if self.readsToAdd: self.chunkToDb()
 	
 	#
 	# Done write to log and return
 	#
-	SEAseqPipeLine.logfile.write('Files '+', '.join([key for key in filesAdded.keys()])+' added sucesfully to the database.\n')
+	SEAseqPipeLine.logfile.write('Files '+', '.join([key for key in self.filesAdded.keys()])+' added sucesfully to the database.\n')
+	
+	return 0
+
+    def runParallel(self,):
+	
+	#
+	# imports
+	#
+	import multiprocessing
+	
+	#
+	# Write log message
+	#
+	SEAseqPipeLine.logfile.write('Adding reads to database table (working in parallel).\n')
+	
+	poolOfProcesses = multiprocessing.Pool(SEAseqPipeLine.settings.parallelProcesses,maxtasksperchild=100000000)
+	self.parallelResults = poolOfProcesses.imap_unordered(foreachReadPairFromFastq,self.readPairGenerator(),chunksize=10000)
+	
+	#
+	# Parse through files and add to database in chunks of "self.appendChunkSize" reads
+	#
+	with self.progress:
+	    for pair in self.parallelResults:	    
+		#
+		# post procesing for each read, preparing and adding to db
+		#
+		self.foreachProcessedPair(pair)
+
+	#
+	# add final chunk to db
+	#
+	if self.readsToAdd: self.chunkToDb()
+	poolOfProcesses.close()
+	poolOfProcesses.join()
+	
+	#
+	# Done write to log and return
+	#
+	SEAseqPipeLine.logfile.write('Files '+', '.join([key for key in self.filesAdded.keys()])+' added sucesfully to the database.\n')
 	
 	return 0
 
@@ -676,6 +791,7 @@ class SEAseqPipeLine(object):
         #
         SEAseqPipeLine.database = Database(self.analysisPath+'/dataSettingsAndResults.db')
 	SEAseqPipeLine.settings = Settings()
+	if self.command != 'initiateAnalysis':SEAseqPipeLine.settings.loadFromDb()
 
         #
         # call current command
@@ -810,6 +926,7 @@ class SEAseqPipeLine(object):
     
     def changeSettings(self,):
         print 'Under development ...'
+	
 	#
         # get optional arguments from commandline
         #
@@ -823,21 +940,94 @@ class SEAseqPipeLine(object):
         SEAseqPipeLine.logfile.write(self.createLogHeader())
 
         #
+	# update new settings
+	#
+	SEAseqPipeLine.settings.saveToDb()
+	
+	#
         # update runs table
         #
         SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, True, MASTER)
         
         SEAseqPipeLine.logfile.write('Finished exiting.\n')        
 
+    def getReadPairAnnotations(self, ):
+	
+	uniqAnnotations = {}
+	uniqAnnotationValues = {}
+	
+	SEAseqPipeLine.logfile.write('Loading read annotations ...\n')
+	for pair in SEAseqPipeLine.database.getReadPairs():
+	    for annotation, value in pair.annotations.iteritems():
+		try:            uniqAnnotations[annotation] += 1
+		except KeyError:uniqAnnotations[annotation] = 1
+		try:            uniqAnnotationValues[annotation+'='+str(value)] += 1
+		except KeyError:uniqAnnotationValues[annotation+'='+str(value)] = 1
+	SEAseqPipeLine.logfile.write('Done.\n')
+	
+	print '\n\n#### uniq annotations:'
+	for annotation,count in uniqAnnotations.iteritems():
+	    print annotation+'\t'+str(count)
+
+	print '\n\n#### uniq annotationValues:'
+	for annotation,count in uniqAnnotationValues.iteritems():
+	    print annotation+'\t'+str(count)
+
     def clusterBarcodeSequences(self):
 	print 'The clusterBarcodeSequences is not yet implemented!'
+	
+	uniqAnnotations = {}
+	uniqAnnotationValues = {}
+	uniqBarcodeSequences = {}
+	
+	counter = 0
+	SEAseqPipeLine.logfile.write('Loading read annotations ...\n')
+	for pair in SEAseqPipeLine.database.getReadPairs():
+	    counter+=1
+	    if counter % 100000 == 0: print counter, 'reads loaded'
+	    if pair.barcodeSeq:
+		try:            uniqBarcodeSequences[pair.barcodeSeq] += 1
+		except KeyError:uniqBarcodeSequences[pair.barcodeSeq]  = 1
+	    for annotation, value in pair.annotations.iteritems():
+		try:            uniqAnnotations[annotation] += 1
+		except KeyError:uniqAnnotations[annotation]  = 1
+		try:            uniqAnnotationValues[annotation+'='+str(value)] += 1
+		except KeyError:uniqAnnotationValues[annotation+'='+str(value)]  = 1
+	SEAseqPipeLine.logfile.write('Done.\n')
+	print ''
+	print len(uniqBarcodeSequences),'uniq barcode sequences found in read population'
+
+	#sort barcodes by number of reads/sequence
+	import operator
+
+	temporaryDict = {}
+	for barcode, count in uniqBarcodeSequences.iteritems():
+		try:		temporaryDict[count].append(barcode)
+		except KeyError:temporaryDict[count] = [barcode]
+	
+	sortedAlleles = []
+	counter = 0
+	for count, barcodes in sorted(temporaryDict.iteritems(), key=operator.itemgetter(0))[::-1]:
+		for barcode in barcodes:
+		    print str(count)+'\t'+str(barcode)
+		    counter += 1
+		if counter >= 10: break
+		
+	print '\n\n#### uniq annotations:'
+	for annotation,count in uniqAnnotations.iteritems():
+	    print annotation+'\t'+str(count)
+
+	print '\n\n#### uniq annotationValues:'
+	for annotation,count in uniqAnnotationValues.iteritems():
+	    print annotation+'\t'+str(count)
 
     def readFastqs(self,):
 	#
 	# Add the reads from fastq files to the database reads table
 	#
 	converter = FastqToDatabseConverter()
-	converter.run()
+	#converter.run()
+	converter.runParallel()
 	SEAseqPipeLine.logfile.write('Saving settings to database.\n')
 	SEAseqPipeLine.settings.saveToDb()
 	SEAseqPipeLine.logfile.write('readFastqs finished.\n')
@@ -949,7 +1139,7 @@ class SEAseqPipeLine(object):
         #
         # look for help request
         #
-        if re.search('-{0,2}[hH][eE]?[lL]?[pP]?',self.command):
+        if re.search('^-{0,2}[hH][eE]?[lL]?[pP]?$',self.command):
             print man
             sys.exit(0)
 
@@ -980,12 +1170,13 @@ class SEAseqPipeLine(object):
         if self.command == 'initiateAnalysis': prog = 'SEAseq2 initiateAnalysis <path> <type>'
         if self.command == 'commandLog': prog = 'SEAseq2 commandLog <path>'
         if self.command == 'addData': prog = 'SEAseq2 addData <path>'
+	if self.command == 'changeSettings': prog = 'SEAseq2 changeSettings <path>'
 	if self.command == 'startAnalysis': prog = 'SEAseq2 startAnalysis <path> <part>'
         argparser = argparse.ArgumentParser(prog=prog, description='', epilog='Use: "SEAseq2 help" to get more detailed help.', formatter_class=argparse.RawTextHelpFormatter)
     
         # All programs
-        argparser.add_argument('--debug', dest='debug', action='store_true', required=False, default=False, help='Run the program in debug-mode, single process python script (SLOW).')
-        argparser.add_argument(	'-p', dest='cpus', metavar='N',	type=int, required=False, default=1,help='The number of processes to run in parallel (default 1).')
+        argparser.add_argument('--debug', dest='debug', action='store_true', required=False, help='Run the program in debug-mode, single process python script (SLOW).')
+        argparser.add_argument(	'-p', dest='cpus', metavar='N',	type=int, required=False,help='The number of processes to run in parallel (default 1, current value='+str(SEAseqPipeLine.settings.parallelProcesses)+').')
 
         if self.command == 'commandLog':
             try: indata = argparser.parse_args(self.commandLineList[3:])
@@ -1000,22 +1191,24 @@ class SEAseqPipeLine(object):
             except IndexError: pass
 
         if self.command == 'changeSettings':
-	    argparser.add_argument('-bm', dest='barcodeMissmatch', metavar='N',	type=int, required=False, default=0,help='The number of missmatches allowed in the bead barcode sequence (default 0).')
+	    argparser.add_argument('-bm', dest='barcodeMissmatch', metavar='N',	type=int, required=False, help='The number of missmatches allowed in the bead barcode sequence (default 0, current value='+str(SEAseqPipeLine.settings.barcodeMissmatch)+').')
+	    argparser.add_argument('-hm', dest='maxHandleMissMatches', metavar='N',	type=int, required=False, help='The number of missmatches allowed in the handle sequence (default 0, current value='+str(SEAseqPipeLine.settings.maxHandleMissMatches)+').')
 	    try:
                 indata = argparser.parse_args(self.commandLineList[3:])
-		SEAseqPipeLine.settings.setVariable('barcodeMissmatch',indata.barcodeMissmatch)
+		if indata.barcodeMissmatch != None: SEAseqPipeLine.settings.setVariable('barcodeMissmatch',indata.barcodeMissmatch)
+		if indata.maxHandleMissMatches != None: SEAseqPipeLine.settings.setVariable('maxHandleMissMatches',indata.maxHandleMissMatches)
 	    except IndexError: pass
     
         if self.command == 'startAnalysis':
 	    argparser.add_argument('parts', metavar='<part>', type=str, nargs='+', help='parts of the analysis to perform')
             if self.onUppmax:
-                argparser.add_argument('-prj','-project',dest='project',metavar='<b20xxxxx>',	type=str,	required=False,	default='b2014005',	help='uppmaxproject (default b2011011)')
+                argparser.add_argument('-prj','-project',dest='project',metavar='<b20xxxxx>',	type=str,	required=False,	help='uppmaxproject (default b2011011, current value='+str(SEAseqPipeLine.settings.uppmaxProject)+')')
                 #argparser.add_argument('--send',	dest='send', 	action='store_true', 			required=False,	default=False,	help='Send sbatch scripts to job-queue.')
                 #argparser.add_argument('--sendonly',	dest='sendonly',action='store_true', 			required=False,	default=False,	help='Do not generate the files only Send sbatch scripts to job-queue.')
                 #argparser.add_argument('--small',	dest='small', 	action='store_true', 			required=False,	default=False,	help='make for smaller dataset job-queue.')
             try:
                 indata = argparser.parse_args(self.commandLineList[3:])
-                SEAseqPipeLine.settings.setVariable('uppmaxProject',indata.project)
+                if indata.project != None: SEAseqPipeLine.settings.setVariable('uppmaxProject',indata.project)
 		SEAseqPipeLine.settings.setVariable('analysisParts',indata.parts)
             except IndexError: pass
             
@@ -1028,8 +1221,8 @@ class SEAseqPipeLine(object):
                 self.fastq2 = os.path.abspath(indata.fastq2.name)
             except IndexError: pass
             
-        SEAseqPipeLine.settings.setVariable('debug',indata.debug)
-        SEAseqPipeLine.settings.setVariable('parallelProcesses',indata.cpus)
+        if indata.debug != None: SEAseqPipeLine.settings.setVariable('debug',indata.debug)
+        if indata.cpus != None:  SEAseqPipeLine.settings.setVariable('parallelProcesses',indata.cpus)
 
     def createLogHeader(self,):
         """ creates the header lines for each new logfile entry """
@@ -1062,7 +1255,7 @@ class SEAseqPipeLine(object):
 
 class Progress():
 
-	def __init__(self,total, verb='full', logfile=sys.stderr, unit='read' ,mem=False, printint=0):
+	def __init__(self,total, verb='full', logfile=sys.stderr, unit='reads' ,mem=False, printint=0):
 		import time
 		self.total = total
 		self.current = 0
@@ -1089,7 +1282,7 @@ class Progress():
 			self.stf=int(round((self.total-self.current)/((self.current-self.lcurrent)/(time.time()-self.ltime))))
 			if self.type == 'full': self.logfile.write(
 				'#Progress => '+str(self.percentage)+'%, '+
-				str( round((self.current-self.lcurrent)/(time.time()-self.ltime),2) )+' '+self.unit+'s/second, '+
+				str( round((self.current-self.lcurrent)/(time.time()-self.ltime),2) )+' '+self.unit+'/second, '+
 				time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())+
 				', left: '+str(self.stf/60/60)+'h '+str(self.stf/60%60)+'min '+str(self.stf%60)+'s')
 			if self.mem:
