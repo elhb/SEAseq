@@ -170,23 +170,25 @@ class ReadPair(object):
 	for i in [15]:#range(15):
 	    handleStartPosition,handleEndPosition,handleMissMatches = self.matchSequence(self.r1Seq, 'AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC'[:35-i], int(math.ceil(float(35-i)*0.1)))
 	    if handleStartPosition:
-		self.annotations['Read1IsIlluminaAdapter'] = handleMissMatches
+		self.annotations['Read1IsIlluminaAdapter'] = str(handleMissMatches)+':'+ str(handleStartPosition)
 		break
 	
 	for i in [15]:#range(15):
 	    handleStartPosition,handleEndPosition,handleMissMatches = self.matchSequence(self.r2Seq, 'AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT'[:34-i], int(math.ceil(float(34-i)*0.1)))
 	    if handleStartPosition:
-		self.annotations['Read2IsIlluminaAdapter'] = handleMissMatches
+		self.annotations['Read2IsIlluminaAdapter'] = str(handleMissMatches)+':'+ str(handleStartPosition)
 		break
 
     def identifyBarcode(self, ):
 
 	handleStartPosition,handleEndPosition,handleMissMatches = self.matchSequence(self.r1Seq, SEAseqPipeLine.settings.handleSequence, SEAseqPipeLine.settings.maxHandleMissMatches)
+	
+	if handleMissMatches > 0 or handleMissMatches == None: self.annotations['handleMissMatches'] = handleMissMatches
+	elif handleMissMatches == 0:self.annotations['handlePerfectMatch'] = True
+	else: raise ValueError, 'handleMissMatches must be integer >= 0 or None'
+	
 	if handleStartPosition == SEAseqPipeLine.settings.barcodeLength:
 	    self.barcodeSeq = self.r1Seq[:SEAseqPipeLine.settings.barcodeLength]
-	    if handleMissMatches > 0: self.annotations['handleMissMatches'] = handleMissMatches
-	    elif handleMissMatches == 0:self.annotations['handlePerfectMatch'] = True
-	    else: raise ValueError, 'handleMissMatches must be integer >= 0'
 	elif handleStartPosition == None: self.annotations['handleNotFound'] = True
 	else: self.annotations['ErronousHandlePosition'] = handleStartPosition
 
@@ -237,7 +239,7 @@ class Database(object):
 	self.c.execute('''CREATE TABLE runs (startTime,command,commandLine,finishedSuccessfully,masterPid)''')
 	self.c.execute('''CREATE TABLE fastqs (filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength,PRIMARY KEY (filePairId))''');
 	self.c.execute('''CREATE TABLE settings (variableName,defaultValue,value,setTime,PRIMARY KEY (variableName))''')
-	self.c.execute('''CREATE TABLE results (resultName,value,setTime,PRIMARY KEY (resultName))''')
+	self.c.execute('''CREATE TABLE results (resultName,defaultValue,value,setTime,PRIMARY KEY (resultName))''')
 	
 	self.commitAndClose()
 
@@ -401,6 +403,118 @@ class Database(object):
         self.commitAndClose()
         
         return runsInfo
+
+class Results(object,):
+    
+    def __init__(self, ):
+        """ object holding the results of the analysis """
+	
+	self.defaultValues = {
+	    'totalReadCount':None,
+	    'uniqueBarcodeSequences':None
+	}
+	self.explenations = {
+	    'totalReadCount':'The number of reads totally included in the analysis.',
+	    'uniqueBarcodeSequences':'The total number of uniqu barcode sequences identified.'
+	}
+	self.isDefault = {}
+	self.setTime = {}
+
+	self.totalReadCount = None
+	self.uniqueBarcodeSequences = None
+	
+	self.setDefaults()
+
+    def setDefaults(self,):
+	for resultName, value in self.defaultValues.iteritems():
+	    self.__dict__[resultName] = value
+	    self.isDefault[resultName] = True
+	    self.setTime[resultName] = None
+	return 0
+
+    def loadFromDb(self,):
+	
+	#
+	# Get the connection
+	#
+	SEAseqPipeLine.database.getConnection()
+	
+	#
+	# Select data
+	#
+	data = SEAseqPipeLine.database.c.execute('SELECT resultName,defaultValue,value,setTime FROM results').fetchall()
+	
+	#
+	# Parse data and add to object __dict__
+	#
+	if data:
+	    for resultName,default,value,setTime in data:
+		self.__dict__[resultName]  = value
+		self.isDefault[resultName] = default
+		self.setTime[resultName]   = setTime
+	
+	#
+	# close connection
+	#
+	SEAseqPipeLine.database.commitAndClose()
+
+    def setResult(self,resultName,value):
+	import time
+	assert resultName in self.explenations,'Error: you are trying to set a value for an undefined result.\n'
+	self.__dict__[resultName]  = value
+	self.isDefault[resultName] = False
+	self.setTime[resultName]   = time.time()
+	return 0
+
+    def saveToDb(self,):
+	
+	#
+	# imports
+	#
+	import time
+	
+	#
+	# get connection
+	#
+	SEAseqPipeLine.database.getConnection()
+	
+        #
+        # Look whats already in database, update it if older or default and set what is not
+        #
+	SEAseqPipeLine.logfile.write('checking results in db.\n')
+        alreadyInDb = {}
+	data = SEAseqPipeLine.database.c.execute('SELECT resultName,defaultValue,value,setTime FROM results').fetchall()
+        if data:
+            for resultName,default,value,setTime in data:
+		SEAseqPipeLine.logfile.write('processing result '+resultName+'')
+		alreadyInDb[resultName] = True
+		
+		if resultName in self.__dict__:
+		    if default and not self.isDefault[resultName] or setTime < self.setTime[resultName]:
+			if type(self.__dict__[resultName]) in [dict,list]: self.__dict__[resultName] = str(self.__dict__[resultName])
+			SEAseqPipeLine.logfile.write(', updating from '+str(value)+' to '+str(self.__dict__[resultName])+', old_setTime '+str(setTime)+' new_setTime '+str(self.setTime[resultName])+'.\n')
+			SEAseqPipeLine.database.c.execute('UPDATE results SET defaultValue=?, value=?, setTime=? WHERE resultName=?', (self.isDefault[resultName],self.__dict__[resultName],self.setTime[resultName],resultName))
+		    else: SEAseqPipeLine.logfile.write(' no update needed.\n')
+        
+        #
+        # Add new vars to database
+        #
+	SEAseqPipeLine.logfile.write('adding new results to db:\n')
+        for resultName in self.__dict__:
+	    if resultName in ['explenations','defaultValues','isDefault','setTime']:continue
+	    if resultName not in alreadyInDb:
+		if type(self.__dict__[resultName]) in [dict,list]: self.__dict__[resultName] = str(self.__dict__[resultName])
+		values = (resultName,self.isDefault[resultName],self.__dict__[resultName],self.setTime[resultName])
+		SEAseqPipeLine.database.c.execute('INSERT INTO results VALUES (?,?,?,?)', values)
+		SEAseqPipeLine.logfile.write('result '+resultName+' added to db with value '+str(self.__dict__[resultName])+',')
+		if self.isDefault[resultName]:SEAseqPipeLine.logfile.write(' this is the default value.\n')
+		else:SEAseqPipeLine.logfile.write(' non-default value.\n')
+	    else: pass#SEAseqPipeLine.logfile.write('variable\t'+resultName+'\talready in db.\n')
+        
+	SEAseqPipeLine.logfile.write('commiting changes to database.\n')
+        SEAseqPipeLine.database.commitAndClose()
+        
+        return 0
 
 class Settings(object,):
     
@@ -575,7 +689,7 @@ class FastqToDatabseConverter(object):
 	readfromdiskProgress = Progress(self.grandTotal, logfile=SEAseqPipeLine.logfile, unit='reads-read-from-disk', mem=True)
 	with readfromdiskProgress:
 	    for readcount, fastq1, fastq2 in self.infiles:
-		SEAseqPipeLine.logfile.write(str(self.currentRead)+' read pairs read from infiles, starting to reading from '+fastq1+'.\n')
+		SEAseqPipeLine.logfile.write(str(self.currentRead)+' read pairs read from infiles, now starting to read from '+fastq1+'.\n')
 		self.totalReadcount += readcount
 		
 		#
@@ -610,6 +724,7 @@ class FastqToDatabseConverter(object):
 		assert self.totalReadcount == self.currentRead, 'Error while reading infiles: Read count after file '+fastq1+' is '+str(self.currentRead)+' should theoretically be '+str(self.totalReadcount)+'.\n'
 		SEAseqPipeLine.logfile.write('Reached the end of '+fastq1+'.\n')
 	SEAseqPipeLine.logfile.write(str(self.grandTotal)+' read pairs read from infiles.\n')
+	SEAseqPipeLine.results.setResult('totalReadCount',self.grandTotal)
 
     def foreachProcessedPair(self, pair):
 	#
@@ -730,6 +845,8 @@ class FastqToDatabseConverter(object):
 	# Done write to log and return
 	#
 	SEAseqPipeLine.logfile.write('Files '+', '.join([key for key in self.filesAdded.keys()])+' added sucesfully to the database.\n')
+	SEAseqPipeLine.logfile.write('Saving totalReadCount to results table in database.\n')
+	SEAseqPipeLine.results.saveToDb()
 	
 	return 0
 
@@ -754,6 +871,7 @@ class SEAseqPipeLine(object):
         self.commandLine = None
         self.commandLineList = None
         SEAseqPipeLine.settings = None
+	SEAseqPipeLine.results = None
         SEAseqPipeLine.logfile = None
         SEAseqPipeLine.startTime = time.time()
         SEAseqPipeLine.startTimeStr = time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())
@@ -791,7 +909,10 @@ class SEAseqPipeLine(object):
         #
         SEAseqPipeLine.database = Database(self.analysisPath+'/dataSettingsAndResults.db')
 	SEAseqPipeLine.settings = Settings()
-	if self.command != 'initiateAnalysis':SEAseqPipeLine.settings.loadFromDb()
+	SEAseqPipeLine.results = Results()
+	if self.command != 'initiateAnalysis':
+	    SEAseqPipeLine.settings.loadFromDb()
+	    SEAseqPipeLine.results.loadFromDb()
 
         #
         # call current command
@@ -973,54 +1094,65 @@ class SEAseqPipeLine(object):
 	for annotation,count in uniqAnnotationValues.iteritems():
 	    print annotation+'\t'+str(count)
 
+    def generateBarcodeFasta(self, ):
+	
+	#
+	# imports
+	#
+	import operator
+	
+	SEAseqPipeLine.logfile.write('Generating barcode fasta ...\n')
+	
+	uniqBarcodeSequences = {}
+	temporaryDict = {}
+	barcodeCounter = 0
+	totalReadPairCounter = 0
+	
+	SEAseqPipeLine.logfile.write('Loading read pairs ...\n')
+	progress = Progress(SEAseqPipeLine.results.totalReadCount, logfile=SEAseqPipeLine.logfile, unit='reads-loaded-from-db', mem=True)
+	with progress:
+	    for pair in SEAseqPipeLine.database.getReadPairs():
+		if pair.barcodeSeq:
+		    try:            uniqBarcodeSequences[pair.barcodeSeq].append(pair.id)
+		    except KeyError:uniqBarcodeSequences[pair.barcodeSeq] = [pair.id]
+		progress.update()
+	SEAseqPipeLine.logfile.write('Done.\n')
+	SEAseqPipeLine.results.setResult('uniqueBarcodeSequences',len(uniqBarcodeSequences))
+	print SEAseqPipeLine.results.uniqueBarcodeSequences,'uniq barcode sequences found within the read pair population.'
+
+	SEAseqPipeLine.logfile.write('Sorting the barcodes by number of reads/sequence.\n')
+	SEAseqPipeLine.logfile.write('Building the sorting dictionary ...\n')
+	for barcode, idList in uniqBarcodeSequences.iteritems():
+		try:		temporaryDict[len(idList)].append(barcode)
+		except KeyError:temporaryDict[len(idList)] = [barcode]
+	
+	
+	SEAseqPipeLine.logfile.write('Creating output ... \n')
+	barcodeFastaFile = open(self.analysisPath+'/rawBarcodeSequencesSortedByAbundance.fa','w')
+	progress = Progress(SEAseqPipeLine.results.totalReadCount, logfile=SEAseqPipeLine.logfile, unit='reads-to-fasta', mem=True)
+	with progress:
+	    for count, barcodes in sorted(temporaryDict.iteritems(), key=operator.itemgetter(0))[::-1]:
+		for barcode in barcodes:
+		    barcodeCounter += 1
+		    readPairCounter = 0
+		    for readPairId in uniqBarcodeSequences[barcode]:
+			readPairCounter += 1
+			totalReadPairCounter += 1
+			barcodeFastaFile.write('>'+str(readPairId)+' bc='+str(barcodeCounter)+' rp='+str(readPairCounter)+' bctrp='+str(count)+'\n'+barcode+'\n')
+			progress.update()
+	barcodeFastaFile.close()	
+	
+	return 0
+    
     def clusterBarcodeSequences(self):
 	print 'The clusterBarcodeSequences is not yet implemented!'
 	
-	uniqAnnotations = {}
-	uniqAnnotationValues = {}
-	uniqBarcodeSequences = {}
+	self.generateBarcodeFasta()
 	
-	counter = 0
-	SEAseqPipeLine.logfile.write('Loading read annotations ...\n')
-	for pair in SEAseqPipeLine.database.getReadPairs():
-	    counter+=1
-	    if counter % 100000 == 0: print counter, 'reads loaded'
-	    if pair.barcodeSeq:
-		try:            uniqBarcodeSequences[pair.barcodeSeq] += 1
-		except KeyError:uniqBarcodeSequences[pair.barcodeSeq]  = 1
-	    for annotation, value in pair.annotations.iteritems():
-		try:            uniqAnnotations[annotation] += 1
-		except KeyError:uniqAnnotations[annotation]  = 1
-		try:            uniqAnnotationValues[annotation+'='+str(value)] += 1
-		except KeyError:uniqAnnotationValues[annotation+'='+str(value)]  = 1
-	SEAseqPipeLine.logfile.write('Done.\n')
-	print ''
-	print len(uniqBarcodeSequences),'uniq barcode sequences found in read population'
-
-	#sort barcodes by number of reads/sequence
-	import operator
-
-	temporaryDict = {}
-	for barcode, count in uniqBarcodeSequences.iteritems():
-		try:		temporaryDict[count].append(barcode)
-		except KeyError:temporaryDict[count] = [barcode]
+	SEAseqPipeLine.results.saveToDb()
 	
-	sortedAlleles = []
-	counter = 0
-	for count, barcodes in sorted(temporaryDict.iteritems(), key=operator.itemgetter(0))[::-1]:
-		for barcode in barcodes:
-		    print str(count)+'\t'+str(barcode)
-		    counter += 1
-		if counter >= 10: break
-		
-	print '\n\n#### uniq annotations:'
-	for annotation,count in uniqAnnotations.iteritems():
-	    print annotation+'\t'+str(count)
-
-	print '\n\n#### uniq annotationValues:'
-	for annotation,count in uniqAnnotationValues.iteritems():
-	    print annotation+'\t'+str(count)
-
+	return 0
+    
     def readFastqs(self,):
 	#
 	# Add the reads from fastq files to the database reads table
