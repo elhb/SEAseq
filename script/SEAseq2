@@ -126,7 +126,7 @@ class ReadPair(object):
 	#       (id,          header,  sequence1, sequence2, quality1,quality2,barcodeSequence,clusterId,annotation,fromFastq)
 	
 	# Dumping the quality values
-	return  (self.id,     self.r1Header,self.r1Seq,self.r2Seq,None,None,   self.barcodeSeq,None,     str(self.annotations),self.fileOrigin)
+	return  (self.id,     self.r1Header,self.r1Seq,self.r2Seq,None,None,   str(self.barcodeSeq),None,     str(self.annotations),self.fileOrigin)
 
     def matchSequence(self, readsequence, matchsequence, maxDistance, matchfunk=hamming_distance):
 	
@@ -188,7 +188,7 @@ class ReadPair(object):
 	else: raise ValueError, 'handleMissMatches must be integer >= 0 or None'
 	
 	if handleStartPosition == SEAseqPipeLine.settings.barcodeLength:
-	    self.barcodeSeq = self.r1Seq[:SEAseqPipeLine.settings.barcodeLength]
+	    self.barcodeSeq = [0,SEAseqPipeLine.settings.barcodeLength]
 	elif handleStartPosition == None: self.annotations['handleNotFound'] = True
 	else: self.annotations['ErronousHandlePosition'] = handleStartPosition
 
@@ -363,7 +363,7 @@ class Database(object):
         #return [[readCount,fastq1,fastq2] if (not addedToReadsTable) else None for filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength in filePairs]
 	return [[readCount,fastq1,fastq2] for filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength in filePairs]
 
-    def getReadPairs(self,):
+    def getAllReadPairs(self,):
         #
         # Imports
         #
@@ -387,7 +387,7 @@ class Database(object):
 	    
 	    for row in rows:
 		pairId,header,sequence1,sequence2,qual1,qual2,barcodeSequence,clusterId,annotations,fromFastq = row
-		yield ReadPair(pairId, header, header, sequence1, sequence2, qual1, qual2,barcodeSequence,clusterId,eval(annotations), fromFastq)
+		yield ReadPair(pairId, header, header, sequence1, sequence2, qual1, qual2,eval(barcodeSequence),clusterId,eval(annotations), fromFastq)
 	
         self.commitAndClose()
     
@@ -554,6 +554,7 @@ class Settings(object,):
 	self.maxHandleMissMatches = None
 	self.barcodeLength = None
 	self.analysisParts = None
+	self.barcodeMissmatch = None
 	
 	self.setDefaults()
 
@@ -1078,7 +1079,7 @@ class SEAseqPipeLine(object):
 	uniqAnnotationValues = {}
 	
 	SEAseqPipeLine.logfile.write('Loading read annotations ...\n')
-	for pair in SEAseqPipeLine.database.getReadPairs():
+	for pair in SEAseqPipeLine.database.getAllReadPairs():
 	    for annotation, value in pair.annotations.iteritems():
 		try:            uniqAnnotations[annotation] += 1
 		except KeyError:uniqAnnotations[annotation] = 1
@@ -1111,10 +1112,11 @@ class SEAseqPipeLine(object):
 	SEAseqPipeLine.logfile.write('Loading read pairs ...\n')
 	progress = Progress(SEAseqPipeLine.results.totalReadCount, logfile=SEAseqPipeLine.logfile, unit='reads-loaded-from-db', mem=True)
 	with progress:
-	    for pair in SEAseqPipeLine.database.getReadPairs():
+	    for pair in SEAseqPipeLine.database.getAllReadPairs():
 		if pair.barcodeSeq:
-		    try:            uniqBarcodeSequences[pair.barcodeSeq].append(pair.id)
-		    except KeyError:uniqBarcodeSequences[pair.barcodeSeq] = [pair.id]
+		    barcodeSequence = pair.r1Seq[pair.barcodeSeq[0]:pair.barcodeSeq[1]]
+		    try:            uniqBarcodeSequences[barcodeSequence].append(pair.id)
+		    except KeyError:uniqBarcodeSequences[barcodeSequence] = [pair.id]
 		progress.update()
 	SEAseqPipeLine.logfile.write('Done.\n')
 	SEAseqPipeLine.results.setResult('uniqueBarcodeSequences',len(uniqBarcodeSequences))
@@ -1144,12 +1146,166 @@ class SEAseqPipeLine(object):
 	
 	return 0
     
+    def runBarcodeClusteringPrograms(self, ):
+
+	#
+	# imports
+	#
+	import subprocess
+
+	clusteringProgramsLogfile = open(self.analysisPath+'/cdHitBarcodeClustering.log.txt','w')
+	
+	# cluster raw barcodes
+	command = ['cd-hit-454',
+		    '-i',self.analysisPath+'/rawBarcodeSequencesSortedByAbundance.fa',
+		    '-o',self.analysisPath+'/clusteredBarcodeSequences',
+		    '-g','1',      # mode
+		    '-n','3',      # wrodsize
+		    '-M','0',      # memory limit
+		    '-t',str(SEAseqPipeLine.settings.parallelProcesses),      # threads
+		    '-gap','-100', # disallow gaps
+		    '-c',str(1.000-float(SEAseqPipeLine.settings.barcodeMissmatch)/float(SEAseqPipeLine.settings.barcodeLength)) # identity cutoff
+		    ]
+	SEAseqPipeLine.logfile.write('Starting command: '+' '.join(command)+'\n')
+	cdhit = subprocess.Popen(command,stdout=clusteringProgramsLogfile,stderr=subprocess.PIPE )
+	errdata = cdhit.communicate()
+	if cdhit.returncode != 0:
+		print 'cmd: '+' '.join( command )
+		print 'cd-hit view Error code', cdhit.returncode, errdata
+		sys.exit()
+	
+	# Build consensus sequences for read pair clusters
+	command = ['cdhit-cluster-consensus',
+		self.analysisPath+'/clusteredBarcodeSequences.clstr',
+		self.analysisPath+'/rawBarcodeSequencesSortedByAbundance.fa',
+		self.analysisPath+'/clusteredBarcodeSequences.consensus',
+		self.analysisPath+'/clusteredBarcodeSequences.aligned'
+		]
+	SEAseqPipeLine.logfile.write('Starting command: '+' '.join(command)+'\n')
+	ccc = subprocess.Popen(command,stdout=clusteringProgramsLogfile,stderr=subprocess.PIPE )
+	errdata = ccc.communicate()
+	if ccc.returncode != 0:
+		print 'cmd: '+' '.join( command )
+		print 'cdhit-cluster-consensus view Error code', ccc.returncode, errdata
+		sys.exit()
+	clusteringProgramsLogfile.close()
+	
+	return 0
+
+    def parseBarcodeClusteringOutput(self, ):
+	
+	#
+	# inititate variables
+	#
+	totalClusterCount = 0
+	barcodeClusters = {}
+	singletonClusters = {}
+	nonSingletonClusters = {}
+	
+	#
+	# open file connections
+	#
+	consensusFile = open(self.analysisPath+'/clusteredBarcodeSequences.consensus.fasta')
+	clstrFile = open(self.analysisPath+'/clusteredBarcodeSequences.clstr')
+	
+	#
+	# load cluster ids and consensus sequences
+	#
+	SEAseqPipeLine.logfile.write('\nLoading barcode clusters and a barcode consesnsus sequences for each cluster ...\n')
+	while True:
+	    header = consensusFile.readline().rstrip()
+	    barcodeSequence = consensusFile.readline().rstrip()
+	    if header == '': break
+	    totalClusterCount += 1
+	    header = header.split('_cluster_')
+	    clusterId = int(header[1].split(' ')[0])
+	    if header[0][:2] == '>s':
+		singletonClusters[clusterId] = {'clusterReadCount':1,'readPairs':[],'identities':[],'clusterBarcodeSequence':barcodeSequence}
+		barcodeClusters[clusterId] = singletonClusters[clusterId]
+	    elif header[0][:2] == '>c':
+		nonSingletonClusters[clusterId] = {'clusterReadCount':int(header[1].split(' ')[2]),'readPairs':[],'identities':[],'clusterBarcodeSequence':barcodeSequence}
+		barcodeClusters[clusterId] = nonSingletonClusters[clusterId]
+	    else: raise ValueError
+	SEAseqPipeLine.logfile.write('A total of '+str(totalClusterCount)+' clusters of barcode sequences were loaded into memory.\n')
+
+	#
+	# Load what readpairs are in each cluster
+	#
+	SEAseqPipeLine.logfile.write('\nLoading read pair to barcode cluster connections ...\n')
+	progress = Progress(SEAseqPipeLine.results.totalReadCount, logfile=SEAseqPipeLine.logfile, unit='reads-loaded', mem=True)
+	with progress:
+	    for line in clstrFile:
+		line = line.rstrip()
+		if line[0] == '>':
+		    clusterId = int(line.split(' ')[1])
+		    continue
+		elif line[0] == '0':
+		    readId = line.split('>')[1].split('.')[0]
+		    identity = 'seed'
+		    assert line.split(' ')[-1] == '*', 'Error in file format of clstr file'
+		else:
+		    readId = line.split('>')[1].split('.')[0]
+		    identity = float(line.split(' ')[-1].split('/')[-1].split('%')[0])
+		barcodeClusters[clusterId]['readPairs'].append(readId)
+		barcodeClusters[clusterId]['identities'].append(identity)
+		progress.update()
+	SEAseqPipeLine.logfile.write('All read pair to barcode cluster connections loaded.\n')
+	
+	return barcodeClusters
+
     def clusterBarcodeSequences(self):
 	print 'The clusterBarcodeSequences is not yet implemented!'
 	
+	#
+	# imports
+	#
+	import subprocess
+	
+	#
+	# generate a fasta file with barcode sequences
+	#
 	self.generateBarcodeFasta()
 	
+	#
+	# Run clustering programs
+	#
+	self.runBarcodeClusteringPrograms()
+	
+	#
+	# Parse the output
+	#
+	barcodeClusters = self.parseBarcodeClusteringOutput()
+	
+	#
+	# compress files
+	#
+	a = [
+		self.analysisPath+'/clusteredBarcodeSequences',
+		self.analysisPath+'/clusteredBarcodeSequences.clstr',
+		self.analysisPath+'/rawBarcodeSequencesSortedByAbundance.fa',
+		self.analysisPath+'/clusteredBarcodeSequences.consensus.fasta',
+		self.analysisPath+'/clusteredBarcodeSequences.aligned',
+		]
+	processes = [] 
+	for fileName in a:
+	    SEAseqPipeLine.logfile.write('Starting process:'+' gzip -v9 '+fileName+'\n')
+	    p=subprocess.Popen(['gzip','-v9',fileName],stdout=sys.stdout)
+	    processes.append(p)
+	
+	#
+	# save clustering info to database
+	#
+	
+	
+	#
+	# Save results
+	#
 	SEAseqPipeLine.results.saveToDb()
+
+	#
+	# wait for file compression to finish
+	#
+	for p in processes: p.wait()
 	
 	return 0
     
@@ -1190,16 +1346,11 @@ class SEAseqPipeLine(object):
 	
 	if 'all' in SEAseqPipeLine.settings.analysisParts or 'readFastqs' in SEAseqPipeLine.settings.analysisParts:
 	    readFastqsStartTime = time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())
-	    #SEAseqPipeLine.database.addToRunsTable(readFastqsStartTime, self.command+' part:readFastqs', self.commandLine, False, MASTER)
 	    self.readFastqs()
-	    #SEAseqPipeLine.database.addToRunsTable(readFastqsStartTime, self.command+' part:readFastqs', self.commandLine, True, MASTER)
 	    
 	if 'all' in SEAseqPipeLine.settings.analysisParts or 'clusterBarcodeSequences' in SEAseqPipeLine.settings.analysisParts:
-	    #SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command+' part:clusterBarcodeSequences', self.commandLine, True, MASTER)
 	    clusterBarcodeSequencesStartTime = time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())
-	    #SEAseqPipeLine.database.addToRunsTable(clusterBarcodeSequencesStartTime, self.command+' part:clusterBarcodeSequences', self.commandLine, False, MASTER)
 	    self.clusterBarcodeSequences()
-	    #SEAseqPipeLine.database.addToRunsTable(clusterBarcodeSequencesStartTime, self.command+' part:clusterBarcodeSequences', self.commandLine, True, MASTER)
 
         #
         # update runs table
