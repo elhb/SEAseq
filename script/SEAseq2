@@ -126,7 +126,7 @@ class ReadPair(object):
 	#       (id,          header,  sequence1, sequence2, quality1,quality2,barcodeSequence,clusterId,annotation,fromFastq)
 	
 	# Dumping the quality values
-	return  (self.id,     self.r1Header,self.r1Seq,self.r2Seq,None,None,   str(self.barcodeSeq),None,     str(self.annotations),self.fileOrigin)
+	return  (self.id,     self.r1Header,self.r1Seq,self.r2Seq,self.r1Qual,self.r2Qual,   str(self.barcodeSeq),None,     str(self.annotations),self.fileOrigin)
 
     def matchSequence(self, readsequence, matchsequence, maxDistance, matchfunk=hamming_distance):
 	
@@ -235,7 +235,6 @@ class Database(object):
 	#
 	# Create tables
 	#
-	self.c.execute('''CREATE TABLE reads (id,header,sequence1,sequence2,quality1,quality2,barcodeSequence,clusterId,annotation,fromFastq,PRIMARY KEY (clusterId))''')
 	self.c.execute('''CREATE TABLE runs (startTime,command,commandLine,finishedSuccessfully,masterPid)''')
 	self.c.execute('''CREATE TABLE fastqs (filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength,PRIMARY KEY (filePairId))''');
 	self.c.execute('''CREATE TABLE settings (variableName,defaultValue,value,setTime,PRIMARY KEY (variableName))''')
@@ -411,17 +410,29 @@ class Results(object,):
 	
 	self.defaultValues = {
 	    'totalReadCount':None,
-	    'uniqueBarcodeSequences':None
+	    'uniqueBarcodeSequences':None,
+	    'readPairsHasBarcode':None,
+	    'readPairsAreIlluminaAdapters':None,
+	    'barcodeClusterCount':None,
+	    'singeltonBarcodeClusters':None
 	}
 	self.explenations = {
 	    'totalReadCount':'The number of reads totally included in the analysis.',
-	    'uniqueBarcodeSequences':'The total number of uniqu barcode sequences identified.'
+	    'uniqueBarcodeSequences':'The total number of uniqu barcode sequences identified.',
+	    'readPairsHasBarcode':'Total number of readpairs where a barcode could be identified.',
+	    'readPairsAreIlluminaAdapters':'Total number of readpairs where a illumina adapter sequence could be identified.',
+	    'barcodeClusterCount':'Total number of barcode clusters identified.',
+	    'singeltonBarcodeClusters':'Total number of barcode clusters of only one read pair identified.'
 	}
 	self.isDefault = {}
 	self.setTime = {}
 
 	self.totalReadCount = None
 	self.uniqueBarcodeSequences = None
+	self.readPairsHasBarcode = None
+	self.readPairsAreIlluminaAdapters = None
+	self.barcodeClusterCount = None
+	self.singeltonBarcodeClusters = None
 	
 	self.setDefaults()
 
@@ -502,13 +513,13 @@ class Results(object,):
 	SEAseqPipeLine.logfile.write('adding new results to db:\n')
         for resultName in self.__dict__:
 	    if resultName in ['explenations','defaultValues','isDefault','setTime']:continue
-	    if resultName not in alreadyInDb:
+	    if resultName not in alreadyInDb and not self.isDefault[resultName]:
 		if type(self.__dict__[resultName]) in [dict,list]: self.__dict__[resultName] = str(self.__dict__[resultName])
 		values = (resultName,self.isDefault[resultName],self.__dict__[resultName],self.setTime[resultName])
 		SEAseqPipeLine.database.c.execute('INSERT INTO results VALUES (?,?,?,?)', values)
-		SEAseqPipeLine.logfile.write('result '+resultName+' added to db with value '+str(self.__dict__[resultName])+',')
-		if self.isDefault[resultName]:SEAseqPipeLine.logfile.write(' this is the default value.\n')
-		else:SEAseqPipeLine.logfile.write(' non-default value.\n')
+		SEAseqPipeLine.logfile.write('result '+resultName+' added to db with value '+str(self.__dict__[resultName])+'\n')
+		#if self.isDefault[resultName]:SEAseqPipeLine.logfile.write(' this is the default value.\n')
+		#else:SEAseqPipeLine.logfile.write(' non-default value.\n')
 	    else: pass#SEAseqPipeLine.logfile.write('variable\t'+resultName+'\talready in db.\n')
         
 	SEAseqPipeLine.logfile.write('commiting changes to database.\n')
@@ -758,7 +769,7 @@ class FastqToDatabseConverter(object):
 	#chunkStartTime = time.time()
 	chunkStartTime = time.time()
 	#SEAseqPipeLine.logfile.write('Appending reads '+str(self.currentLocation)+'-'+str(self.currentLocation+self.appendChunkSize-1)+' to db.\n')
-	SEAseqPipeLine.logfile.write('Staring to append reads '+str(self.currentLocation)+'-'+str(self.currentLocation+len(self.readsToAdd))+' to db.\n')
+	SEAseqPipeLine.logfile.write('Staring to append reads '+str(self.currentLocation)+'-'+str(self.currentLocation+len(self.readsToAdd)-1)+' to db.\n')
 
 	#SEAseqPipeLine.database.addReads(self.readsToAdd)
 	SEAseqPipeLine.database.addReads(self.readsToAdd)
@@ -767,7 +778,7 @@ class FastqToDatabseConverter(object):
 	chunkTime = time.time()-chunkStartTime
 
 	#SEAseqPipeLine.logfile.write('Reads '+str(self.currentLocation)+'-'+str(self.currentLocation+self.appendChunkSize-1)+' done after '+str(int(round(chunkTime,0)/60))+' minutes and '+str(round(chunkTime,0)%60)+' seconds.\n')
-	SEAseqPipeLine.logfile.write('Reads '+str(self.currentLocation)+'-'+str(self.currentLocation+len(self.readsToAdd))+' appended to db after '+str(int(round(chunkTime,0)/60))+' minutes and '+str(round(chunkTime,0)%60)+' seconds.\n')
+	SEAseqPipeLine.logfile.write('Reads '+str(self.currentLocation)+'-'+str(self.currentLocation+len(self.readsToAdd)-1)+' appended to db after '+str(int(round(chunkTime,0)/60))+' minutes and '+str(round(chunkTime,0)%60)+' seconds.\n')
 
 	self.currentLocation += len(self.readsToAdd) #self.appendChunkSize
 
@@ -818,22 +829,35 @@ class FastqToDatabseConverter(object):
 	import multiprocessing
 	
 	#
+	# drop old data and create table for new data
+	#
+	SEAseqPipeLine.logfile.write('Create reads table (and drop old one i needed) ...\n')
+	SEAseqPipeLine.database.getConnection()
+	SEAseqPipeLine.database.c.execute("DROP TABLE IF EXISTS reads")
+	SEAseqPipeLine.database.c.execute('''CREATE TABLE reads (id,header,sequence1,sequence2,quality1,quality2,barcodeSequence,clusterId,annotation,fromFastq,PRIMARY KEY (id))''')
+	SEAseqPipeLine.logfile.write('commiting changes to database.\n')
+        SEAseqPipeLine.database.commitAndClose()
+	
+	#
 	# Write log message
 	#
 	SEAseqPipeLine.logfile.write('Adding reads to database table (working in parallel).\n')
 	
-	poolOfProcesses = multiprocessing.Pool(SEAseqPipeLine.settings.parallelProcesses,maxtasksperchild=100000000)
+	poolOfProcesses = multiprocessing.Pool(SEAseqPipeLine.settings.parallelProcesses-1,maxtasksperchild=100000000)
 	self.parallelResults = poolOfProcesses.imap_unordered(foreachReadPairFromFastq,self.readPairGenerator(),chunksize=10000)
 	
 	#
 	# Parse through files and add to database in chunks of "self.appendChunkSize" reads
 	#
+	adapterCount = 0
 	with self.progress:
 	    for pair in self.parallelResults:	    
 		#
 		# post procesing for each read, preparing and adding to db
 		#
 		self.foreachProcessedPair(pair)
+		if 'Read1IsIlluminaAdapter' in pair.annotations or 'Read2IsIlluminaAdapter' in pair.annotations: adapterCount += 1
+	SEAseqPipeLine.results.setResult('readPairsAreIlluminaAdapters',adapterCount)
 
 	#
 	# add final chunk to db
@@ -846,7 +870,7 @@ class FastqToDatabseConverter(object):
 	# Done write to log and return
 	#
 	SEAseqPipeLine.logfile.write('Files '+', '.join([key for key in self.filesAdded.keys()])+' added sucesfully to the database.\n')
-	SEAseqPipeLine.logfile.write('Saving totalReadCount to results table in database.\n')
+	SEAseqPipeLine.logfile.write('Saving totalReadCount etc to results table in database.\n')
 	SEAseqPipeLine.results.saveToDb()
 	
 	return 0
@@ -1095,26 +1119,30 @@ class SEAseqPipeLine(object):
 	for annotation,count in uniqAnnotationValues.iteritems():
 	    print annotation+'\t'+str(count)
 
-    def generateBarcodeFasta(self, ):
+    def generateBarcodeFastq(self, ):
 	
 	#
 	# imports
 	#
 	import operator
 	
-	SEAseqPipeLine.logfile.write('Generating barcode fasta ...\n')
+	SEAseqPipeLine.logfile.write('Generating barcode fastq ...\n')
 	
 	uniqBarcodeSequences = {}
 	temporaryDict = {}
 	barcodeCounter = 0
 	totalReadPairCounter = 0
+	qualities = {}
+	readPairHasBarcodeCounter = 0
 	
 	SEAseqPipeLine.logfile.write('Loading read pairs ...\n')
 	progress = Progress(SEAseqPipeLine.results.totalReadCount, logfile=SEAseqPipeLine.logfile, unit='reads-loaded-from-db', mem=True)
 	with progress:
 	    for pair in SEAseqPipeLine.database.getAllReadPairs():
 		if pair.barcodeSeq:
+		    readPairHasBarcodeCounter += 1
 		    barcodeSequence = pair.r1Seq[pair.barcodeSeq[0]:pair.barcodeSeq[1]]
+		    qualities[pair.id] = pair.r1Qual[pair.barcodeSeq[0]:pair.barcodeSeq[1]]
 		    try:            uniqBarcodeSequences[barcodeSequence].append(pair.id)
 		    except KeyError:uniqBarcodeSequences[barcodeSequence] = [pair.id]
 		progress.update()
@@ -1130,8 +1158,8 @@ class SEAseqPipeLine(object):
 	
 	
 	SEAseqPipeLine.logfile.write('Creating output ... \n')
-	barcodeFastaFile = open(self.analysisPath+'/rawBarcodeSequencesSortedByAbundance.fa','w')
-	progress = Progress(SEAseqPipeLine.results.totalReadCount, logfile=SEAseqPipeLine.logfile, unit='reads-to-fasta', mem=True)
+	barcodeFastqFile = open(self.analysisPath+'/rawBarcodeSequencesSortedByAbundance.fq','w')
+	progress = Progress(readPairHasBarcodeCounter, logfile=SEAseqPipeLine.logfile, unit='reads-to-fastq', mem=True)
 	with progress:
 	    for count, barcodes in sorted(temporaryDict.iteritems(), key=operator.itemgetter(0))[::-1]:
 		for barcode in barcodes:
@@ -1140,11 +1168,11 @@ class SEAseqPipeLine(object):
 		    for readPairId in uniqBarcodeSequences[barcode]:
 			readPairCounter += 1
 			totalReadPairCounter += 1
-			barcodeFastaFile.write('>'+str(readPairId)+' bc='+str(barcodeCounter)+' rp='+str(readPairCounter)+' bctrp='+str(count)+'\n'+barcode+'\n')
+			barcodeFastqFile.write('@'+str(readPairId)+' bc='+str(barcodeCounter)+' rp='+str(readPairCounter)+' bctrp='+str(count)+'\n'+barcode+'\n+\n'+qualities[readPairId]+'\n')
 			progress.update()
-	barcodeFastaFile.close()	
+	barcodeFastqFile.close()	
 	
-	return 0
+	return readPairHasBarcodeCounter
     
     def runBarcodeClusteringPrograms(self, ):
 
@@ -1157,7 +1185,7 @@ class SEAseqPipeLine(object):
 	
 	# cluster raw barcodes
 	command = ['cd-hit-454',
-		    '-i',self.analysisPath+'/rawBarcodeSequencesSortedByAbundance.fa',
+		    '-i',self.analysisPath+'/rawBarcodeSequencesSortedByAbundance.fq',
 		    '-o',self.analysisPath+'/clusteredBarcodeSequences',
 		    '-g','1',      # mode
 		    '-n','3',      # wrodsize
@@ -1177,7 +1205,7 @@ class SEAseqPipeLine(object):
 	# Build consensus sequences for read pair clusters
 	command = ['cdhit-cluster-consensus',
 		self.analysisPath+'/clusteredBarcodeSequences.clstr',
-		self.analysisPath+'/rawBarcodeSequencesSortedByAbundance.fa',
+		self.analysisPath+'/rawBarcodeSequencesSortedByAbundance.fq',
 		self.analysisPath+'/clusteredBarcodeSequences.consensus',
 		self.analysisPath+'/clusteredBarcodeSequences.aligned'
 		]
@@ -1192,7 +1220,7 @@ class SEAseqPipeLine(object):
 	
 	return 0
 
-    def parseBarcodeClusteringOutput(self, ):
+    def parseBarcodeClusteringOutput(self, readPairsHasBarcode):
 	
 	#
 	# inititate variables
@@ -1205,7 +1233,7 @@ class SEAseqPipeLine(object):
 	#
 	# open file connections
 	#
-	consensusFile = open(self.analysisPath+'/clusteredBarcodeSequences.consensus.fasta')
+	consensusFile = open(self.analysisPath+'/clusteredBarcodeSequences.consensus.fastq')
 	clstrFile = open(self.analysisPath+'/clusteredBarcodeSequences.clstr')
 	
 	#
@@ -1215,24 +1243,28 @@ class SEAseqPipeLine(object):
 	while True:
 	    header = consensusFile.readline().rstrip()
 	    barcodeSequence = consensusFile.readline().rstrip()
+	    junk = consensusFile.readline().rstrip()
+	    barcodeQuality = consensusFile.readline().rstrip()
 	    if header == '': break
 	    totalClusterCount += 1
 	    header = header.split('_cluster_')
 	    clusterId = int(header[1].split(' ')[0])
-	    if header[0][:2] == '>s':
-		singletonClusters[clusterId] = {'clusterReadCount':1,'readPairs':[],'identities':[],'clusterBarcodeSequence':barcodeSequence}
+	    if header[0][:2] == '@s':
+		singletonClusters[clusterId] = {'clusterReadCount':1,'readPairs':[],'identities':[],'clusterBarcodeSequence':barcodeSequence,'clusterBarcodeQuality':barcodeQuality}
 		barcodeClusters[clusterId] = singletonClusters[clusterId]
-	    elif header[0][:2] == '>c':
-		nonSingletonClusters[clusterId] = {'clusterReadCount':int(header[1].split(' ')[2]),'readPairs':[],'identities':[],'clusterBarcodeSequence':barcodeSequence}
+	    elif header[0][:2] == '@c':
+		nonSingletonClusters[clusterId] = {'clusterReadCount':int(header[1].split(' ')[2]),'readPairs':[],'identities':[],'clusterBarcodeSequence':barcodeSequence,'clusterBarcodeQuality':barcodeQuality}
 		barcodeClusters[clusterId] = nonSingletonClusters[clusterId]
 	    else: raise ValueError
+	SEAseqPipeLine.results.setResult('barcodeClusterCount',totalClusterCount)
+	SEAseqPipeLine.results.setResult('singeltonBarcodeClusters',len(singletonClusters))
 	SEAseqPipeLine.logfile.write('A total of '+str(totalClusterCount)+' clusters of barcode sequences were loaded into memory.\n')
 
 	#
 	# Load what readpairs are in each cluster
 	#
 	SEAseqPipeLine.logfile.write('\nLoading read pair to barcode cluster connections ...\n')
-	progress = Progress(SEAseqPipeLine.results.totalReadCount, logfile=SEAseqPipeLine.logfile, unit='reads-loaded', mem=True)
+	progress = Progress(readPairsHasBarcode, logfile=SEAseqPipeLine.logfile, unit='reads-loaded', mem=True)
 	with progress:
 	    for line in clstrFile:
 		line = line.rstrip()
@@ -1253,8 +1285,74 @@ class SEAseqPipeLine(object):
 	
 	return barcodeClusters
 
+    def addBarcodeClusterInfoToDatabase(self, barcodeClusters):
+
+	#
+	# set initial values
+	#
+	tmpUpdateValues = {}
+	updateValues = []
+	updateChunks = []
+	updateChunkSize = 10000
+	addValues = []
+	
+	#
+	# drop old data and create table for new data
+	#
+	SEAseqPipeLine.logfile.write('Create barcodeClusters table (and drop old one i needed) ...\n')
+	SEAseqPipeLine.database.getConnection()
+	SEAseqPipeLine.database.c.execute("DROP TABLE IF EXISTS barcodeClusters")
+	SEAseqPipeLine.database.c.execute('''CREATE TABLE barcodeClusters (clusterId,clusterTotalReadCount,readPairsList,readBarcodeIdentitiesList,clusterBarcodeSequence,clusterBarcodeQuality,consensusSequencesList,annotations,PRIMARY KEY (clusterId))''')
+	SEAseqPipeLine.logfile.write('commiting changes to database.\n')
+        SEAseqPipeLine.database.commitAndClose()
+	
+	#
+	# Convert the dictionary to be able to add info to database
+	#
+	SEAseqPipeLine.logfile.write('Converting the data ... \n')
+	for clusterId,data in barcodeClusters.iteritems():
+	    for readPairId in data['readPairs']: tmpUpdateValues[readPairId]=clusterId
+	    addValues.append((
+		clusterId,
+		data['clusterReadCount'],
+		str(data['readPairs']),
+		str(data['identities']),
+		data['clusterBarcodeSequence'],
+		data['clusterBarcodeQuality'],
+		None,
+		None
+		))
+	for readPairId in sorted(tmpUpdateValues.keys()):
+	    updateValues.append((tmpUpdateValues[readPairId],readPairId))
+	    if len(updateValues) == updateChunkSize:
+		updateChunks.append(updateValues)
+		updateValues = []
+	updateChunks.append(updateValues)
+
+	#
+	# Add the barcodeClusters
+	#	
+	SEAseqPipeLine.logfile.write('Adding cluster info to database ... \n')
+	SEAseqPipeLine.database.getConnection()	
+	SEAseqPipeLine.database.c.executemany('INSERT INTO barcodeClusters VALUES (?,?,?,?,?,?,?,?)', addValues)
+	SEAseqPipeLine.logfile.write('commiting changes to database.\n')
+        SEAseqPipeLine.database.commitAndClose()
+
+	#
+	# Update the reads table
+	#
+	SEAseqPipeLine.logfile.write('Updating read pair info in the database ... \n')
+	progress = Progress(len(tmpUpdateValues), logfile=SEAseqPipeLine.logfile, unit='reads-updated', mem=True)
+	with progress:
+	    for updateValues in updateChunks:
+		SEAseqPipeLine.database.getConnection()	
+		SEAseqPipeLine.database.c.executemany('UPDATE reads SET clusterId=? WHERE id=?', updateValues)
+		SEAseqPipeLine.database.commitAndClose()
+		for i in xrange(updateChunkSize): progress.update()
+	    
+	return 0
+    
     def clusterBarcodeSequences(self):
-	print 'The clusterBarcodeSequences is not yet implemented!'
 	
 	#
 	# imports
@@ -1262,9 +1360,10 @@ class SEAseqPipeLine(object):
 	import subprocess
 	
 	#
-	# generate a fasta file with barcode sequences
+	# generate a fastq file with barcode sequences
 	#
-	self.generateBarcodeFasta()
+	readPairsHasBarcode = self.generateBarcodeFastq()
+	SEAseqPipeLine.results.setResult('readPairsHasBarcode',readPairsHasBarcode)
 	
 	#
 	# Run clustering programs
@@ -1274,7 +1373,7 @@ class SEAseqPipeLine(object):
 	#
 	# Parse the output
 	#
-	barcodeClusters = self.parseBarcodeClusteringOutput()
+	barcodeClusters = self.parseBarcodeClusteringOutput(readPairsHasBarcode)
 	
 	#
 	# compress files
@@ -1282,8 +1381,8 @@ class SEAseqPipeLine(object):
 	a = [
 		self.analysisPath+'/clusteredBarcodeSequences',
 		self.analysisPath+'/clusteredBarcodeSequences.clstr',
-		self.analysisPath+'/rawBarcodeSequencesSortedByAbundance.fa',
-		self.analysisPath+'/clusteredBarcodeSequences.consensus.fasta',
+		self.analysisPath+'/rawBarcodeSequencesSortedByAbundance.fq',
+		self.analysisPath+'/clusteredBarcodeSequences.consensus.fastq',
 		self.analysisPath+'/clusteredBarcodeSequences.aligned',
 		]
 	processes = [] 
@@ -1295,7 +1394,7 @@ class SEAseqPipeLine(object):
 	#
 	# save clustering info to database
 	#
-	
+	self.addBarcodeClusterInfoToDatabase(barcodeClusters)
 	
 	#
 	# Save results
@@ -1305,6 +1404,7 @@ class SEAseqPipeLine(object):
 	#
 	# wait for file compression to finish
 	#
+	SEAseqPipeLine.logfile.write('Waiting for the compression of clustering files to finish.\n')
 	for p in processes: p.wait()
 	
 	return 0
