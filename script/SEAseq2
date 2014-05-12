@@ -211,6 +211,7 @@ class BarcodeCluster(object):
 	self.annotations = None
 
 	self.readPairs = []
+	self.readPairsById = {}
 	self.readPairIdentities = []
 	self.readPairsPassFilter = []
 	self.readPairsNotPassingFilter = []
@@ -242,7 +243,9 @@ class BarcodeCluster(object):
 
     def loadReadPairs(self, ):
 	
-	for readPair in SEAseqPipeLine.database.getReadPairs(self.readPairIdsList): self.readPairs.append(readPair)
+	for readPair in SEAseqPipeLine.database.getReadPairs(self.readPairIdsList):
+	    self.readPairs.append(readPair)
+	    self.readPairsById[readPair.id] = readPair
 	
 	return 0
 
@@ -413,18 +416,20 @@ class BarcodeCluster(object):
 		contigId = int(line.split(' ')[1])
 		continue
 	    elif line[0] == '0':
-		readId = line.split('>')[1].split('.')[0]
+		readId = int(line.split('>')[1].split('.')[0])
 		identity = 'seed'
 		assert line.split(' ')[-1] == '*', 'Error in file format of clstr file'
 	    else:
-		readId = line.split('>')[1].split('.')[0]
+		readId = int(line.split('>')[1].split('.')[0])
 		identity = float(line.split(' ')[-1].split('/')[-1].split('%')[0])
 	    contigs[contigId]['readPairs'].append(readId)
 	    contigs[contigId]['identities'].append(identity)
 	
 	addValues = []
 	SEAseqPipeLine.database.getConnection()
-	for contigId, data in contigs.iteritems():
+	for contigId, data in nonSingletonContigs.iteritems():
+	    for readPairId in data['readPairs']:
+		for annotation, value in self.readPairsById[int(readPairId)].annotations.iteritems(): data['annotations'][annotation]=value
 	    #                  contigId, contigTotalReadCount,      readPairsList,     readPairIdentitiesList,    consensusSequence,       consensusQuality,    clusterId,annotations
 	    addValues.append( (contigId,data['contigReadCount'],str(data['readPairs']),str(data['identities']),data['consensusSequence'],data['consensusQuality'],self.id,str(data['annotations'])) )
 	SEAseqPipeLine.database.c.executemany('INSERT INTO contigs VALUES (?,?,?,?,?,?,?,?)', addValues)
@@ -1750,7 +1755,7 @@ class SEAseqPipeLine(object):
 		    print cluster.id, cluster.barcodeSequence, cluster.readPairCount
 		    cluster.findContigs()
 		    print 'generated'
-		    if doSome > 10:break
+		    if doSome > 100:break
 	
 	return 0
     
