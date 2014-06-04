@@ -13,7 +13,7 @@ man = """
     # 1. initiateAnalysis -- Initiate the analysis.
     #   Usage: SEAseq2 initiateAnalysis <path> <type>
     #   Initiation of the analysis is needed to set the path for storage of data, results and files used during runtime.
-    #   During initiation the type of analysis also needs to be set either to Whole Fragment Analysis (WFA) or rRNA Amplicon Classification (RAC).
+    #   During initiation the type of analysis also needs to be set either to Whole Fragment Analysis (WFA), rRNA Amplicon Classification (RAC) or iSeq analysis (iSeq).
     #   
     #
     # 2. addData -- Add data to be analyzed.
@@ -49,6 +49,8 @@ man = """
     #            Find all variants of amplicons present within each cluster
     #
     #   4.3 In WFA mode NOT IMPLEMENTED
+    #
+    #   4.3 In iSeq mode the pipe will perform the following parts:
     """
 
 ###############
@@ -880,6 +882,8 @@ class Settings(object,):
 	    self.__dict__[variableName] = value
 	    self.isDefault[variableName] = True
 	    self.setTime[variableName] = None
+	if SEAseqPipeLine.settings.mode == 'iSeq':
+	   SEAseqPipeLine.settings.handleSequence = 'AATGGATACTAACTAGCACCACTATAGGC' 
 	return 0
 
     def loadFromDb(self,):
