@@ -51,6 +51,7 @@ man = """
     #   4.3 In WFA mode NOT IMPLEMENTED
     #
     #   4.3 In iSeq mode the pipe will perform the following parts:
+    #       4.3.1 findiSeqBarcodes
     """
 
 ###############
@@ -102,8 +103,40 @@ def foreachReadPairFromFastq(pair):
     
     pair.identifyBarcode()
     pair.isIlluminaAdapter()
+    if SEAseqPipeLine.settings.mode == 'iSeq': pair.getiSeqBarcode()
     
     return pair
+
+def foreachiSeqCluster(clusterId):
+
+    #print clusterId
+    cluster = BarcodeCluster(clusterId)
+    cluster.loadClusterInfo()
+
+    if cluster.readPairCount >= 10:# and cluster.readPairCount < 110:
+	cluster.findiSeqBarcodes()
+	return ['OK',cluster]
+    else:
+	cluster.findiSeqBarcodes()
+	return ['LOWREADCOUNT',cluster]
+
+def revcomp(string):
+	''' Takes a sequence and reversecomplements it'''
+	complementary = comp(string)
+	return complementary[::-1]
+
+def comp(string):
+	''' Takes a sequence and complements it'''
+	complement = {'A':'T','T':'A',
+				  'C':'G','G':'C',
+				  'N':'N',
+				  'R':'Y','Y':'R',
+				  'K':'M','M':'K',
+				  'B':'V','V':'B',
+				  'D':'H','H':'D',
+				  }
+	compseq = "".join([complement.get(nt.upper(), '') for nt in string])
+	return compseq
 
 #############
 #  Classes  #
@@ -199,6 +232,30 @@ class ReadPair(object):
     def identifyPrimerPair(self,):
 	pass
 
+    def getiSeqBarcode(self, ):
+	X = 'CAACTACACGGCTCACCTG'
+	Y = 'CTGCTACGACCACTGGATG'
+	fwdhandleXStartPosition,fwdhandleXEndPosition,fwdhandleXMissMatches = self.matchSequence(self.r1Seq, X, SEAseqPipeLine.settings.maxHandleMissMatches)
+	fwdhandleYStartPosition,fwdhandleYEndPosition,fwdhandleYMissMatches = self.matchSequence(self.r1Seq, Y, SEAseqPipeLine.settings.maxHandleMissMatches)
+	revhandleXStartPosition,revhandleXEndPosition,revhandleXMissMatches = self.matchSequence(self.r2Seq, revcomp(X), SEAseqPipeLine.settings.maxHandleMissMatches)
+	revhandleYStartPosition,revhandleYEndPosition,revhandleYMissMatches = self.matchSequence(self.r2Seq, revcomp(Y), SEAseqPipeLine.settings.maxHandleMissMatches)
+	iSeqBarcodes ={
+	    revcomp('TGATGC'):revcomp('TGATGC'),
+	    revcomp('TACGTC'):revcomp('TACGTC'),
+	    revcomp('ACTAGC'):revcomp('ACTAGC'),
+	    revcomp('GTCGAT'):revcomp('GTCGAT')
+	}
+	if fwdhandleXEndPosition and fwdhandleYStartPosition and revhandleXStartPosition and revhandleYEndPosition:
+	    if self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition] == revcomp(self.r2Seq[revhandleYEndPosition:revhandleXStartPosition]):
+		if fwdhandleYStartPosition-fwdhandleXEndPosition == 6:
+		    try: self.annotations['iSeqBarcode'] = iSeqBarcodes[ self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition] ]
+		    except KeyError: self.annotations['iSeqBarcode'] = 'OTHER:'+self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition]
+		elif fwdhandleYStartPosition-fwdhandleXEndPosition < 6: self.annotations['iSeqBarcode'] = 'ShortBarcode:'+self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition]
+		elif fwdhandleYStartPosition-fwdhandleXEndPosition > 6: self.annotations['iSeqBarcode'] = 'LongBarcode:'+self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition]
+	    else: self.annotations['iSeqBarcode'] = 'NoPEMatch'
+	else:self.annotations['iSeqBarcode'] = 'HandleSequencesNotFound'
+	return 0
+
 class BarcodeCluster(object):
     
     def __init__(self, clusterId):
@@ -229,7 +286,7 @@ class BarcodeCluster(object):
 	SEAseqPipeLine.database.getConnection()
 	info = SEAseqPipeLine.database.c.execute('SELECT clusterId,clusterTotalReadCount,readPairsList,readBarcodeIdentitiesList,clusterBarcodeSequence,clusterBarcodeQuality,contigSequencesList,annotations FROM barcodeClusters WHERE clusterId=?',(self.id,)).fetchall()
 	SEAseqPipeLine.database.commitAndClose()
-	assert len(info) == 1, 'More than one clusters found with id '+str(self.id)
+	assert len(info) == 1, 'More than one ('+str(len(info))+') clusters found with id '+str(self.id)
 	(clusterId,clusterTotalReadCount,readPairsList,readBarcodeIdentitiesList,clusterBarcodeSequence,clusterBarcodeQuality,contigSequencesList,annotations) = info[0]
 	assert clusterId == self.id
 	self.readPairCount      = int(clusterTotalReadCount)
@@ -462,7 +519,49 @@ class BarcodeCluster(object):
 	return 0
 
     def saveContigInfoToDatabase(self, ):
+
 	pass
+
+	return 0
+
+    def findiSeqBarcodes(self, ):
+	
+	import re
+	
+	assert SEAseqPipeLine.settings.mode == 'iSeq', 'Error: this type of analysis is not supported by the current analysis mode.'
+
+	#
+	# load readpairs if needed
+	#
+	if not self.readPairs: self.loadReadPairs()
+	
+	#
+	# check readcount
+	#
+	assert len(self.readPairs) == self.readPairCount, 'BarcodeCluster.readcount does not match number of reads for cluster='+self.id
+	
+	#
+	# find iSeqBarcodes
+	#
+	self.iSeqBarcodes = {}
+	for readPair in self.readPairs:
+	    try: self.iSeqBarcodes[readPair.annotations['iSeqBarcode']].append(readPair.id)
+	    except KeyError: self.iSeqBarcodes[readPair.annotations['iSeqBarcode']] = [readPair.id]
+	assert sum( [len(LIST) for LIST in self.iSeqBarcodes.values()] ) == self.readPairCount, '\n\n#\n# Error, the number of annotations for iseqbarcodes does not match the number of reads ('+str(len(self.iSeqBarcodes))+' != '+str(self.readPairCount)+')\n#\n'
+	
+	self.iSeqBarcodesPassingFilter = []
+	self.iSeqOutString =  'BarcodeSequenceCluster #'+str(self.id)+', barcode '+str(self.barcodeSequence)+'\n'
+	self.iSeqOutString += 'Has '+str(self.readPairCount)+' read pairs in total'+'\n'
+	self.iSeqOutString += 'The following iSeq barcodes were found:\n'
+	for iSeqBarcode,readPairsList in self.iSeqBarcodes.iteritems():
+	    total = len(readPairsList)
+	    percentage = round(100*float(total)/float(self.readPairCount),2)
+	    self.iSeqOutString += '\t'+iSeqBarcode+'\t'+str(total)+'\t'+str(percentage)+'%\n'
+	    if percentage >= 10.0 and total >= 2 and not re.match('(OTHER)|(ShortBarcode)|(LongBarcode)|(NoPEMatch)|(HandleSequencesNotFound)',iSeqBarcode):
+		self.iSeqBarcodesPassingFilter.append(iSeqBarcode)
+	self.iSeqBarcodesPassingFilter.sort()
+	#self.iSeqOutString += '\n\n'
+	
 	return 0
 
 class Database(object):
@@ -882,8 +981,6 @@ class Settings(object,):
 	    self.__dict__[variableName] = value
 	    self.isDefault[variableName] = True
 	    self.setTime[variableName] = None
-	if SEAseqPipeLine.settings.mode == 'iSeq':
-	   SEAseqPipeLine.settings.handleSequence = 'AATGGATACTAACTAGCACCACTATAGGC' 
 	return 0
 
     def loadFromDb(self,):
@@ -1362,6 +1459,16 @@ class SEAseqPipeLine(object):
         #
         SEAseqPipeLine.database.create()
         
+	#
+	# setting default settings
+	#
+	SEAseqPipeLine.settings.loadFromDb()
+	SEAseqPipeLine.results.loadFromDb()
+	SEAseqPipeLine.settings.setVariable('mode',self.mode)
+	if self.mode == 'iSeq': SEAseqPipeLine.settings.setVariable('handleSequence','AATGGATACTAACTAGCACCACTATAGGC')
+	SEAseqPipeLine.logfile.write('Saving settings to database.\n')
+	SEAseqPipeLine.settings.saveToDb()
+	
         #
         # add run to runs table
         #
@@ -1732,6 +1839,7 @@ class SEAseqPipeLine(object):
 	SEAseqPipeLine.database.commitAndClose()
 	
 	for clusterId in clusterIds:
+	    if clusterId[0] == None: continue
 	    try: yield int(clusterId[0])
 	    except TypeError: yield clusterId[0]
 
@@ -1760,6 +1868,92 @@ class SEAseqPipeLine(object):
 		    cluster.findContigs()
 		    print 'generated'
 		    if doSome > 100:break
+	
+	return 0
+
+    def findiSeqBarcodes(self, ):
+	
+	#
+	# imports
+	#
+	import multiprocessing
+	
+	#
+	# Setup worker pool
+	#
+	poolOfProcesses = multiprocessing.Pool(SEAseqPipeLine.settings.parallelProcesses-1,maxtasksperchild=100000000)
+	results = poolOfProcesses.imap_unordered(foreachiSeqCluster,self.getBarcodeClusterIds(),chunksize=5)
+	
+	#
+	# initiate outfiles
+	#
+	outfile = open(self.analysisPath+'/iSeqPerBarcodeSequenceCluster.out.txt','w')
+	outfile2 = open(self.analysisPath+'/iSeqBarcodeCombos.out.txt','w')
+	outfile3 = open(self.analysisPath+'/iSeqReadPairsPerBarcodeSequenceCluster.out.txt','w')
+
+	#
+	# initiate counters etc
+	#
+	barcodeCombos = {}
+	iSeqBarcodeAnnotations = {}
+	readPairsPerBarcodeSequenceCluster = {}
+	
+	#
+	# process the results from the multiprocess part
+	#
+	progress = Progress(SEAseqPipeLine.results.barcodeClusterCount, logfile=SEAseqPipeLine.logfile, unit='barcodeSequenceClusters', mem=True)
+	with progress:
+	    for tmp in results:
+		flag,cluster = tmp
+		
+		if flag == 'OK': # if flag ok get barcode combo
+		    combo = ', '.join(cluster.iSeqBarcodesPassingFilter)
+		    outfile.write( 'passing filter => '+ combo +'\n') 
+		    
+		    try: barcodeCombos[combo]+=1
+		    except KeyError: barcodeCombos[combo]=1
+		
+		# get annotation for each read pair
+		for iSeqBarcode,readPairsList in cluster.iSeqBarcodes.iteritems():
+		    total = len(readPairsList)
+		    try: iSeqBarcodeAnnotations[iSeqBarcode] += total
+		    except KeyError: iSeqBarcodeAnnotations[iSeqBarcode] = total
+		
+		# save the number of reads for each barcodeSequenceCluster
+		try: readPairsPerBarcodeSequenceCluster[cluster.readPairCount] += 1
+		except KeyError: readPairsPerBarcodeSequenceCluster[cluster.readPairCount] = 1
+		
+		#write cluster speceific ooutput
+		outfile.write('-----\n'+flag+'\n')
+		outfile.write(cluster.iSeqOutString+'\n\n')
+
+		progress.update()
+		
+	#
+	# Write summaries to outfiles
+	#
+	outfile2.write( 'iSeqBarcodeCombo\t#barcodeSequenceClusters\n')
+	for combo, count in barcodeCombos.iteritems():
+	    outfile2.write( combo+'\t'+str(count) +'\n')
+	outfile2.write('\n')
+	
+	outfile2.write( 'iSeqBarcodeAnnotation\t#readPairs\n')
+	for combo, count in iSeqBarcodeAnnotations.iteritems():
+	    outfile2.write( combo+'\t'+str(count) +'\n')
+	
+	outfile3.write( 'ReadPairsPerCluster\t#BarcodeSeuenceClusters\n')
+	for perCluster, numberOfClusters in readPairsPerBarcodeSequenceCluster.iteritems():
+	    outfile3.write( str(perCluster)+'\t'+str(numberOfClusters) +'\n')
+	
+	#
+	# close outfiles
+	#
+	outfile.write('\n')
+	outfile.close()
+	outfile2.write('\n')
+	outfile2.close()
+	outfile3.write('\n')
+	outfile3.close()
 	
 	return 0
     
@@ -1796,7 +1990,7 @@ class SEAseqPipeLine(object):
 	#
 	# check parts to run and start them
 	#
-	for part in SEAseqPipeLine.settings.analysisParts: assert part in ['all','readFastqs','clusterBarcodeSequences','findContigs'], 'Error: part '+part+' is not a valid option.\n'
+	for part in SEAseqPipeLine.settings.analysisParts: assert part in ['all','readFastqs','clusterBarcodeSequences','findContigs','findiSeqBarcodes'], 'Error: part '+part+' is not a valid option.\n'
 	
 	if 'all' in SEAseqPipeLine.settings.analysisParts or 'readFastqs' in SEAseqPipeLine.settings.analysisParts:
 	    readFastqsStartTime = time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())
@@ -1809,6 +2003,10 @@ class SEAseqPipeLine(object):
 	if 'all' in SEAseqPipeLine.settings.analysisParts or 'findContigs' in SEAseqPipeLine.settings.analysisParts:
 	    clusterBarcodeSequencesStartTime = time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())
 	    self.findContigs()
+
+	if 'all' in SEAseqPipeLine.settings.analysisParts or 'findiSeqBarcodes' in SEAseqPipeLine.settings.analysisParts:
+	    clusterBarcodeSequencesStartTime = time.strftime("%A, %d %b %Y %H:%M:%S",time.localtime())
+	    self.findiSeqBarcodes()
 
         #
         # update runs table
