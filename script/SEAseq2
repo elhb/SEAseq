@@ -233,28 +233,66 @@ class ReadPair(object):
 	pass
 
     def getiSeqBarcode(self, ):
-	X = 'CAACTACACGGCTCACCTG'
-	Y = 'CTGCTACGACCACTGGATG'
-	fwdhandleXStartPosition,fwdhandleXEndPosition,fwdhandleXMissMatches = self.matchSequence(self.r1Seq, X, SEAseqPipeLine.settings.maxHandleMissMatches)
-	fwdhandleYStartPosition,fwdhandleYEndPosition,fwdhandleYMissMatches = self.matchSequence(self.r1Seq, Y, SEAseqPipeLine.settings.maxHandleMissMatches)
-	revhandleXStartPosition,revhandleXEndPosition,revhandleXMissMatches = self.matchSequence(self.r2Seq, revcomp(X), SEAseqPipeLine.settings.maxHandleMissMatches)
-	revhandleYStartPosition,revhandleYEndPosition,revhandleYMissMatches = self.matchSequence(self.r2Seq, revcomp(Y), SEAseqPipeLine.settings.maxHandleMissMatches)
-	iSeqBarcodes ={
-	    revcomp('TGATGC'):revcomp('TGATGC'),
-	    revcomp('TACGTC'):revcomp('TACGTC'),
-	    revcomp('ACTAGC'):revcomp('ACTAGC'),
-	    revcomp('GTCGAT'):revcomp('GTCGAT')
-	}
-	if fwdhandleXEndPosition and fwdhandleYStartPosition and revhandleXStartPosition and revhandleYEndPosition:
-	    if self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition] == revcomp(self.r2Seq[revhandleYEndPosition:revhandleXStartPosition]):
-		if fwdhandleYStartPosition-fwdhandleXEndPosition == 6:
-		    try: self.annotations['iSeqBarcode'] = iSeqBarcodes[ self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition] ]
-		    except KeyError: self.annotations['iSeqBarcode'] = 'OTHER:'+self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition]
-		elif fwdhandleYStartPosition-fwdhandleXEndPosition < 6: self.annotations['iSeqBarcode'] = 'ShortBarcode:'+self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition]
-		elif fwdhandleYStartPosition-fwdhandleXEndPosition > 6: self.annotations['iSeqBarcode'] = 'LongBarcode:'+self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition]
-	    else: self.annotations['iSeqBarcode'] = 'NoPEMatch'
-	else:self.annotations['iSeqBarcode'] = 'HandleSequencesNotFound'
-	return 0
+	
+	funkVersion = 2
+
+	if funkVersion == 1:
+	# OLD VERSION OF FUNCTION NEW VERSION FOR DAVID AND MAHYAS NEW DESIGN CAN BE FOUND BELOW
+	    X = 'CAACTACACGGCTCACCTG'
+	    Y = 'CTGCTACGACCACTGGATG'
+	    fwdhandleXStartPosition,fwdhandleXEndPosition,fwdhandleXMissMatches = self.matchSequence(self.r1Seq, X, SEAseqPipeLine.settings.maxHandleMissMatches)
+	    fwdhandleYStartPosition,fwdhandleYEndPosition,fwdhandleYMissMatches = self.matchSequence(self.r1Seq, Y, SEAseqPipeLine.settings.maxHandleMissMatches)
+	    revhandleXStartPosition,revhandleXEndPosition,revhandleXMissMatches = self.matchSequence(self.r2Seq, revcomp(X), SEAseqPipeLine.settings.maxHandleMissMatches)
+	    revhandleYStartPosition,revhandleYEndPosition,revhandleYMissMatches = self.matchSequence(self.r2Seq, revcomp(Y), SEAseqPipeLine.settings.maxHandleMissMatches)
+	    iSeqBarcodes ={
+		revcomp('TGATGC'):revcomp('TGATGC'),
+		revcomp('TACGTC'):revcomp('TACGTC'),
+		revcomp('ACTAGC'):revcomp('ACTAGC'),
+		revcomp('GTCGAT'):revcomp('GTCGAT')
+	    }
+	    if fwdhandleXEndPosition and fwdhandleYStartPosition and revhandleXStartPosition and revhandleYEndPosition:
+		if self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition] == revcomp(self.r2Seq[revhandleYEndPosition:revhandleXStartPosition]):
+		    if fwdhandleYStartPosition-fwdhandleXEndPosition == 6:
+			try: self.annotations['iSeqBarcode'] = iSeqBarcodes[ self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition] ]
+			except KeyError: self.annotations['iSeqBarcode'] = 'OTHER:'+self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition]
+		    elif fwdhandleYStartPosition-fwdhandleXEndPosition < 6: self.annotations['iSeqBarcode'] = 'ShortBarcode:'+self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition]
+		    elif fwdhandleYStartPosition-fwdhandleXEndPosition > 6: self.annotations['iSeqBarcode'] = 'LongBarcode:'+self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition]
+		else: self.annotations['iSeqBarcode'] = 'NoPEMatch'
+	    else:self.annotations['iSeqBarcode'] = 'HandleSequencesNotFound'
+	    return 0
+
+	if funkVersion == 2:
+	#   NEW VERSION:
+	    X = 'CAACTACACGGCTCACCTG'
+	    Y = 'CTGCTACGACCACTGGATG'
+    
+	    fwdhandleXStartPosition,fwdhandleXEndPosition,fwdhandleXMissMatches = self.matchSequence(self.r1Seq, X, SEAseqPipeLine.settings.maxHandleMissMatches)
+	    fwdhandleYStartPosition,fwdhandleYEndPosition,fwdhandleYMissMatches = self.matchSequence(self.r1Seq, Y, SEAseqPipeLine.settings.maxHandleMissMatches)
+	    revhandleXStartPosition,revhandleXEndPosition,revhandleXMissMatches = self.matchSequence(self.r2Seq, revcomp(X), SEAseqPipeLine.settings.maxHandleMissMatches)
+	    revhandleYStartPosition,revhandleYEndPosition,revhandleYMissMatches = self.matchSequence(self.r2Seq, revcomp(Y), SEAseqPipeLine.settings.maxHandleMissMatches)
+    
+	    iSeqBarcodes ={
+		revcomp('ACAGTC'):'mBc_01',#revcomp('ACAGTC'), # cISEQ_mBc01
+		revcomp('ATACGC'):'mBc_02',#revcomp('ATACGC'), # cISEQ_mBc02
+		revcomp('TGATGC'):'mBc_03',#revcomp('TGATGC'), # cISEQ_mBc03
+		revcomp('TACGTC'):'mBc_04',#revcomp('TACGTC'), # cISEQ_mBc04
+		revcomp('ACTAGC'):'mBc_05',#revcomp('ACTAGC'), # cISEQ_mBc05
+		revcomp('GTCGAT'):'mBc_06'#revcomp('GTCGAT'), # cISEQ_mBc06
+	    }
+    
+	    self.annotations['umi'] = 'NotIdentified'
+    
+	    if fwdhandleXEndPosition and fwdhandleYStartPosition and revhandleXStartPosition and revhandleYEndPosition:
+		if self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition] == revcomp(self.r2Seq[revhandleYEndPosition:revhandleXStartPosition]):
+		    if fwdhandleYStartPosition-fwdhandleXEndPosition == 6+15:
+			try: self.annotations['iSeqBarcode'] = iSeqBarcodes[ self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition-15] ]
+			except KeyError: self.annotations['iSeqBarcode'] = 'OTHER:'+self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition-15]
+			self.annotations['umi'] = self.r1Seq[fwdhandleXEndPosition+6:fwdhandleYStartPosition]
+		    elif fwdhandleYStartPosition-fwdhandleXEndPosition < 6+15: self.annotations['iSeqBarcode'] = 'ShortBarcode:'+self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition]
+		    elif fwdhandleYStartPosition-fwdhandleXEndPosition > 6+15: self.annotations['iSeqBarcode'] = 'LongBarcode:'+self.r1Seq[fwdhandleXEndPosition:fwdhandleYStartPosition]
+		else: self.annotations['iSeqBarcode'] = 'NoPEMatch'
+	    else:self.annotations['iSeqBarcode'] = 'HandleSequencesNotFound'
+	    return 0
 
 class BarcodeCluster(object):
     
@@ -560,7 +598,69 @@ class BarcodeCluster(object):
 	    if percentage >= 10.0 and total >= 2 and not re.match('(OTHER)|(ShortBarcode)|(LongBarcode)|(NoPEMatch)|(HandleSequencesNotFound)',iSeqBarcode):
 		self.iSeqBarcodesPassingFilter.append(iSeqBarcode)
 	self.iSeqBarcodesPassingFilter.sort()
-	#self.iSeqOutString += '\n\n'
+	self.iSeqOutString += '\n\n'
+
+	#
+	# find iSeqBarcodes UMI corrected
+	#
+	doUmiCorrection = True
+	if doUmiCorrection:
+	    tmpCount = 0
+	    self.iSeqOutString += 'Correcting for UMIs, trashing everything where UMI NA:\n'
+	    self.iSeqBarcodesUMI = {}
+	    for readPair in self.readPairs:
+		tmpCount += 1
+		if readPair.annotations['umi'] == 'NotIdentified': continue
+		try: self.iSeqBarcodesUMI[readPair.annotations['iSeqBarcode']][readPair.annotations['umi']].append(readPair.id)
+		except KeyError:
+		    try:
+		     self.iSeqBarcodesUMI[readPair.annotations['iSeqBarcode']][readPair.annotations['umi']] = [readPair.id]
+		    except KeyError:
+		     self.iSeqBarcodesUMI[readPair.annotations['iSeqBarcode']] = {readPair.annotations['umi']:[readPair.id]}
+	    
+	    #for umiDict in self.iSeqBarcodes.values():
+	    #    tmpCount += sum( [len(LIST) for LIST in umiDict.values()] )
+	    assert tmpCount == self.readPairCount, '\n\n#\n# Error, the number of annotations for iseqbarcodes does not match the number of reads ('+str(tmpCount)+' != '+str(self.readPairCount)+')\n#\n'
+	    
+	    #remove all umis below readCutoff
+	    preFiletOut = True
+	    if preFiletOut:
+		umiBcComboCount = sum( [len(DICT) for DICT in self.iSeqBarcodesUMI.values()] )
+		self.iSeqOutString += 'Has '+str(umiBcComboCount)+' unique combinatiuons of barcodes and UMIs before filtering'+'\n'
+		self.iSeqOutString += 'namely the following:\n'
+		self.iSeqOutString += '#\tiSeqBarcode\tUMIcount\tUMI%\n'
+		for iSeqBarcode,umiDict in self.iSeqBarcodesUMI.iteritems():
+		    total = len(umiDict)
+		    percentage = round(100*float(total)/float(umiBcComboCount),2)
+		    self.iSeqOutString += '\t'+iSeqBarcode+'\t'+str(total)+'\t'+str(percentage)+'%\t'+str([umi+'='+str(len(readPairsList)) for umi,readPairsList in umiDict.iteritems()])+'\n'
+	    tmpDict = {}
+	    readsPerUmiCutOff = 2#reads
+	    self.iSeqOutString += 'Removing all UMIs with less than '+str(readsPerUmiCutOff)+' reads ... \n'
+	    for iSeqBarcode,umiDict in self.iSeqBarcodesUMI.iteritems():
+		tmpDict[iSeqBarcode] = {}
+		for umi,readPairsList in umiDict.iteritems():
+		    if len(readPairsList) >= readsPerUmiCutOff:
+			tmpDict[iSeqBarcode][umi] = readPairsList
+		    else: pass#self.iSeqOutString += '\tremoved:'+iSeqBarcode+', umi='+umi+' '+str(len(readPairsList))+' reads\n'
+	    tmpDict2 = {}
+	    for iSeqBarcode,umiDict in tmpDict.iteritems():
+		if len(umiDict): tmpDict2[iSeqBarcode] = tmpDict[iSeqBarcode]
+		else: self.iSeqOutString += '\tremoved:'+iSeqBarcode+' no umis PF\n'
+	    self.iSeqBarcodesUMI = tmpDict2
+	    
+	    umiBcComboCount = sum( [len(DICT) for DICT in self.iSeqBarcodesUMI.values()] )
+	    self.iSeqBarcodesPassingFilter = []
+	    self.iSeqOutString += 'Has '+str(umiBcComboCount)+' unique combinatiuons of barcodes and UMIs in total'+'\n'
+	    self.iSeqOutString += 'After UMI correction the following iSeq barcodes were found:\n'
+	    self.iSeqOutString += '#\tiSeqBarcode\tUMIcount\tUMI%\n'
+	    for iSeqBarcode,umiDict in self.iSeqBarcodesUMI.iteritems():
+		total = len(umiDict)
+		percentage = round(100*float(total)/float(umiBcComboCount),2)
+		self.iSeqOutString += '\t'+iSeqBarcode+'\t'+str(total)+'\t'+str(percentage)+'%\t'+str([umi+'='+str(len(readPairsList)) for umi,readPairsList in umiDict.iteritems()])+'\n'
+		if percentage >= 0.0 and total >= 1 and not re.match('(OTHER)|(ShortBarcode)|(LongBarcode)|(NoPEMatch)|(HandleSequencesNotFound)',iSeqBarcode):
+		    self.iSeqBarcodesPassingFilter.append(iSeqBarcode)
+	    self.iSeqBarcodesPassingFilter.sort()
+	    #self.iSeqOutString += '\n\n'
 	
 	return 0
 
@@ -725,7 +825,7 @@ class Database(object):
         self.commitAndClose()
         
         #return [[readCount,fastq1,fastq2] if (not addedToReadsTable) else None for filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength in filePairs]
-	return [[readCount,fastq1,fastq2] for filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength in filePairs]
+	return [[filePairId,readCount,fastq1,fastq2] for filePairId,fastq1,fastq2,readCount,addedToReadsTable,minReadLength in filePairs]
 
     def getAllReadPairs(self,):
         #
@@ -1088,7 +1188,7 @@ class FastqToDatabseConverter(object):
 	#
 	# get the grand total readcount in all files to be added to the database
 	#
-	for readcount, fastq1, fastq2 in self.infiles:
+	for filePairId, readcount, fastq1, fastq2 in self.infiles:
 	    self.grandTotal += readcount
 	SEAseqPipeLine.logfile.write('Going to add a self.grandTotal of '+str(self.grandTotal)+' reads to the database.\n')
 
@@ -1109,7 +1209,7 @@ class FastqToDatabseConverter(object):
         #
 	readfromdiskProgress = Progress(self.grandTotal, logfile=SEAseqPipeLine.logfile, unit='reads-read-from-disk', mem=True)
 	with readfromdiskProgress:
-	    for readcount, fastq1, fastq2 in self.infiles:
+	    for filePairId, readcount, fastq1, fastq2 in self.infiles:
 		SEAseqPipeLine.logfile.write(str(self.currentRead)+' read pairs read from infiles, now starting to read from '+fastq1+'.\n')
 		self.totalReadcount += readcount
 		
@@ -1138,7 +1238,7 @@ class FastqToDatabseConverter(object):
 			barcodeSequence = None
 			clusterId = None
 			annotations = {}
-			pair = ReadPair(self.currentRead, header1, header2, sequence1, sequence2, qual1, qual2,barcodeSequence,clusterId,annotations, fastq1)
+			pair = ReadPair(self.currentRead, header1, header2, sequence1, sequence2, qual1, qual2,barcodeSequence,clusterId,annotations, filePairId)#fastq1)
 			readfromdiskProgress.update()
 			yield pair#self.currentRead, header1, header2, sequence1, sequence2, qual1, qual2, fastq1
 		    except EOFError: break
@@ -1157,7 +1257,7 @@ class FastqToDatabseConverter(object):
 	# check read pair file origin
 	#
 	if pair.fileOrigin not in self.filesAdded:
-	    SEAseqPipeLine.logfile.write('Starting post process of read pair #'+str(pair.id)+' (from file '+pair.fileOrigin+').\n')
+	    SEAseqPipeLine.logfile.write('Starting post process of read pair #'+str(pair.id)+' (from file '+str(pair.fileOrigin)+').\n')
 	    self.filesAdded[pair.fileOrigin] = True
 
 	#
@@ -1284,7 +1384,7 @@ class FastqToDatabseConverter(object):
 	#
 	# Done write to log and return
 	#
-	SEAseqPipeLine.logfile.write('Files '+', '.join([key for key in self.filesAdded.keys()])+' added sucesfully to the database.\n')
+	SEAseqPipeLine.logfile.write('Files '+', '.join([str(key) for key in self.filesAdded.keys()])+' added sucesfully to the database.\n')
 	SEAseqPipeLine.logfile.write('Saving totalReadCount etc to results table in database.\n')
 	SEAseqPipeLine.results.setResult('minR1readLength',self.minR1ReadLength)
 	SEAseqPipeLine.results.setResult('minR2readLength',self.minR2ReadLength)
@@ -1323,6 +1423,7 @@ class SEAseqPipeLine(object):
             'changeSettings':self.changeSettings,
             'startAnalysis':self.startAnalysis,
             'commandLog':self.commandLog,
+	    'listPairAnnotations':self.listPairAnnotations,
             'help':self.printHelp,
         }
         
@@ -1401,6 +1502,34 @@ class SEAseqPipeLine(object):
         print '# StartTime:                    \tFinished:\tCommand:'
         for startTime, command, commandLine, finishedSuccessfully, masterPid in SEAseqPipeLine.database.getRuns(runTypes):
             print str(startTime)+' \t'+str(bool(finishedSuccessfully))+'      \t'+str(commandLine)
+        
+        #
+        # update runs table
+        #
+        SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, True, MASTER)
+        
+        SEAseqPipeLine.logfile.write('Finished exiting.\n')
+
+    def listPairAnnotations(self,):
+        """ listPairAnnotations """
+        
+        #
+        # get optional arguments from commandline
+        #
+        self.getComandLineOptions()
+
+        #
+        # Add run to runs table and open connection to logfile
+        #
+        SEAseqPipeLine.database.addToRunsTable(self.startTimeStr, self.command, self.commandLine, False, MASTER)
+        self.openLogfileConnection()
+        SEAseqPipeLine.logfile.write(self.createLogHeader())
+        
+        # default all types of commands run
+        runTypes = self.availableCommands.keys()
+        
+        SEAseqPipeLine.logfile.write('listing read pair annotations to standard out.\n')
+        self.getReadPairAnnotations()
         
         #
         # update runs table
@@ -1905,9 +2034,14 @@ class SEAseqPipeLine(object):
 	with progress:
 	    for tmp in results:
 		flag,cluster = tmp
+
+		#write cluster speceific ooutput
+		outfile.write(flag+'\n')
+		outfile.write(cluster.iSeqOutString+'\n')
 		
 		if flag == 'OK': # if flag ok get barcode combo
 		    combo = ', '.join(cluster.iSeqBarcodesPassingFilter)
+		    if len(cluster.iSeqBarcodesPassingFilter) == 0: combo = 'NonePF'
 		    outfile.write( 'passing filter => '+ combo +'\n') 
 		    
 		    try: barcodeCombos[combo]+=1
@@ -1923,9 +2057,7 @@ class SEAseqPipeLine(object):
 		try: readPairsPerBarcodeSequenceCluster[cluster.readPairCount] += 1
 		except KeyError: readPairsPerBarcodeSequenceCluster[cluster.readPairCount] = 1
 		
-		#write cluster speceific ooutput
-		outfile.write('-----\n'+flag+'\n')
-		outfile.write(cluster.iSeqOutString+'\n\n')
+		outfile.write('-----\n'+'\n')
 
 		progress.update()
 		
@@ -2108,6 +2240,7 @@ class SEAseqPipeLine(object):
         # commandLine arguments parsing
         if self.command == 'initiateAnalysis': prog = 'SEAseq2 initiateAnalysis <path> <type>'
         if self.command == 'commandLog': prog = 'SEAseq2 commandLog <path>'
+	if self.command == 'listPairAnnotations': prog = 'SEAseq2 commandLog <path>'
         if self.command == 'addData': prog = 'SEAseq2 addData <path>'
 	if self.command == 'changeSettings': prog = 'SEAseq2 changeSettings <path>'
 	if self.command == 'startAnalysis': prog = 'SEAseq2 startAnalysis <path> <part>'
@@ -2117,7 +2250,7 @@ class SEAseqPipeLine(object):
         argparser.add_argument('--debug', dest='debug', action='store_true', required=False, help='Run the program in debug-mode, single process python script (SLOW).')
         argparser.add_argument(	'-p', dest='cpus', metavar='N',	type=int, required=False,help='The number of processes to run in parallel (default 1, current value='+str(SEAseqPipeLine.settings.parallelProcesses)+').')
 
-        if self.command == 'commandLog':
+        if self.command == 'commandLog' or self.command == 'listPairAnnotations':
             try: indata = argparser.parse_args(self.commandLineList[3:])
             except IndexError: pass
             
