@@ -138,6 +138,28 @@ def comp(string):
 	compseq = "".join([complement.get(nt.upper(), '') for nt in string])
 	return compseq
 
+def foreachFindContigsClusters(clusterId):
+    if not clusterId and clusterId != 0: return None
+    cluster = BarcodeCluster(clusterId)
+    cluster.loadClusterInfo()
+    if cluster.readPairCount > 2: #and cluster.readPairCount < 110: # HARDCODED CUTOFF CHANGE
+	#print cluster.id, cluster.barcodeSequence, cluster.readPairCount
+	cluster.findContigs()
+	#print 'generated'
+    else:
+	pass#print cluster.id, cluster.barcodeSequence, cluster.readPairCount,'to few reads skipping contig generation.'
+
+    return cluster
+
+def getMemMB():
+    import re
+    meminfo = open('/proc/meminfo').read()
+    matched = re.search(r'^MemTotal:\s+(\d+)', meminfo)
+    if matched:
+	mem_total_kB = int(matched.groups()[0])
+	return mem_total_kB/1024
+    else: return None
+
 #############
 #  Classes  #
 #############
@@ -316,6 +338,7 @@ class BarcodeCluster(object):
 	self.contigSequences = []
 	self.contigSequencesPassFilter = []
 	self.contigSequencesNotPassingFilter = []
+	self.nonSingletonContigs = None
 	
 	self.filesCreated = []
 
@@ -340,14 +363,17 @@ class BarcodeCluster(object):
 
     def loadReadPairs(self, ):
 	
-	for readPair in SEAseqPipeLine.database.getReadPairs(self.readPairIdsList):
-	    self.readPairs.append(readPair)
-	    self.readPairsById[readPair.id] = readPair
+	import sqlite3
+	try:
+	    for readPair in SEAseqPipeLine.database.getReadPairs(self.readPairIdsList):
+		self.readPairs.append(readPair)
+		self.readPairsById[readPair.id] = readPair
+	except sqlite3.OperationalError: print 'ERROR: BarcodeCluster.loadReadPairs() is giving a sqlite3.OperationalError!!'
 	
 	return 0
 
     def loadContigSequences(self, ):
-	pass
+	print 'Not implemented function BarcodeCluster.loadContigSequences()'
 	return 0
 
     def generateReadPairsFastq(self, oneFile=True, concatenate=True,r1Part='nobc'):
@@ -391,8 +417,8 @@ class BarcodeCluster(object):
 		r1 = r1Header+'\n'+r1Seq+'CCCCCCCCCCGGGGGGGGGG'+readPair.r2Seq[:SEAseqPipeLine.results.minR2readLength]+'\n'+'+'+'\n'+r1Qual+'CCCCCCCCCCGGGGGGGGGG'+readPair.r2Qual[:SEAseqPipeLine.results.minR2readLength]+'\n'
 		r2 = ''
 	    else:
-		r1 = readPair.r1Header+'\n'+r1Seq+'\n'+'+'+'\n'+r1Qual+'\n'
-		r2 = readPair.r2Header+'\n'+readPair.r2Seq[:SEAseqPipeLine.results.minR2readLength]+'\n'+'+'+'\n'+readPair.r2Qual[:SEAseqPipeLine.results.minR2readLength]+'\n'
+		r1 = readPair.r1Header.split(' ')[0]+'/1 '+' '.join(readPair.r1Header.split(' ')[1:])+'\n'+r1Seq+'\n'+'+'+'\n'+r1Qual+'\n'
+		r2 = readPair.r2Header.split(' ')[0]+'/2 '+' '.join(readPair.r1Header.split(' ')[1:])+'\n'+readPair.r2Seq[:SEAseqPipeLine.results.minR2readLength]+'\n'+'+'+'\n'+readPair.r2Qual[:SEAseqPipeLine.results.minR2readLength]+'\n'
 	    
 	    # write to file(s)
 	    if oneFile:
@@ -422,18 +448,19 @@ class BarcodeCluster(object):
 	self.generateReadPairsFastq(oneFile=True, concatenate=True,r1Part='nobc')
 	
 	clusteringProgramsLogfile = open(SEAseqPipeLine.tempFileFolder+'/cluster_'+str(self.id)+'.cdHitlog.txt','w')
+	memory = (getMemMB()-10*1024)/(SEAseqPipeLine.settings.parallelProcesses-1)
 	
-	# cluster raw barcodes
+	# cluster raw sequences
 	command = ['cd-hit-454',
 		    '-i',SEAseqPipeLine.tempFileFolder+'/cluster_'+str(self.id)+'.fastq',
 		    '-o',SEAseqPipeLine.tempFileFolder+'/cluster_'+str(self.id)+'.contigs',
 		    '-g','1',      # mode
 		    '-n','5',      # wrodsize
-		    '-M','0',      # memory limit
-		    '-t',str(SEAseqPipeLine.settings.parallelProcesses-1),      # threads
-		    '-c',str(1.000-float(SEAseqPipeLine.settings.barcodeMissmatch)/float(SEAseqPipeLine.settings.barcodeLength)) # identity cutoff
+		    '-M',str(memory),      # memory limit
+		    '-t',str(SEAseqPipeLine.settings.parallelProcesses),      # threads
+		    '-c',str(0.95) # identity cutoff THIS SHOULD BE A SETTING CHANGE NEEDED!
 		    ]
-	SEAseqPipeLine.logfile.write('Starting command: '+' '.join(command)+'\n')
+	#SEAseqPipeLine.logfile.write('Starting command: '+' '.join(command)+'\n')
 	cdhit = subprocess.Popen(command,stdout=clusteringProgramsLogfile,stderr=subprocess.PIPE )
 	errdata = cdhit.communicate()
 	if cdhit.returncode != 0:
@@ -448,7 +475,7 @@ class BarcodeCluster(object):
 		SEAseqPipeLine.tempFileFolder+'/cluster_'+str(self.id)+'.consensus',
 		SEAseqPipeLine.tempFileFolder+'/cluster_'+str(self.id)+'.aligned'
 		]
-	SEAseqPipeLine.logfile.write('Starting command: '+' '.join(command)+'\n')
+	#SEAseqPipeLine.logfile.write('Starting command: '+' '.join(command)+'\n')
 	ccc = subprocess.Popen(command,stdout=clusteringProgramsLogfile,stderr=subprocess.PIPE )
 	errdata = ccc.communicate()
 	if ccc.returncode != 0:
@@ -488,6 +515,7 @@ class BarcodeCluster(object):
 	    totalContigsCount += 1
 	    header = header.split('_cluster_')
 	    contigId = int(header[1].split(' ')[0])
+	    splitOk = True
 	    try:
 		r1Seq = sequence.split('CCCCCCCCCCGGGGGGGGGG')[0]
 		r2Seq = sequence.split('CCCCCCCCCCGGGGGGGGGG')[1]
@@ -495,7 +523,7 @@ class BarcodeCluster(object):
 		r2Qual = quality[-len(r2Seq):]
 	    except IndexError:
 		print 'Cannot split contig',contigId,' for cluster',self.id,'contig skipped!\n(nosplit! ->',sequence,',list',sequence.split('CCCCCCCCCCGGGGGGGGGG'),')'
-		continue
+		splitOk=False#continue
 	    if header[0][:2] == '@s':
 		singletonContigs[contigId] = {'contigReadCount':1,'readPairs':[],'identities':[],'consensusSequence':sequence,'consensusQuality':quality,'annotations':{'Singleton':True}}
 		contigs[contigId] = singletonContigs[contigId]
@@ -503,6 +531,7 @@ class BarcodeCluster(object):
 		nonSingletonContigs[contigId] = {'contigReadCount':int(header[1].split(' ')[2]),'readPairs':[],'identities':[],'consensusSequence':sequence,'consensusQuality':quality,'annotations':{}}
 		contigs[contigId] = nonSingletonContigs[contigId]
 	    else: raise ValueError
+	    if not splitOk: contigs[contigId]['annotations']['splitNotOk'] = True
 
 	#
 	# Load what readpairs are in each cluster
@@ -522,15 +551,7 @@ class BarcodeCluster(object):
 	    contigs[contigId]['readPairs'].append(readId)
 	    contigs[contigId]['identities'].append(identity)
 	
-	addValues = []
-	SEAseqPipeLine.database.getConnection()
-	for contigId, data in nonSingletonContigs.iteritems():
-	    for readPairId in data['readPairs']:
-		for annotation, value in self.readPairsById[int(readPairId)].annotations.iteritems(): data['annotations'][annotation]=value
-	    #                  contigId, contigTotalReadCount,      readPairsList,     readPairIdentitiesList,    consensusSequence,       consensusQuality,    clusterId,annotations
-	    addValues.append( (contigId,data['contigReadCount'],str(data['readPairs']),str(data['identities']),data['consensusSequence'],data['consensusQuality'],self.id,str(data['annotations'])) )
-	SEAseqPipeLine.database.c.executemany('INSERT INTO contigs VALUES (?,?,?,?,?,?,?,?)', addValues)
-	SEAseqPipeLine.database.commitAndClose()
+	self.nonSingletonContigs = nonSingletonContigs
 	
 	import os
 	for filename in self.filesCreated: os.remove(filename)
@@ -558,13 +579,30 @@ class BarcodeCluster(object):
 
     def saveContigInfoToDatabase(self, ):
 
-	pass
+	import sqlite3
+	try:
+	    addValues = []
+	    SEAseqPipeLine.database.getConnection()
+	    if self.nonSingletonContigs:
+		for contigId, data in self.nonSingletonContigs.iteritems():
+		    for readPairId in data['readPairs']:
+			for annotation, value in self.readPairsById[int(readPairId)].annotations.iteritems(): data['annotations'][annotation]=value
+		    #                  contigId, contigTotalReadCount,      readPairsList,     readPairIdentitiesList,    consensusSequence,       consensusQuality,    clusterId,annotations
+		    addValues.append( (contigId,data['contigReadCount'],str(data['readPairs']),str(data['identities']),data['consensusSequence'],data['consensusQuality'],self.id,str(data['annotations'])) )
+		    self.contigIdsList.append(contigId)
+		SEAseqPipeLine.database.c.executemany('INSERT INTO contigs VALUES (?,?,?,?,?,?,?,?)', addValues)
+		SEAseqPipeLine.database.c.execute('UPDATE barcodeClusters SET contigSequencesList=? WHERE clusterId=?', (str(self.contigIdsList), self.id))
+		#print self.id, self.contigIdsList
+		SEAseqPipeLine.database.commitAndClose()
+		#print 'Write OK!!'
+	except sqlite3.OperationalError: print 'ERROR: BarcodeCluster.saveContigInfoToDatabase() is giving a sqlite3.OperationalError!!'
 
 	return 0
 
     def findiSeqBarcodes(self, ):
 	
 	import re
+	import operator
 	
 	assert SEAseqPipeLine.settings.mode == 'iSeq', 'Error: this type of analysis is not supported by the current analysis mode.'
 
@@ -579,7 +617,7 @@ class BarcodeCluster(object):
 	assert len(self.readPairs) == self.readPairCount, 'BarcodeCluster.readcount does not match number of reads for cluster='+self.id
 	
 	#
-	# find iSeqBarcodes
+	# find iSeqBarcodes in read population
 	#
 	self.iSeqBarcodes = {}
 	for readPair in self.readPairs:
@@ -601,7 +639,7 @@ class BarcodeCluster(object):
 	self.iSeqOutString += '\n\n'
 
 	#
-	# find iSeqBarcodes UMI corrected
+	# correct the weights for iSeqBarcodes using UMIs
 	#
 	doUmiCorrection = True
 	if doUmiCorrection:
@@ -622,9 +660,9 @@ class BarcodeCluster(object):
 	    #    tmpCount += sum( [len(LIST) for LIST in umiDict.values()] )
 	    assert tmpCount == self.readPairCount, '\n\n#\n# Error, the number of annotations for iseqbarcodes does not match the number of reads ('+str(tmpCount)+' != '+str(self.readPairCount)+')\n#\n'
 	    
-	    #remove all umis below readCutoff
+	    
 	    preFiletOut = True
-	    if preFiletOut:
+	    if preFiletOut: #Raw UMI output
 		umiBcComboCount = sum( [len(DICT) for DICT in self.iSeqBarcodesUMI.values()] )
 		self.iSeqOutString += 'Has '+str(umiBcComboCount)+' unique combinatiuons of barcodes and UMIs before filtering'+'\n'
 		self.iSeqOutString += 'namely the following:\n'
@@ -633,21 +671,69 @@ class BarcodeCluster(object):
 		    total = len(umiDict)
 		    percentage = round(100*float(total)/float(umiBcComboCount),2)
 		    self.iSeqOutString += '\t'+iSeqBarcode+'\t'+str(total)+'\t'+str(percentage)+'%\t'+str([umi+'='+str(len(readPairsList)) for umi,readPairsList in umiDict.iteritems()])+'\n'
+	    
+	    # "cluster" UMIs ie allow for mismatches
 	    tmpDict = {}
-	    readsPerUmiCutOff = 2#reads
+	    maxMisMatch = SEAseqPipeLine.settings.umiMaxMisMatch
+	    self.iSeqOutString += 'Merging UMI pairs with hamming distance '+str(maxMisMatch)+' or lower:\n'
+	    for iSeqBarcode,umiDict in self.iSeqBarcodesUMI.iteritems():
+		umiDictLength = 9e99
+		
+		while umiDictLength > len(umiDict):
+		    self.iSeqOutString += 'New Merging Round for '+iSeqBarcode+' '+str(umiDictLength)+' > '+str(len(umiDict))+' ... \n'
+		    umiDictLength = len(umiDict)
+		    clusteredUmiDict = {}
+		    mergedUMIs = []
+
+
+		    #create the umisByReadCount dict
+		    umisByReadCount = {}		
+		    for umi,readPairsList in umiDict.iteritems():
+			try: umisByReadCount[len(readPairsList)].append(umi)
+			except KeyError:
+			     umisByReadCount[len(readPairsList)] = [umi]
+		    
+		    # get umis in read count order
+		    for count, umis in sorted(umisByReadCount.iteritems(), key=operator.itemgetter(0))[::-1]:
+			for umi in umis:
+			    if umi in mergedUMIs: continue
+			    else:
+			        assert count == len(umiDict[umi]), 'Error: the umi read count does not match expected! (1)'
+				clusteredUmiDict[umi] = umiDict[umi]
+				clusteringOccured = False
+				for lowerCount, umisLower in sorted(umisByReadCount.iteritems(), key=operator.itemgetter(0))[::-1]:
+				    for umiLower in umisLower:
+					#assert lowerCount == len(umiDict[umiLower]), 'Error: the umi read count does not match expected! (2)'
+					if umiLower == umi or lowerCount >= count or umiLower in mergedUMIs: continue
+					else:
+					    if hamming_distance(umi,umiLower) <= maxMisMatch:
+						clusteredUmiDict[umi] += umiDict[umiLower]
+						mergedUMIs.append(umiLower)
+						self.iSeqOutString += '\tmerging UMI '+umi+' ('+str(count)+') with '+str(umiLower)+' ('+str(lowerCount)+')\n'
+					    else: pass #distance to large for merging check next
+		    umiDict = clusteredUmiDict
+		
+		tmpDict[iSeqBarcode] = umiDict
+	    
+	    #remove all umis below readCutoff
+	    tmpDict = {}
+	    readsPerUmiCutOff = SEAseqPipeLine.settings.readsPerUmiCutOff#reads
+	    self.readsPerRawUmiList=[]
 	    self.iSeqOutString += 'Removing all UMIs with less than '+str(readsPerUmiCutOff)+' reads ... \n'
 	    for iSeqBarcode,umiDict in self.iSeqBarcodesUMI.iteritems():
 		tmpDict[iSeqBarcode] = {}
 		for umi,readPairsList in umiDict.iteritems():
+		    self.readsPerRawUmiList.append(len(readPairsList))
 		    if len(readPairsList) >= readsPerUmiCutOff:
 			tmpDict[iSeqBarcode][umi] = readPairsList
-		    else: pass#self.iSeqOutString += '\tremoved:'+iSeqBarcode+', umi='+umi+' '+str(len(readPairsList))+' reads\n'
+		    else: self.iSeqOutString += '\tremoved:'+iSeqBarcode+', umi='+umi+' '+str(len(readPairsList))+' reads\n'
 	    tmpDict2 = {}
 	    for iSeqBarcode,umiDict in tmpDict.iteritems():
 		if len(umiDict): tmpDict2[iSeqBarcode] = tmpDict[iSeqBarcode]
 		else: self.iSeqOutString += '\tremoved:'+iSeqBarcode+' no umis PF\n'
 	    self.iSeqBarcodesUMI = tmpDict2
 	    
+	    #Get AbBcs with ok UMIs over cutoffs
 	    umiBcComboCount = sum( [len(DICT) for DICT in self.iSeqBarcodesUMI.values()] )
 	    self.iSeqBarcodesPassingFilter = []
 	    self.iSeqOutString += 'Has '+str(umiBcComboCount)+' unique combinatiuons of barcodes and UMIs in total'+'\n'
@@ -1048,18 +1134,23 @@ class Settings(object,):
 	    'maxHandleMissMatches':0,
 	    'barcodeLength':15,
 	    'analysisParts':None,
-	    'barcodeMissmatch':0
+	    'barcodeMissmatch':0,
+	    'readsPerUmiCutOff':5,
+	    'umiMaxMisMatch':2
+
 	}
 	self.explenations = {
 	    'debug':'Flag for running the scripts in multiprocessing or as single process run [True/False] (default=False)',
 	    'uppmaxProject':'Project id used at uppmax for sbatch scripts [bXXXXXXX] (default=b2014005)',
 	    'parallelProcesses':'Number of process to run when doing multiprocess parts of analysis (defaul=16)',
-	    'mode':'Type of analysis either Whole Fragment Analysis (WFA) or rRNA Amplicon Classification (RAC) [WFA/RAC] (default=RAC)',
+	    'mode':'Type of analysis either Whole Fragment Analysis (WFA) or rRNA Amplicon Classification (RAC) [WFA/RAC/iSeq] (default=RAC)',
 	    'handleSequence':'The sequence that sepperate the barcode from the "specific" read sequence (default=CTAAGTCCATCCGCACTCCT)',
 	    'barcodeLength':'The length of the bead barcode (default=15)',
 	    'analysisParts':'Parts of the analysis to run specific for each run.',
 	    'barcodeMissmatch':'Number of missmatches allowed in the barcode sequence',
-	    'maxHandleMissMatches':'Number of missmatches allowed in the handle sequence'
+	    'maxHandleMissMatches':'Number of missmatches allowed in the handle sequence',
+	    'readsPerUmiCutOff':'Number of reads supporting one UMI for it to passs filters',
+	    'umiMaxMisMatch':'Number of missmatches allowed in the UMI sequence'
 	}
 	self.isDefault = {}
 	self.setTime = {}
@@ -1073,6 +1164,8 @@ class Settings(object,):
 	self.barcodeLength = None
 	self.analysisParts = None
 	self.barcodeMissmatch = None
+	self.readsPerUmiCutOff = None
+	self.umiMaxMisMatch = None
 	
 	self.setDefaults()
 
@@ -1961,16 +2054,83 @@ class SEAseqPipeLine(object):
 	
 	return 0
 
-    def getBarcodeClusterIds(self, ):
+    def getBarcodeClusterIds(self, shuffle=True,byMixedClusterReadCount=True):
+	
+	import random
 	
 	SEAseqPipeLine.database.getConnection()
 	clusterIds = SEAseqPipeLine.database.c.execute('SELECT clusterId FROM barcodeClusters').fetchall()
+	if shuffle: random.shuffle(clusterIds)
 	SEAseqPipeLine.database.commitAndClose()
 	
-	for clusterId in clusterIds:
-	    if clusterId[0] == None: continue
-	    try: yield int(clusterId[0])
-	    except TypeError: yield clusterId[0]
+	if byMixedClusterReadCount:
+	    
+	    id2ReadCountDist = {}
+	    yielded = {}
+	    normal = []
+	    large = []
+	    huge = []
+	    humongous = []
+	    outofthescale = []
+	    
+	    SEAseqPipeLine.logfile.write('Sorting cluster ids to groups of varying read pair counts ...\n')
+	    for clusterId in clusterIds:
+		if clusterId[0] == None: continue
+		clusterId = int(clusterId[0])
+		cluster = BarcodeCluster(clusterId)
+		cluster.loadClusterInfo()
+		id2ReadCountDist[cluster.id] = cluster.readPairCount
+		yielded[cluster.id] = False
+		if   cluster.readPairCount <  1000 and cluster.readPairCount >= 0: normal.append(cluster.id)
+		elif cluster.readPairCount <  5000 and cluster.readPairCount >= 1000: large.append(cluster.id)
+		elif cluster.readPairCount < 35000 and cluster.readPairCount >= 5000: huge.append(cluster.id)
+		elif cluster.readPairCount <500000 and cluster.readPairCount >= 35000: humongous.append(cluster.id)
+		else: outofthescale.append(cluster.id)
+	    SEAseqPipeLine.logfile.write('Done.\n')
+	    
+	    tmpCounter0 = 0
+	    yieldNow = None
+	    while False in yielded.values():
+		if outofthescale and tmpCounter0 <= 0:
+		    yieldNow = outofthescale[0]
+		    outofthescale = outofthescale[1:]
+		    yielded[yieldNow] = True
+		    tmpCounter0 += 1
+		    yield yieldNow
+		elif humongous and tmpCounter0 <= 0:
+		    yieldNow = humongous[0]
+		    humongous = humongous[1:]
+		    yielded[yieldNow] = True
+		    tmpCounter0 += 1
+		    yield yieldNow
+		elif huge and tmpCounter0 <= 0:
+		    yieldNow = huge[0]
+		    huge = huge[1:]
+		    yielded[yieldNow] = True
+		    tmpCounter0 += 1
+		    yield yieldNow
+		elif large and tmpCounter0 <= 1:
+		    yieldNow = large[0]
+		    large = large[1:]
+		    yielded[yieldNow] = True
+		    tmpCounter0 += 1
+		    yield yieldNow
+		elif normal:
+		    yieldNow = normal[0]
+		    normal = normal[1:]
+		    yielded[yieldNow] = True
+		    tmpCounter0 += 1
+		    yield yieldNow
+		#SEAseqPipeLine.logfile.write( str(tmpCounter0)+'\t')
+		#SEAseqPipeLine.logfile.write( str(yieldNow)+'\t')
+		#SEAseqPipeLine.logfile.write( str(id2ReadCountDist[yieldNow])+'.\n')
+		if tmpCounter0 == 6: tmpCounter0 = 0
+		#if yielded.values().count(True) >= 100: break
+	else:
+	    for clusterId in clusterIds:
+		if clusterId[0] == None: continue
+		try: yield int(clusterId[0])
+		except TypeError: yield clusterId[0]
 
     def findContigs(self, ):
 	print 'under heavy development'
@@ -1985,18 +2145,24 @@ class SEAseqPipeLine(object):
 	SEAseqPipeLine.logfile.write('commiting changes to database.\n')
         SEAseqPipeLine.database.commitAndClose()
 	
+	# initiate parallel processing of clusters
+	import multiprocessing
+	poolOfProcesses = multiprocessing.Pool(SEAseqPipeLine.settings.parallelProcesses,maxtasksperchild=100000000)
+	results = poolOfProcesses.imap_unordered(foreachFindContigsClusters,self.getBarcodeClusterIds(),chunksize=5)
+	
+	progress = Progress(SEAseqPipeLine.results.barcodeClusterCount,logfile=SEAseqPipeLine.logfile,unit='clusters',mem=True)
 	doSome =0
-	for clusterId in self.getBarcodeClusterIds():
-	    
-	    if clusterId:
-		cluster = BarcodeCluster(clusterId)
-		cluster.loadClusterInfo()
-		if cluster.readPairCount > 95 and cluster.readPairCount < 110:
-		    doSome +=1
-		    print cluster.id, cluster.barcodeSequence, cluster.readPairCount
-		    cluster.findContigs()
-		    print 'generated'
-		    if doSome > 100:break
+	with progress:
+	#    for clusterId in self.getBarcodeClusterIds():
+	#	progress.update()
+	#	if clusterId:
+	#	    cluster = foreachFindContigsClusters(clusterId)
+	#	    doSome +=1
+	#	    #if doSome > 100:break
+	    for cluster in results:
+		if cluster:
+		    cluster.saveContigInfoToDatabase()
+		    progress.update()
 	
 	return 0
 
@@ -2019,6 +2185,8 @@ class SEAseqPipeLine(object):
 	outfile = open(self.analysisPath+'/iSeqPerBarcodeSequenceCluster.out.txt','w')
 	outfile2 = open(self.analysisPath+'/iSeqBarcodeCombos.out.txt','w')
 	outfile3 = open(self.analysisPath+'/iSeqReadPairsPerBarcodeSequenceCluster.out.txt','w')
+	outfile4 = open(self.analysisPath+'/iSeqReadPairsPerUMI.out.txt','w')
+	outfile5 = open(self.analysisPath+'/iSeqUMIsPerAb.MonoAbClustersOnly.out.txt','w')
 
 	#
 	# initiate counters etc
@@ -2046,6 +2214,10 @@ class SEAseqPipeLine(object):
 		    
 		    try: barcodeCombos[combo]+=1
 		    except KeyError: barcodeCombos[combo]=1
+		    
+		    for umiReadCount in cluster.readsPerRawUmiList: outfile4.write(str(umiReadCount)+'\n')
+		    
+		    if len(cluster.iSeqBarcodesPassingFilter) == 1: outfile5.write(combo + '\t' + str(len(cluster.iSeqBarcodesUMI[combo])) +'\n')
 		
 		# get annotation for each read pair
 		for iSeqBarcode,readPairsList in cluster.iSeqBarcodes.iteritems():
@@ -2086,6 +2258,10 @@ class SEAseqPipeLine(object):
 	outfile2.close()
 	outfile3.write('\n')
 	outfile3.close()
+	outfile4.write('\n')
+	outfile4.close()
+	outfile5.write('\n')
+	outfile5.close()
 	
 	return 0
     
@@ -2265,10 +2441,14 @@ class SEAseqPipeLine(object):
         if self.command == 'changeSettings':
 	    argparser.add_argument('-bm', dest='barcodeMissmatch', metavar='N',	type=int, required=False, help='The number of missmatches allowed in the bead barcode sequence (default 0, current value='+str(SEAseqPipeLine.settings.barcodeMissmatch)+').')
 	    argparser.add_argument('-hm', dest='maxHandleMissMatches', metavar='N',	type=int, required=False, help='The number of missmatches allowed in the handle sequence (default 0, current value='+str(SEAseqPipeLine.settings.maxHandleMissMatches)+').')
+	    argparser.add_argument('-rpu', dest='readsPerUmiCutOff', metavar='N',	type=int, required=False, help='The number of reads required for UMI to pass filter (default 5, current value='+str(SEAseqPipeLine.settings.readsPerUmiCutOff)+', so far only used by iSeq).')
+	    argparser.add_argument('-umm', dest='umiMaxMisMatch', metavar='N',	type=int, required=False, help='The number of missmatches allowed in the UMI sequence (default 2, current value='+str(SEAseqPipeLine.settings.umiMaxMisMatch)+', so far only used by iSeq).')
 	    try:
                 indata = argparser.parse_args(self.commandLineList[3:])
 		if indata.barcodeMissmatch != None: SEAseqPipeLine.settings.setVariable('barcodeMissmatch',indata.barcodeMissmatch)
 		if indata.maxHandleMissMatches != None: SEAseqPipeLine.settings.setVariable('maxHandleMissMatches',indata.maxHandleMissMatches)
+		if indata.readsPerUmiCutOff != None: SEAseqPipeLine.settings.setVariable('readsPerUmiCutOff',indata.readsPerUmiCutOff)
+		if indata.umiMaxMisMatch != None: SEAseqPipeLine.settings.setVariable('umiMaxMisMatch',indata.umiMaxMisMatch)
 	    except IndexError: pass
     
         if self.command == 'startAnalysis':
