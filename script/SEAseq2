@@ -113,7 +113,7 @@ def foreachiSeqCluster(clusterId):
     cluster = BarcodeCluster(clusterId)
     cluster.loadClusterInfo()
 
-    if cluster.readPairCount >= 10:# and cluster.readPairCount < 110:
+    if cluster.readPairCount >= SEAseqPipeLine.settings.readsPerClusterCutOff:# and cluster.readPairCount < 110:
 	cluster.findiSeqBarcodes()
 	return ['OK',cluster]
     else:
@@ -672,10 +672,12 @@ class BarcodeCluster(object):
 		    percentage = round(100*float(total)/float(umiBcComboCount),2)
 		    self.iSeqOutString += '\t'+iSeqBarcode+'\t'+str(total)+'\t'+str(percentage)+'%\t'+str([umi+'='+str(len(readPairsList)) for umi,readPairsList in umiDict.iteritems()])+'\n'
 	    
+	    #
 	    # "cluster" UMIs ie allow for mismatches
+	    #
 	    tmpDict = {}
 	    maxMisMatch = SEAseqPipeLine.settings.umiMaxMisMatch
-	    self.iSeqOutString += 'Merging UMI pairs with hamming distance '+str(maxMisMatch)+' or lower:\n'
+	    self.iSeqOutString += '\nMerging UMI pairs with hamming distance '+str(maxMisMatch)+' or lower:\n'
 	    for iSeqBarcode,umiDict in self.iSeqBarcodesUMI.iteritems():
 		umiDictLength = 9e99
 		
@@ -715,7 +717,9 @@ class BarcodeCluster(object):
 		
 		tmpDict[iSeqBarcode] = umiDict
 	    
+	    #
 	    #remove all umis below readCutoff
+	    #
 	    tmpDict = {}
 	    readsPerUmiCutOff = SEAseqPipeLine.settings.readsPerUmiCutOff#reads
 	    self.readsPerRawUmiList=[]
@@ -1136,7 +1140,8 @@ class Settings(object,):
 	    'analysisParts':None,
 	    'barcodeMissmatch':0,
 	    'readsPerUmiCutOff':5,
-	    'umiMaxMisMatch':2
+	    'umiMaxMisMatch':2,
+	    'readsPerClusterCutOff':100
 
 	}
 	self.explenations = {
@@ -1150,7 +1155,8 @@ class Settings(object,):
 	    'barcodeMissmatch':'Number of missmatches allowed in the barcode sequence',
 	    'maxHandleMissMatches':'Number of missmatches allowed in the handle sequence',
 	    'readsPerUmiCutOff':'Number of reads supporting one UMI for it to passs filters',
-	    'umiMaxMisMatch':'Number of missmatches allowed in the UMI sequence'
+	    'umiMaxMisMatch':'Number of missmatches allowed in the UMI sequence',
+	    'readsPerClusterCutOff':'Number of reads supporting a barcode sequence cluster for it to passs filters'
 	}
 	self.isDefault = {}
 	self.setTime = {}
@@ -1166,6 +1172,7 @@ class Settings(object,):
 	self.barcodeMissmatch = None
 	self.readsPerUmiCutOff = None
 	self.umiMaxMisMatch = None
+	self.readsPerClusterCutOff = None
 	
 	self.setDefaults()
 
@@ -2441,14 +2448,16 @@ class SEAseqPipeLine(object):
         if self.command == 'changeSettings':
 	    argparser.add_argument('-bm', dest='barcodeMissmatch', metavar='N',	type=int, required=False, help='The number of missmatches allowed in the bead barcode sequence (default 0, current value='+str(SEAseqPipeLine.settings.barcodeMissmatch)+').')
 	    argparser.add_argument('-hm', dest='maxHandleMissMatches', metavar='N',	type=int, required=False, help='The number of missmatches allowed in the handle sequence (default 0, current value='+str(SEAseqPipeLine.settings.maxHandleMissMatches)+').')
+	    argparser.add_argument('-rpc', dest='readsPerClusterCutOff', metavar='N',	type=int, required=False, help='TThe number of reads required for a barcode sequence cluster to pass filter (default 100, current value='+str(SEAseqPipeLine.settings.readsPerClusterCutOff)+', so far only used by iSeq).')
 	    argparser.add_argument('-rpu', dest='readsPerUmiCutOff', metavar='N',	type=int, required=False, help='The number of reads required for UMI to pass filter (default 5, current value='+str(SEAseqPipeLine.settings.readsPerUmiCutOff)+', so far only used by iSeq).')
 	    argparser.add_argument('-umm', dest='umiMaxMisMatch', metavar='N',	type=int, required=False, help='The number of missmatches allowed in the UMI sequence (default 2, current value='+str(SEAseqPipeLine.settings.umiMaxMisMatch)+', so far only used by iSeq).')
 	    try:
                 indata = argparser.parse_args(self.commandLineList[3:])
-		if indata.barcodeMissmatch != None: SEAseqPipeLine.settings.setVariable('barcodeMissmatch',indata.barcodeMissmatch)
+		if indata.barcodeMissmatch != None:     SEAseqPipeLine.settings.setVariable('barcodeMissmatch',indata.barcodeMissmatch)
 		if indata.maxHandleMissMatches != None: SEAseqPipeLine.settings.setVariable('maxHandleMissMatches',indata.maxHandleMissMatches)
-		if indata.readsPerUmiCutOff != None: SEAseqPipeLine.settings.setVariable('readsPerUmiCutOff',indata.readsPerUmiCutOff)
-		if indata.umiMaxMisMatch != None: SEAseqPipeLine.settings.setVariable('umiMaxMisMatch',indata.umiMaxMisMatch)
+		if indata.readsPerClusterCutOff != None:SEAseqPipeLine.settings.setVariable('readsPerClusterCutOff',indata.readsPerClusterCutOff)
+		if indata.readsPerUmiCutOff != None:    SEAseqPipeLine.settings.setVariable('readsPerUmiCutOff',indata.readsPerUmiCutOff)
+		if indata.umiMaxMisMatch != None:       SEAseqPipeLine.settings.setVariable('umiMaxMisMatch',indata.umiMaxMisMatch)
 	    except IndexError: pass
     
         if self.command == 'startAnalysis':
