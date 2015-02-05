@@ -307,7 +307,9 @@ def makegraphs(indata):
 
     if os.path.exists(config.path+'/clusters.pickle') or os.path.exists(config.path+'/clusters.pickle.gz'):
 	#from SEAseqLib.classifymeta import clusterGenerator
-
+	
+	incomplete2 = False
+	
 	config.logfile.write('Loading all amplicon alleles:\n ');
         import sys
         
@@ -361,7 +363,7 @@ def makegraphs(indata):
 		
 	fig = plt.figure(figsize=(20, 15), dpi=100)
 	ax = fig.add_subplot(111)
-	if incomplete: ax.set_title('WARNING: incomplete dataset! '+ config.jobName+' ' +config.path)
+	if incomplete2: ax.set_title('WARNING: incomplete dataset! '+ config.jobName+' ' +config.path)
 	else : ax.set_title(config.jobName+' ' +config.path)
 	for i2 in range(len(plots)): ax.plot(xs[i2], ys[i2], label = 'Reads per Amplicon variant -- '+plots[i2])
 	#ax.plot(x, y4, '--b', label = 'Reads per Amplicon')

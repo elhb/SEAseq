@@ -1021,11 +1021,13 @@ class SEAseqSummary():
 		self.barcodes = {}
 		self.readcount = 0
 		self.handlefound = 0
+		self.badN15 = 0
 		self.pairs = {}
 		
 	def add(self, pair):
 		self.readcount += 1
-		if pair.handle_start: self.handlefound += 1
+		if pair.handle_start and pair.handle_end: self.handlefound += 1
+		if (pair.handle_start and pair.handle_end) and (not pair.n15 or not pair.n15.len == 15): self.badN15 += 1
 		if pair.n15 and pair.n15.len == 15:
 			try:
 				self.barcodes[pair.n15.seq] += 1
@@ -1038,7 +1040,8 @@ class SEAseqSummary():
 	def part1(self):
 		perc_c = str(round(100*float(self.handlefound)/self.readcount,2))+'%'
 		uniq_n15s = str(len(self.barcodes.keys()))
-		return 'in '+perc_c+' of the reads can the chandle be found, there are '+uniq_n15s+' uniq n15s'
+		niceAndGoodN15pairs = sum([val for key,val in self.barcodes.iteritems()])
+		return 'in '+perc_c+' of the reads can the chandle be found, there are '+uniq_n15s+' uniq n15s\nsupported by '+str(niceAndGoodN15pairs)+' read pairs\nin '+str(self.badN15)+' pairs are the handle found though the N15 is no good'
 
 	def loadclusters(self,filename):
 		f = open(filename,'r',)
@@ -1374,11 +1377,18 @@ class BarcodeCluster(object):
 	
 	def clusterreadpairs(self, config, indata, verb=False):
 		
+		if indata.tempFileFolder: clusteringProgramsLogfile = open(indata.tempFileFolder+'/cluster_'+str(self.id)+'.cdHitlog.txt','w')
+		else:                     clusteringProgramsLogfile = open(config.path          +'/cluster_'+str(self.id)+'.cdHitlog.txt','w')
+				
 		#check that there is data to work with
 		if self.adaptercount+self.primererrors == self.readcount:
 		    import os
-		    if indata.tempFileFolder: os.remove( indata.tempFileFolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa')
-		    else: os.remove( config.path+'/sortedReads/temporary.'+str(self.id)+'.fa' )
+		    if indata.tempFileFolder:
+			os.remove( indata.tempFileFolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa')
+			os.remove(clusteringProgramsLogfile.name)
+		    else:
+			os.remove( config.path+'/sortedReads/temporary.'+str(self.id)+'.fa' )
+			os.remove(clusteringProgramsLogfile.name)
 		    return 'All adapter and/or primer error.\n'#['ONLY JUNK',return_info]
 	
 		# Cluster Read pairs
@@ -1389,20 +1399,25 @@ class BarcodeCluster(object):
 				'-i',indata.tempFileFolder+'/SEAseqtemp/temporary.'+str(self.id)+'.fa',
 				'-o',indata.tempFileFolder+'/SEAseqtemp/cluster.'+str(self.id)+'.fa',
 				'-g','1',#possibly change to 0 for more accurate though slower progress?? or other way around
+				'-M','7000',      # memory limit
+				'-t',str(5),      # threads
 				'-c',str(config.minConsensusClusteringIdentity/100.0)
 				]
 		else:	command = [	'cd-hit-454',
 				'-i',config.path+'/sortedReads/temporary.'+str(self.id)+'.fa',
 				'-o',config.path+'/sortedReads/cluster.'+str(self.id)+'.fa',
 				'-g','1',#possibly change to 0 for more accurate though slower progress?? or other way around
+				'-M','7000',      # memory limit
+				'-t',str(5),      # threads
 				'-c',str(config.minConsensusClusteringIdentity/100.0)
 				]
 
 		cdhit = subprocess.Popen(
 			command,
-			stdout=subprocess.PIPE,
+			stdout=clusteringProgramsLogfile,#subprocess.PIPE,
 			stderr=subprocess.PIPE )
-		cdhit_out, errdata = cdhit.communicate()
+		#cdhit_out, errdata = cdhit.communicate()
+		errdata = cdhit.communicate()
 		if cdhit.returncode != 0:
 			print 'cmd: '+' '.join( command )
 			print 'cd-hit cluster='+str(cluster.id)+' view Error code', cdhit.returncode, errdata
@@ -1424,9 +1439,10 @@ class BarcodeCluster(object):
 				] 
 		ccc = subprocess.Popen(
 			command,
-			stdout=subprocess.PIPE,
+			stdout=clusteringProgramsLogfile,#subprocess.PIPE,
 			stderr=subprocess.PIPE )
-		ccc_out, errdata = ccc.communicate()
+		#ccc_out, errdata = ccc.communicate()
+		errdata = ccc.communicate()
 		if ccc.returncode != 0:
 			print 'cmd: '+' '.join( command )
 			print 'cluster='+str(self.id)+' cdhit-cluster-consensus view Error code', ccc.returncode, errdata
@@ -1455,6 +1471,10 @@ class BarcodeCluster(object):
 				output += tmp
 				f.close()
 			return output
+		clusteringProgramsLogfile.close()
+		if True:
+			import os
+			os.remove(clusteringProgramsLogfile.name)
 		return ''
 
 	def removetempfiles(self, config, indata):
@@ -1635,7 +1655,7 @@ class BarcodeCluster(object):
 		BLAST_identity = config.minBlastIdentity
 		database = config.blastDb
 		max_target_seqs = 5000
-		cline = NcbiblastnCommandline(query=self.blastfile.name, db=database ,evalue=0.001, outfmt=5, num_threads=8,perc_identity=BLAST_identity,max_target_seqs=max_target_seqs)#, out=infile+'.blastout')
+		cline = NcbiblastnCommandline(query=self.blastfile.name, db=database ,evalue=0.001, outfmt=5, perc_identity=BLAST_identity,max_target_seqs=max_target_seqs)#, num_threads=8)#, out=infile+'.blastout')
 		#cline = NcbiblastnCommandline(query=infile, db=database ,evalue=0.001, outfmt=5, dust='no',perc_identity=80, task='blastn', out=infile+'.'+config.blastid+'.blastout')
 		import time
 		output+='\tStarting BLAST, cluster '+str(self.id)+'\n'

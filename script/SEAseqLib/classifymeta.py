@@ -290,7 +290,7 @@ def doRDPrandMatch(config,rdpclassmatches):
     config.outfile.write('\nRandom RDP matching ('+str(repeats)+' repeats) gave '+str(total_fakeClusters)+' "fakeclusters" where the classifications were matched:\n')
     rdprandomprint(config.outfile, rdpRandomCounter)
 
-def resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches):
+def resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches,readsSupportingPhasedData):
     [output, cluster,picklestring] = tmp
     config.outfile.write( output+'\n')
     clusterdump.write(picklestring)
@@ -357,8 +357,16 @@ def resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,mor
                     try: rdpclassmatches[amplicon].append(rdpclass)
                     except KeyError: rdpclassmatches[amplicon] = [rdpclass]
         
-        if atLeastOneOrgInAllAmps: orgInAllAmpsCounter += 1
-    return [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches]
+        if atLeastOneOrgInAllAmps:
+            orgInAllAmpsCounter += 1
+            temporaryCounter = 0
+            for ampname, amplicon in cluster.definedamplicons.iteritems():
+                if amplicon.monoclonal:
+                    for consensusReadPair in amplicon.goodalleles:
+                        temporaryCounter += consensusReadPair.readcount
+            readsSupportingPhasedData += temporaryCounter
+                        
+    return [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches,readsSupportingPhasedData]
 
 def foreachCluster(tmp):
     
@@ -499,6 +507,7 @@ def classifymeta(indata):
     blastclassmatches = {}
     rdpclassmatches = {}
     singleAmpliconHitlists = {}
+    readsSupportingPhasedData = 0
 
     if indata.tempFileFolder:
         clusterdump = open(indata.tempFileFolder+'/SEAseqtemp/clusters.pickle','wb')
@@ -525,7 +534,7 @@ def classifymeta(indata):
                 if tmcounter <= indata.skip: continue
                 #results.append(foreachCluster(cluster))
                 tmp = foreachCluster(cluster)
-                [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches] = resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches)
+                [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches,readsSupportingPhasedData] = resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches,readsSupportingPhasedData)
                 if indata.stop and tmcounter >= indata.stop: break
         config.logfile.write('finished, making summary ... \n')
     else: # multiple processes in parallel
@@ -542,7 +551,7 @@ def classifymeta(indata):
             if indata.debug: break
             tmcounter +=1
             if tmcounter <= indata.skip: progress.update(); continue
-            [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches] = resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches)
+            [cluster,config,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches,readsSupportingPhasedData] = resultsHandling(tmp,config,clusterdump,counter,moreThanOneAmpAndMono4All,moreThanOneAmpMono4AllAndAllHaveHits,orgInAllAmpsCounter,noMatchAmp,matches,singleAmpliconHitlists,blastclassmatches,rdpclassmatches,readsSupportingPhasedData)
     
             progress.update()
             if indata.stop and tmcounter >= indata.stop: break
@@ -550,6 +559,7 @@ def classifymeta(indata):
     WorkerPool.join()
 
     config.outfile.write(counter.createsummary(config))
+    config.outfile.write('readsSupportingPhasedData\t'+str(readsSupportingPhasedData)+'\n')
 
     config.outfile.write('##### SUMMARY #####'+'\n')
     config.outfile.write(      'out of '+str(moreThanOneAmpAndMono4All)+' analyzed clusters with more than one amplicon defined and monoclonal for all the defined amplicon, were:'     +'\n')
@@ -692,8 +702,21 @@ class RunStatCounter(object):
         self.statsheader = ['clusterid','number of reads in total','number of adaper reads','number of strange primers','its reads','16s reads','its','16s','its monoclonal','16s monoclonal','number of consensus types','number of consensus types with good support','monoclonal for all defined amplicons']
         #for amptype in ['ecoli','myco','lambda','m13']: statsheader.append(amptype+' reads');statsheader.append(amptype+' monoclonal');statsheader.append(amptype)
         self.statstable.write('\t'.join(self.statsheader)+'\n')
+        
+        self.totalReads = 0
+        self.adapterReads = 0
+        self.primerMissmatchReads = 0
+        self.ampliconSpecificReads = 0
+        self.readsSupportingPfConsensusReadpairs = 0
+        self.readsSupportingMonoclonalConsensusReadPairs = 0
+        self.readsSupportingMonoclonal4AllConsensusReadPairs = 0
 
     def addcluster(self, cluster):
+        
+        self.totalReads += cluster.readcount
+        self.adapterReads += cluster.adaptercount
+        self.primerMissmatchReads += cluster.primererrors
+        self.ampliconSpecificReads += cluster.ampliconpairs
         
         self.clustercount += 1
         monoForAllDefined = None
@@ -723,8 +746,14 @@ class RunStatCounter(object):
             
             # count combo of monoclonal amplicons
             monoAmps = {}
+            temporaryCounter = 0
             for ampname, amplicon in cluster.definedamplicons.iteritems():
-                if amplicon.monoclonal: monoAmps[amplicon.type] = amplicon.monoclonal
+                for consensusReadPair in amplicon.goodalleles:
+                    self.readsSupportingPfConsensusReadpairs += consensusReadPair.readcount
+                if amplicon.monoclonal:
+                    monoAmps[amplicon.type] = amplicon.monoclonal
+                    for consensusReadPair in amplicon.goodalleles:
+                        temporaryCounter += consensusReadPair.readcount
             
             monoForAllDefined = False
             if not monoAmps.keys():
@@ -741,6 +770,8 @@ class RunStatCounter(object):
                     #self.ampliconcombinations[ampliconcombo]['monos']['All'] += 1
                     self.definedclustersMono += 1
                     monoForAllDefined = True
+                    self.readsSupportingMonoclonalConsensusReadPairs += temporaryCounter
+                    if len(mononames) == 2: self.readsSupportingMonoclonal4AllConsensusReadPairs += temporaryCounter
     
         #print to stats info file
         #NOTE: ONLY for 16s its stuff!!!
@@ -786,9 +817,20 @@ class RunStatCounter(object):
         if self.definedclusters: tmppercentage = round(100*float(self.definedclustersMono)/float(self.definedclusters),2)
         output += (
             str(self.definedclusters)+' ('+str(round(100*float(self.definedclusters)/float(self.clustercount),2))+'%) has at least one defined amplicon out of these are '+str(self.definedclustersMono)+' ('+str(tmppercentage)+'%) monoclonal for the defined amplicon(s)\n'+
-            '(ie there is only one consensus sequence of that type with more than '+str(config.minReadCountPerConsensus)+' reads and '+str(config.minReadPopSupportConsensus)+'% support, clustering done with '+str(config.minConsensusClusteringIdentity)+'% identity cutoff and '+str(100*config.allowedAllelLevelVariation)+'% allowed allele level variation)\n'
+            '(ie there is only one consensus sequence of that type with more than '+str(config.minReadCountPerConsensus)+' reads and '+str(config.minReadPopSupportConsensus)+'% support, clustering done with '+str(config.minConsensusClusteringIdentity)+'% identity cutoff and '+str(100*config.allowedAllelLevelVariation)+'% allowed allele level variation)\n\n'
             )
         self.statstable.close()
+        
+        output += (
+            'totalReads\t'+str(self.totalReads)+'\n'+
+            'adapterReads\t'+str(self.adapterReads)+'\n'+
+            'primerMissmatchReads\t'+str(self.primerMissmatchReads)+'\n'+
+            'ampliconSpecificReads\t'+str(self.ampliconSpecificReads)+'\n'+
+            'readsSupportingPfConsensusReadpairs\t'+str(self.readsSupportingPfConsensusReadpairs)+'\n'+
+            'readsSupportingMonoclonalConsensusReadPairs\t'+str(self.readsSupportingMonoclonalConsensusReadPairs)+'\n'+
+            'readsSupportingMonoclonal4AllConsensusReadPairs\t'+str(self.readsSupportingMonoclonal4AllConsensusReadPairs)+'\n'
+        )
+        
         return output
     
 if __name__ == "__main__": classify_main()

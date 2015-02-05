@@ -166,8 +166,8 @@ def meta(indata):
 	config.logfile.write('finished, making summary ... \n')
     else: # multiple processes in parallel
 	import multiprocessing
-	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=10000)
-	results = WorkerPool.imap_unordered(foreachcluster_meta,clusteriterator(clusterq,indata),chunksize=10)
+	WorkerPool = multiprocessing.Pool(indata.cpus,maxtasksperchild=1000)
+	results = WorkerPool.imap_unordered(foreachcluster_meta,clusteriterator(clusterq,indata),chunksize=1)
 	#results = WorkerPool.imap(          foreachcluster_meta,clusteriterator(clusterq, indata),chunksize=1)
 
     if not indata.debug: config.logfile.write('Part1: Per cluster action '+str(indata.cpus)+' processes  ...\n')
